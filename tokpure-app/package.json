@@ -29,16 +29,19 @@
         {
           "target": "dmg",
           "arch": [
-            "arm64"
+            "arm64",
+            "x64"
           ]
         },
         {
           "target": "zip",
           "arch": [
-            "arm64"
+            "arm64",
+            "x64"
           ]
         }
       ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
       "icon": "build/icon.icns",
       "darkModeSupport": true,
       "identity": null,

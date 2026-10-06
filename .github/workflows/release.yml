@@ -1,0 +1,114 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # CI 直连官方源，避免镜像差异；本地开发仍走 tokpure-app/.npmrc 的镜像
+  npm_config_registry: https://registry.npmjs.org
+  npm_config_electron_mirror: https://github.com/electron/electron/releases/download/
+
+jobs:
+  build-macos:
+    name: macOS (${{ matrix.arch }})
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: tokpure-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: tokpure-app
+        run: npm ci
+
+      - name: Fetch arch-matched ffmpeg
+        working-directory: tokpure-app
+        env:
+          npm_config_arch: ${{ matrix.arch }}
+        run: |
+          set -e
+          rm -rf "$RUNNER_TEMP/ffs" && mkdir -p "$RUNNER_TEMP/ffs"
+          cd "$RUNNER_TEMP/ffs"
+          npm init -y >/dev/null 2>&1
+          npm i ffmpeg-static --no-package-lock
+          cp "$RUNNER_TEMP/ffs/node_modules/ffmpeg-static/ffmpeg" "$GITHUB_WORKSPACE/tokpure-app/resources/bin/ffmpeg"
+          chmod +x "$GITHUB_WORKSPACE/tokpure-app/resources/bin/ffmpeg"
+          file "$GITHUB_WORKSPACE/tokpure-app/resources/bin/ffmpeg"
+          "$GITHUB_WORKSPACE/tokpure-app/resources/bin/ffmpeg" -version | head -1
+
+      - name: Build macOS ${{ matrix.arch }}
+        working-directory: tokpure-app
+        run: npx electron-builder --mac --${{ matrix.arch }} --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          if-no-files-found: error
+          path: |
+            tokpure-app/dist/*.dmg
+            tokpure-app/dist/*.zip
+
+  build-windows:
+    name: Windows (x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: tokpure-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: tokpure-app
+        run: npm ci
+
+      - name: Stage ffmpeg.exe
+        working-directory: tokpure-app
+        run: |
+          Copy-Item "node_modules\ffmpeg-static\ffmpeg.exe" "resources\bin\ffmpeg.exe" -Force
+          & "resources\bin\ffmpeg.exe" -version | Select-Object -First 1
+
+      - name: Build Windows x64
+        working-directory: tokpure-app
+        run: npx electron-builder --win --x64 --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          if-no-files-found: error
+          path: tokpure-app/dist/*.exe
+
+  release:
+    name: Publish Release
+    needs: [build-macos, build-windows]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List release assets
+        run: ls -lhR artifacts
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**
+          generate_release_notes: true
