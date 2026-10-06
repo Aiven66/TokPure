@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: https: data: blob:; media-src 'self' file: https: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'" />
+  <title>TokPure</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- ================= Sidebar ================= -->
+    <aside class="sidebar">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="brand">
+          <img class="brand-logo" id="brand-logo" alt="TokPure" />
+          <div>
+            <div class="brand-name">TokPure</div>
+            <div class="brand-sub" id="brand-version">v2.4.0</div>
+          </div>
+        </div>
+        <nav class="nav" id="nav">
+          <a class="nav-item active" data-view="download">
+            <span class="nav-left"><span data-ic="download"></span><span>URL 抓取与下载</span></span>
+          </a>
+          <a class="nav-item" data-view="lab">
+            <span class="nav-left"><span data-ic="wand"></span><span>AI 智能去水印</span></span>
+            <span class="nav-badge" id="nav-ffmpeg-badge">Local</span>
+          </a>
+          <a class="nav-item" data-view="queue">
+            <span class="nav-left"><span data-ic="queue"></span><span>批量任务队列</span></span>
+            <span class="nav-count" id="nav-queue-count">0</span>
+          </a>
+          <a class="nav-item" data-view="library">
+            <span class="nav-left"><span data-ic="library"></span><span>本地媒体库</span></span>
+            <span class="nav-meta" id="nav-lib-size">0 MB</span>
+          </a>
+          <a class="nav-item" data-view="network">
+            <span class="nav-left"><span data-ic="network"></span><span>网络与代理设置</span></span>
+          </a>
+        </nav>
+      </div>
+      <div class="sidebar-foot">
+        <div class="row"><span data-ic="shieldCheck" data-size="16"></span><span>本地安全防护</span></div>
+        <p>100% On-Device Engine</p>
+        <div class="row2">
+          <span style="display:flex;align-items:center;gap:6px"><i class="led" style="width:6px;height:6px"></i>FFmpeg + Neural</span>
+          <span style="color:var(--tertiary-bright)">0 Cloud Leak</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ================= Main ================= -->
+    <div class="main-wrap">
+      <header class="titlebar">
+        <div class="tl-left">
+          <div class="traffic">
+            <button class="c" id="win-close" title="关闭"></button>
+            <button class="m" id="win-min" title="最小化"></button>
+            <button class="z" id="win-max" title="缩放"></button>
+          </div>
+          <div class="tl-divider"></div>
+          <span class="tl-title">TokPure — TikTok Local Video Engine &amp; Watermark Lab</span>
+        </div>
+        <div class="tl-right">
+          <div class="lan-pill" id="lan-pill">
+            <i class="led"></i><span id="lan-text">Local LAN Mode — 127.0.0.1</span>
+          </div>
+          <div class="tl-tools">
+            <label class="check-inline">
+              <span>剪贴板嗅探</span>
+              <button class="switch on" id="clip-sniff-toggle" style="width:32px;height:18px"></button>
+            </label>
+            <div class="tl-divider"></div>
+            <button class="icon-btn" id="btn-open-folder" title="在访达中显示"><span data-ic="folderOpen" data-size="17"></span></button>
+            <button class="icon-btn" id="btn-clear-completed" title="清除已完成"><span data-ic="broom" data-size="17"></span></button>
+            <button class="icon-btn" id="btn-goto-settings" title="偏好设置"><span data-ic="settings" data-size="17"></span></button>
+          </div>
+          <div class="avatar"><span data-ic="user" data-size="16"></span></div>
+        </div>
+      </header>
+
+      <main class="content" id="content">
+        <!-- ============ VIEW: DOWNLOAD ============ -->
+        <section class="view active" id="view-download">
+          <div class="banner hidden" id="clip-banner">
+            <div class="b-left">
+              <div class="b-icon" data-ic="clipboardSearch" data-size="18"></div>
+              <div style="min-width:0">
+                <div class="gap-row" style="gap:7px">
+                  <span style="font-size:13px;font-weight:600">剪贴板监听器已捕获目标</span>
+                  <span class="pill emerald square">Auto-Detected</span>
+                </div>
+                <p class="b-url" id="clip-url"></p>
+              </div>
+            </div>
+            <div class="gap-row">
+              <button class="btn cyan small" id="btn-fill-clip">⚡ 一键填入并解析</button>
+              <button class="icon-btn" id="btn-dismiss-clip"><span data-ic="x" data-size="16"></span></button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <div class="gap-row">
+                  <span class="card-title"><span data-ic="link" data-size="17" style="color:var(--secondary)"></span>视频解析与元数据抓取</span>
+                  <span class="pill square">HTTPS/QUIC Engine</span>
+                </div>
+                <p class="card-sub">支持 TikTok 分享链接、短链、纯数字 ID，自动解析无水印原片源</p>
+              </div>
+              <div class="gap-row">
+                <button class="switch" id="toggle-batch-mode" title="批量抓取模式" style="width:32px;height:18px"></button>
+                <span style="font-size:11px" class="muted">批量抓取模式</span>
+              </div>
+            </div>
+
+            <div class="dropzone" id="dropzone" style="display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <div class="field" style="flex:1;min-width:280px">
+                  <span data-ic="search" data-size="16"></span>
+                  <input id="url-input" type="text" placeholder="粘贴 TikTok 视频链接，例如 https://www.tiktok.com/@user/video/739182390192419" spellcheck="false" />
+                  <button class="icon-btn" id="btn-paste" title="从剪贴板粘贴"><span data-ic="clipboard" data-size="16"></span></button>
+                </div>
+                <button class="btn primary" id="btn-parse"><span data-ic="bolt" data-size="16"></span><span>立即解析 (Extract Now)</span></button>
+              </div>
+              <div class="gap-row" style="justify-content:space-between">
+                <div class="gap-row">
+                  <span class="muted" style="font-size:11px">品质</span>
+                  <select id="sel-quality"><option value="best">原画 1080P 60fps（默认）</option><option value="hd">高清 720P</option><option value="sd">标准 540P</option></select>
+                </div>
+                <div class="gap-row">
+                  <span class="muted" style="font-size:11px">输出目录</span>
+                  <span class="mono dim" id="dl-dir-label" style="font-size:11px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+                  <button class="btn ghost small" id="btn-change-dir">修改</button>
+                </div>
+              </div>
+            </div>
+
+            <div id="parse-status" class="notice hidden" style="margin-top:12px">
+              <span data-ic="info" data-size="15"></span><span id="parse-status-text"></span>
+            </div>
+          </div>
+
+          <!-- Result -->
+          <div class="card solid hidden" id="result-card">
+            <div class="gap-row" style="justify-content:space-between;margin-bottom:12px">
+              <div class="gap-row">
+                <i class="led"></i>
+                <span style="font-size:13px;font-weight:600">已就绪抓取源 (Parsed Target Ready)</span>
+                <span class="pill square" id="result-hash">HASH: --</span>
+              </div>
+              <span class="gap-row" style="gap:6px"><span class="pill emerald square">100% On-Device Decryption</span></span>
+            </div>
+            <div class="two-col">
+              <div>
+                <div class="preview" style="aspect-ratio:auto">
+                  <img id="result-cover" alt="cover" style="width:100%;max-height:420px;object-fit:cover;display:block" />
+                  <div class="p-top">
+                    <span class="overlay-chip mono" id="result-res">1080 × 1920</span>
+                    <span class="overlay-chip mono" id="result-dur">00:00</span>
+                  </div>
+                  <div class="p-bottom">
+                    <span class="overlay-chip" style="color:var(--tertiary-bright)"><span data-ic="checkCircle" data-size="14"></span><span id="result-nw-badge">原生无水印已命中</span></span>
+                    <span class="overlay-chip mono">H.264 High</span>
+                  </div>
+                </div>
+                <div class="notice" style="margin-top:10px"><span data-ic="shieldCheck" data-size="15"></span><span id="result-watermark-note">TikTok 直链抽取纯净母带，无瀑布二次压缩，本地保存。</span></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div>
+                  <div class="gap-row" style="gap:8px">
+                    <span class="card-title" id="result-author" style="font-size:16px">—</span>
+                    <span class="pill emerald square" id="result-verified">已认证</span>
+                  </div>
+                  <p class="selectable" id="result-desc" style="font-size:12.5px;color:var(--text-muted);margin-top:6px;line-height:1.55;user-select:text">—</p>
+                </div>
+                <div class="kv">
+                  <div class="kv-row"><span class="k">码率 (Bitrate)</span><span class="v" id="result-bitrate">—</span></div>
+                  <div class="kv-row"><span class="k">分辨率</span><span class="v" id="result-res2">—</span></div>
+                  <div class="kv-row"><span class="k">时长</span><span class="v" id="result-dur2">—</span></div>
+                  <div class="kv-row"><span class="k">音频</span><span class="v" id="result-audio">AAC-LC 2ch</span></div>
+                  <div class="kv-row"><span class="k">音乐 (BGM)</span><span class="v" id="result-music">—</span></div>
+                  <div class="kv-row"><span class="k">播放 / 点赞</span><span class="v" id="result-stats">—</span></div>
+                  <div class="kv-row"><span class="k">解析来源</span><span class="v" id="result-source">—</span></div>
+                </div>
+                <div class="hr"></div>
+                <div class="stack">
+                  <span class="lbl">输出附加选项 (Output Options)</span>
+                  <label class="cbx"><input type="checkbox" id="opt-poster" /><span class="box"><span data-ic="check" data-size="11"></span></span>保存超清动态封面 (Poster)</label>
+                  <label class="cbx"><input type="checkbox" id="opt-mp3" /><span class="box"><span data-ic="check" data-size="11"></span></span>提取无损伴奏 (MP3 320k)</label>
+                  <label class="cbx"><input type="checkbox" id="opt-clean" /><span class="box"><span data-ic="check" data-size="11"></span></span>FFmpeg 本地去除残留 Logo（兜底）</label>
+                </div>
+                <button class="btn primary" id="btn-download" style="padding:12px;font-size:14px">
+                  <span data-ic="download" data-size="18"></span><span>一键极速下载（含音频 &amp; 元数据）</span>
+                </button>
+                <button class="btn" id="btn-send-lab"><span data-ic="wand" data-size="16"></span><span>发送至 AI 去水印实验室</span></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-head">
+            <h2 style="display:flex;align-items:center;gap:8px"><span data-ic="checkCircle" data-size="16" style="color:var(--tertiary-bright)"></span>最近下载完成 (Recent Completed)</h2>
+            <button class="btn ghost small" id="btn-open-library">打开媒体库全部文件 <span data-ic="arrowRight" data-size="14"></span></button>
+          </div>
+          <div class="panel-list" id="recent-list"></div>
+        </section>
+
+        <!-- ============ VIEW: LAB ============ -->
+        <section class="view" id="view-lab">
+          <div class="card">
+            <div class="card-head" style="margin-bottom:0">
+              <div>
+                <div class="gap-row">
+                  <span class="card-title"><span data-ic="wand" data-size="17" style="color:var(--primary)"></span>本地 AI 智能去水印实验室</span>
+                  <span class="pill square" id="lab-engine-badge">Local Neural Engine</span>
+                </div>
+                <p class="card-sub" id="lab-sub">100% 离线 · 本地运算 · 不上传云端</p>
+              </div>
+              <div class="gap-row">
+                <button class="btn small" id="lab-pick"><span data-ic="folderOpen" data-size="15"></span>导入本地视频 (MP4/MOV)</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="lab-grid">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="card" style="padding:11px">
+                <div class="gap-row" style="justify-content:space-between">
+                  <div class="gap-row">
+                    <button class="btn small primary" id="lab-mode-auto"><span data-ic="sparkles" data-size="15"></span>自动裁剪去 Logo</button>
+                    <button class="btn small" id="lab-mode-manual"><span data-ic="crop" data-size="15"></span>手动区域 delogo</button>
+                    <span class="muted" style="font-size:11px">裁剪比例</span>
+                    <input type="range" class="range" id="lab-crop" min="0" max="20" value="6" style="width:130px" />
+                    <span class="mono dim" id="lab-crop-val" style="font-size:11px">6%</span>
+                  </div>
+                  <span class="pill square" id="lab-ffmpeg-pill">FFmpeg</span>
+                </div>
+              </div>
+
+              <div class="preview" id="lab-preview">
+                <video id="lab-video" controls playsinline></video>
+                <div class="p-top">
+                  <span class="overlay-chip mono" id="lab-name">未导入文件</span>
+                  <span class="overlay-chip emerald" style="color:var(--tertiary-bright)"><span data-ic="activity" data-size="13"></span>本地处理</span>
+                </div>
+                <div class="p-bottom">
+                  <label class="overlay-chip"><input type="checkbox" id="lab-original" style="accent-color:var(--secondary)" /> 显示原始画面</label>
+                  <span class="overlay-chip mono" id="lab-size">—</span>
+                </div>
+              </div>
+
+              <div class="bar">
+                <div class="left">
+                  <button class="btn primary" id="lab-export"><span data-ic="save" data-size="16"></span>开始本地导出 (Export Clean Video)</button>
+                  <button class="btn" id="lab-reveal" disabled><span data-ic="folderOpen" data-size="15"></span>在访达中显示结果</button>
+                </div>
+                <span class="muted mono" id="lab-hint" style="font-size:11px">选择去除范围后导出</span>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="card">
+                <div class="card-title" style="font-size:13px;margin-bottom:10px"><span data-ic="cpu" data-size="16" style="color:var(--secondary)"></span>消除算法模型 <span class="pill square" style="margin-left:auto">On-Device</span></div>
+                <div class="panel-list" id="lab-algos">
+                  <div class="panel-item on"><span class="pi-ic" data-ic="sparkles" data-size="16"></span><div><div class="pi-t">Edge-Crop 智能裁剪</div><div class="pi-d">沿边缘裁剪掉 TikTok Logo 区域，保留主体画面，零残留</div></div></div>
+                  <div class="panel-item"><span class="pi-ic" data-ic="crop" data-size="16"></span><div><div class="pi-t">delogo 区域修复</div><div class="pi-d">对固定水印框做插值模糊修复，适用于静态 Logo</div></div></div>
+                  <div class="panel-item"><span class="pi-ic" data-ic="film" data-size="16"></span><div><div class="pi-t">Direct Copy 无损直通</div><div class="pi-d">仅重封装，不修改像素，用于原生无水印源</div></div></div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-title" style="font-size:13px;margin-bottom:10px"><span data-ic="sliders" data-size="16" style="color:var(--secondary)"></span>去水印范围设定</div>
+                <div class="stack">
+                  <label class="cbx"><input type="checkbox" id="lab-range-all" checked /><span class="box"><span data-ic="check" data-size="11"></span></span>全局裁剪所有边缘 Logo</label>
+                  <label class="cbx"><input type="checkbox" id="lab-range-edge" /><span class="box"><span data-ic="check" data-size="11"></span></span>仅裁片尾 3s Logo 抖动态</label>
+                </div>
+                <div class="grid-2" style="margin-top:10px">
+                  <div><span class="lbl">delogo X</span><div class="field" style="padding:7px 10px"><input type="number" id="lab-box-x" value="20" /></div></div>
+                  <div><span class="lbl">delogo Y</span><div class="field" style="padding:7px 10px"><input type="number" id="lab-box-y" value="20" /></div></div>
+                  <div><span class="lbl">宽度 W</span><div class="field" style="padding:7px 10px"><input type="number" id="lab-box-w" value="240" /></div></div>
+                  <div><span class="lbl">高度 H</span><div class="field" style="padding:7px 10px"><input type="number" id="lab-box-h" value="120" /></div></div>
+                </div>
+              </div>
+
+              <div class="notice"><span data-ic="info" data-size="15"></span><span>为获得最佳画质，建议优先在「URL 抓取与下载」页直接下载原生无水印源；本实验室用于对已下载/本地视频做兜底清理。</span></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ VIEW: QUEUE ============ -->
+        <section class="view" id="view-queue">
+          <div class="two-col">
+            <div class="card solid">
+              <div class="card-head" style="margin-bottom:10px">
+                <div>
+                  <div class="gap-row">
+                    <span class="card-title"><span data-ic="queue" data-size="17" style="color:var(--primary)"></span>批量任务编排中心</span>
+                    <span class="pill square" style="color:var(--secondary)">MULTI-STREAM ENGINE</span>
+                  </div>
+                  <p class="card-sub">并发解析与下载，本地 FFmpeg 兜底清理，全部任务在本地完成。</p>
+                </div>
+              </div>
+              <div class="gap-row" style="margin-bottom:12px">
+                <button class="btn small primary" id="q-import"><span data-ic="plus" data-size="15"></span>批量导入链接</button>
+                <div class="gap-row">
+                  <span class="muted" style="font-size:11px">规则预设</span>
+                  <select id="q-rule"><option value="nowm">下载并自动无水印 (推荐)</option><option value="nowm_poster">无水印 + 保存封面</option><option value="nowm_mp3">无水印 + 提取 MP3</option></select>
+                </div>
+                <div class="gap-row">
+                  <span class="muted" style="font-size:11px">并发限制</span>
+                  <select id="q-concurrency"><option value="1">1 任务串行</option><option value="2">2 任务并行</option><option value="3">3 任务并行</option><option value="5">5 任务并行</option><option value="8">8 任务并行（激进）</option></select>
+                </div>
+                <button class="btn small" id="q-start"><span data-ic="playFill" data-size="14"></span>全部开始</button>
+                <button class="btn small" id="q-pause"><span data-ic="pause" data-size="14"></span>暂停全部</button>
+                <button class="btn small danger" id="q-clear"><span data-ic="broom" data-size="14"></span>清除已完成</button>
+              </div>
+              <textarea class="ta hidden" id="q-textarea" placeholder="每行一个 TikTok 链接或分享文案，粘贴后点击「加入队列」&#10;https://www.tiktok.com/@user/video/123..."></textarea>
+              <div class="gap-row hidden" id="q-import-actions" style="margin-top:8px">
+                <button class="btn small cyan" id="q-add-links">加入队列</button>
+                <button class="btn small ghost" id="q-cancel-import">取消</button>
+              </div>
+
+              <div class="section-head" style="padding:4px 0">
+                <span class="muted mono" style="font-size:11px" id="q-count">当前队列共 0 项</span>
+                <span class="muted mono" style="font-size:11px">按时间排序 · 按状态处理</span>
+              </div>
+              <div class="panel-list" id="queue-list"></div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="card">
+                <div class="card-title" style="font-size:13px;margin-bottom:10px">
+                  <i class="led" style="width:7px;height:7px"></i>引擎实时遥测
+                  <span class="pill square" style="margin-left:auto" id="tele-cores">CPU</span>
+                </div>
+                <span class="lbl">实时下载速率 (MB/s)</span>
+                <div class="wavebox"><svg viewBox="0 0 240 66" preserveAspectRatio="none" id="tele-wave"><path id="tele-wave-path" d="" fill="none" stroke="currentColor" stroke-width="2.4"/></svg></div>
+                <div class="stat-grid" style="margin-top:12px;grid-template-columns:1fr 1fr">
+                  <div class="stat"><div class="k">活动任务</div><div class="v" id="tele-active">0<small>个</small></div></div>
+                  <div class="stat"><div class="k">实时速率</div><div class="v" id="tele-speed">0<small>MB/s</small></div></div>
+                </div>
+                <div class="stack" style="margin-top:12px">
+                  <div><div class="gap-row" style="justify-content:space-between"><span class="muted" style="font-size:11px">FFmpeg 硬件加速</span><span class="mono dim" style="font-size:10px" id="tele-ff">检测中…</span></div><div class="meter" style="margin-top:5px"><i id="tele-ff-bar" style="width:0%;background:linear-gradient(90deg,var(--tertiary),var(--tertiary-bright))"></i></div></div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-title" style="font-size:13px;margin-bottom:8px"><span data-ic="clipboardSearch" data-size="16" style="color:var(--secondary)"></span>粘贴 TXT / 链接批量解析</div>
+                <p class="card-sub">系统将自动从剪贴板解析 TikTok 分享链接或纯数字 URL。</p>
+                <button class="btn cyan small" id="q-sniff" style="margin-top:10px">从剪贴板读取</button>
+              </div>
+
+              <div class="notice"><span data-ic="shieldCheck" data-size="15"></span><span>全部下载与运算均在本机完成，网络仅直连 TikTok CDN（可配置代理），不经过任何第三方云端服务器。</span></div>
+            </div>
+          </div>
+
+          <div class="statusbar" id="queue-statusbar">
+            <span class="sb"><span data-ic="cpu" data-size="15"></span><span id="sb-arch">Apple Silicon</span></span>
+            <span class="sb"><span data-ic="activity" data-size="15"></span><span id="sb-speed">0 MB/s</span></span>
+            <span class="sb"><span data-ic="hardDrive" data-size="15"></span><span id="sb-space">— 可用</span></span>
+            <span class="sb"><span data-ic="folder" data-size="15"></span><span id="sb-dir">—</span></span>
+          </div>
+        </section>
+
+        <!-- ============ VIEW: LIBRARY ============ -->
+        <section class="view" id="view-library">
+          <div class="card">
+            <div class="card-head" style="margin-bottom:10px">
+              <div>
+                <div class="gap-row"><span class="card-title"><span data-ic="library" data-size="17" style="color:var(--secondary)"></span>本地媒体库</span><span class="pill square" id="lib-count">0 个文件</span></div>
+                <p class="card-sub mono selectable" id="lib-dir" style="user-select:text">—</p>
+              </div>
+              <div class="gap-row">
+                <button class="btn small" id="lib-refresh"><span data-ic="refresh" data-size="15"></span>刷新</button>
+                <button class="btn small" id="lib-open"><span data-ic="folderOpen" data-size="15"></span>打开文件夹</button>
+              </div>
+            </div>
+            <div class="seg tiny" id="lib-filter">
+              <button class="on" data-filter="all">全部</button>
+              <button data-filter="video">视频</button>
+              <button data-filter="audio">音频</button>
+              <button data-filter="image">封面</button>
+            </div>
+          </div>
+          <div class="panel-list" id="library-list"></div>
+        </section>
+
+        <!-- ============ VIEW: NETWORK ============ -->
+        <section class="view" id="view-network">
+          <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:14px">
+            <div>
+              <div class="gap-row">
+                <span class="card-title">网络与节点路由引擎</span>
+                <span class="pill square" style="color:var(--secondary)">Native Core</span>
+              </div>
+              <p class="card-sub">配置本地旁路代理，用于访问 TikTok（部分地区需代理才能直连 CDN）。</p>
+            </div>
+            <div class="seg" id="net-mode">
+              <button data-mode="direct">本地直连</button>
+              <button data-mode="system" class="on">系统代理联动</button>
+              <button data-mode="custom">内置代理 (Custom)</button>
+            </div>
+          </div>
+
+          <div class="card hidden" id="net-mode-note" style="padding:11px 14px;background:rgba(5,236,231,.07);border:1px solid rgba(5,236,231,.22)">
+            <div class="gap-row" style="color:var(--secondary);font-size:12px;line-height:1.65">
+              <span data-ic="info" data-size="15"></span>
+              <span>「系统代理联动」会自动读取 macOS/Windows 的系统代理设置（如 Clash、Surge、V2Ray 等）。检测到即自动用于解析与下载，无需手动填写地址端口。</span>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="card solid">
+                <div class="card-head" style="margin-bottom:10px">
+                  <div class="gap-row">
+                    <div class="b-icon" style="width:40px;height:40px;background:rgba(16,185,129,0.16);color:var(--tertiary-bright)"><span data-ic="router" data-size="22"></span></div>
+                    <div>
+                      <div class="gap-row" style="gap:7px"><span style="font-size:15px;font-weight:600" id="net-status-title">本地代理引擎未启用</span><i class="led" id="net-led" style="opacity:.35"></i></div>
+                      <span class="mono dim" style="font-size:11px" id="net-endpoint">直接连接 · 无代理</span>
+                    </div>
+                  </div>
+                  <button class="btn small" id="net-test"><span data-ic="activity" data-size="15"></span>立即测试网络连通性</button>
+                </div>
+                <div class="stat-grid">
+                  <div class="stat"><div class="k">TikTok 节点延迟</div><div class="v" id="net-latency" style="color:var(--tertiary-bright)">--<small>ms</small></div><div class="track"><i id="net-latency-bar" style="width:0%"></i></div></div>
+                  <div class="stat"><div class="k">CDN 连通性</div><div class="v" id="net-cdn" style="color:var(--secondary)">--</div><div class="track"><i id="net-cdn-bar" style="width:0%"></i></div></div>
+                  <div class="stat"><div class="k">HTTP 状态</div><div class="v" id="net-http">--</div><div class="track"><i id="net-http-bar" style="width:0%"></i></div></div>
+                </div>
+              </div>
+
+              <div class="card" id="net-manual-card">
+                <div class="card-head" style="margin-bottom:10px">
+                  <div class="gap-row"><span data-ic="server" data-size="18" style="color:var(--primary)"></span><span style="font-size:15px;font-weight:600">代理传输协议与端口</span></div>
+                  <span class="muted mono" style="font-size:11px">Loopback Interface</span>
+                </div>
+                <div class="gap-row" style="justify-content:space-between;margin-bottom:12px">
+                  <div>
+                    <div style="font-size:13px;font-weight:600">启用代理</div>
+                    <div class="card-sub">所有解析与下载请求将通过该本地代理转发</div>
+                  </div>
+                  <button class="switch on" id="net-enabled"></button>
+                </div>
+                <div class="gap-row" style="justify-content:space-between;margin-bottom:12px">
+                  <div>
+                    <div style="font-size:13px;font-weight:600">传输协议类型</div>
+                    <div class="card-sub">推荐 SOCKS5，具备更优的长连接并发及低开销</div>
+                  </div>
+                  <div class="seg tiny" id="net-protocol">
+                    <button data-proto="socks5" class="on">SOCKS5</button>
+                    <button data-proto="http">HTTP(S)</button>
+                  </div>
+                </div>
+                <div class="grid-3">
+                  <div style="grid-column:span 2"><span class="lbl">本地监听地址 (Host IP)</span><div class="field"><span data-ic="server" data-size="15"></span><input id="net-host" type="text" value="127.0.0.1" /></div></div>
+                  <div><span class="lbl">端口 (Port)</span><div class="field"><input id="net-port" type="text" value="7890" style="text-align:center" /></div></div>
+                </div>
+                <div class="card" style="margin-top:12px;padding:12px;background:rgba(12,14,18,.5)">
+                  <div class="gap-row" style="justify-content:space-between">
+                    <div class="gap-row">
+                      <span data-ic="key" data-size="17" style="color:var(--text-muted)"></span>
+                      <div><div style="font-size:13px;font-weight:600">代理认证授权 (Proxy Auth)</div><div class="card-sub">私有上游或住宅 IP 转发时启用</div></div>
+                    </div>
+                    <button class="switch" id="net-auth"></button>
+                  </div>
+                  <div class="grid-2 hidden" id="net-auth-fields" style="margin-top:10px">
+                    <div class="field"><input id="net-user" type="text" placeholder="用户名 (Username)" /></div>
+                    <div class="field"><input id="net-pass" type="password" placeholder="认证密码 (Password)" /></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-head" style="margin-bottom:10px">
+                  <div class="gap-row"><span data-ic="fingerprint" data-size="18" style="color:var(--secondary)"></span><span style="font-size:15px;font-weight:600">User-Agent 伪装模式</span></div>
+                  <span class="pill square">Bypass</span>
+                </div>
+                <p class="card-sub" style="margin-bottom:10px">选择向 TikTok 握手节点广播的客户端标识，匹配最佳视频分发码率。</p>
+                <div class="panel-list" id="net-ua-list">
+                  <div class="ua-option on" data-ua="macos_safari"><span class="radio"></span><div><div class="gap-row" style="gap:6px"><span style="font-size:13px;font-weight:600">macOS Safari 17.4</span><span class="pill emerald square">推荐</span></div><span class="ua-ua">Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15…</span></div></div>
+                  <div class="ua-option" data-ua="ios_app"><span class="radio"></span><div><div class="gap-row" style="gap:6px"><span style="font-size:13px;font-weight:600">iOS TikTok App 34.1.0</span><span class="pill square">原生无水印</span></div><span class="ua-ua">TikTok 34.1.0 rv:341014 (iPhone; iOS 17.4; en_US) Cronet</span></div></div>
+                  <div class="ua-option" data-ua="custom"><span class="radio"></span><div style="flex:1"><div style="font-size:13px;font-weight:600">自定义 Header 字符串 (Custom UA)</div><div class="field" style="margin-top:7px"><input id="net-ua-custom" type="text" placeholder="粘贴自定义 User-Agent" /></div></div></div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="card">
+                <div class="gap-row" style="color:var(--tertiary-bright);margin-bottom:8px"><span data-ic="shieldCheck" data-size="18"></span><span style="font-size:15px;font-weight:600">本地私密性与安全承诺</span></div>
+                <p class="card-sub" style="line-height:1.6">TokPure 100% 离线运行，不建立任何第三方分析、打点或遥测连接。所有解析与下载仅与本机及 TikTok CDN 通信。</p>
+                <div class="card" style="margin-top:10px;padding:11px;background:rgba(12,14,18,.5)">
+                  <span class="lbl">专属沙盒工作目录</span>
+                  <div class="gap-row" style="justify-content:space-between">
+                    <span class="mono" style="font-size:10.5px;color:var(--secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="net-dir">—</span>
+                    <button class="icon-btn" id="net-open-dir"><span data-ic="folder" data-size="15"></span></button>
+                  </div>
+                </div>
+                <div class="gap-row" style="margin-top:10px;color:var(--tertiary-bright);font-size:11px"><span data-ic="lock" data-size="15"></span><span>零外泄 · 内存即时清空 · 本地运算</span></div>
+              </div>
+
+              <div class="card">
+                <div class="card-title" style="font-size:13px;margin-bottom:10px"><span data-ic="gauge" data-size="16" style="color:var(--secondary)"></span>引擎与兼容性</div>
+                <div class="kv" id="net-engine-kv"></div>
+              </div>
+
+              <div class="card">
+                <div class="card-title" style="font-size:13px;margin-bottom:8px"><span data-ic="link" data-size="16" style="color:var(--secondary)"></span>可选：自定义解析接口</div>
+                <p class="card-sub" style="margin-bottom:8px">当官方接口受限时，可填入自建解析端点（支持 <span class="mono">{url}</span> 占位符）。留空则仅使用本地解析。</p>
+                <div class="field"><input id="net-parse-api" type="text" placeholder="https://your-api/parse?url={url}" /></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar">
+            <div class="left">
+              <button class="btn small" id="net-reset"><span data-ic="refresh" data-size="15"></span>恢复默认配置</button>
+              <button class="btn small" id="net-export"><span data-ic="fileDownload" data-size="15"></span>导出配置 (JSON)</button>
+            </div>
+            <div class="right">
+              <span class="hidden gap-row" id="net-saved" style="color:var(--tertiary-bright);font-size:11px"><span data-ic="check" data-size="15"></span>已成功应用并在本地生效</span>
+              <button class="btn primary" id="net-apply"><span data-ic="bolt" data-size="16"></span>保存并应用</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toast-wrap"></div>
+
+  <script src="icons.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

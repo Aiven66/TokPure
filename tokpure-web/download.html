@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head><meta charset="utf-8"/><title>下载客户端 · TokPure for macOS &amp; Windows (Apple Silicon / Intel / x64)</title><meta name="description" content="下载 TokPure 桌面客户端：macOS 提供 Universal 双架构原生支持，Windows 11 / 10 提供 x64 原生安装包，内置离线引擎，本地极速重构。"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><link rel="stylesheet" href="assets/css/fonts.css"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="assets/vendor/tailwind.js"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"secondary-fixed":"#35fbf5","surface-container-highest":"#333539","on-background":"#e2e2e8","outline-variant":"#5d3f40","on-tertiary-fixed-variant":"#005236","surface-container-low":"#1a1c20","primary-fixed-dim":"#ffb3b6","error-container":"#93000a","on-tertiary":"#003824","secondary-container":"#05ece7","background":"#111317","surface-container-lowest":"#0c0e12","secondary":"#affffb","on-error-container":"#ffdad6","primary-fixed":"#ffdada","on-error":"#690005","surface-variant":"#333539","error":"#ffb4ab","on-primary-fixed-variant":"#920027","on-surface-variant":"#e6bcbd","on-tertiary-container":"#00311f","surface-container":"#1e2024","secondary-fixed-dim":"#00ddd8","on-secondary-fixed-variant":"#00504d","surface-container-high":"#282a2e","tertiary-fixed":"#6ffbbe","on-primary-fixed":"#40000c","surface-tint":"#ffb3b6","primary":"#ffb3b6","inverse-on-surface":"#2f3035","primary-container":"#ff5168","tertiary":"#4edea3","on-secondary-container":"#006764","on-primary-container":"#5b0015","inverse-primary":"#be0036","outline":"#ad8889","on-secondary":"#003735","inverse-surface":"#e2e2e8","surface-bright":"#37393e","surface-dim":"#111317","tertiary-fixed-dim":"#4edea3","on-primary":"#680019","surface":"#111317","on-secondary-fixed":"#00201f","on-surface":"#e2e2e8","on-tertiary-fixed":"#002113","tertiary-container":"#00a572"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"spacing":{"margin":"1.25rem","space-sm":"0.5rem","space-xs":"0.25rem","gutter":"1rem","space-xl":"1.75rem","space-lg":"1.25rem","space-md":"0.75rem"},"fontFamily":{"headline-xl":["Plus Jakarta Sans"],"headline-sm":["Plus Jakarta Sans"],"body-sm":["Plus Jakarta Sans"],"body-md":["Plus Jakarta Sans"],"label-md":["JetBrains Mono"],"headline-md":["Plus Jakarta Sans"],"label-sm":["JetBrains Mono"],"body-lg":["Plus Jakarta Sans"],"headline-lg":["Plus Jakarta Sans"]},"fontSize":{"headline-xl":["28px",{"lineHeight":"34px","letterSpacing":"-0.02em","fontWeight":"700"}],"headline-sm":["14px",{"lineHeight":"18px","letterSpacing":"-0.05em","fontWeight":"600"}],"body-sm":["11px",{"lineHeight":"15px","fontWeight":"400"}],"body-md":["13px",{"lineHeight":"18px","fontWeight":"400"}],"label-md":["12px",{"lineHeight":"16px","letterSpacing":"0.02em","fontWeight":"500"}],"headline-md":["16px",{"lineHeight":"22px","letterSpacing":"-0.01em","fontWeight":"600"}],"label-sm":["10px",{"lineHeight":"14px","letterSpacing":"0.04em","fontWeight":"500"}],"body-lg":["14px",{"lineHeight":"20px","fontWeight":"400"}],"headline-lg":["20px",{"lineHeight":"26px","letterSpacing":"-0.015em","fontWeight":"600"}]}}}}</script><link rel="stylesheet" href="assets/css/site.css"/></head><body class="bg-background font-body-md text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container"><header class="fixed top-0 left-0 right-0 z-50 bg-surface/75 backdrop-blur-2xl shadow-[0_1px_16px_rgba(0,0,0,0.45)]"><div class="h-16 max-w-7xl mx-auto px-6 lg:px-12 flex items-center justify-between gap-space-md"><div class="flex items-center gap-space-md"><a class="flex items-center gap-space-sm group" data-path="home" href="index.html"><img alt="Brand logo. - Primary color: #fe2c55
+- Font: plusJakartaSans
+- Mode: dark
+- Roundness: rounded-md
+" class="h-8 w-auto object-contain" src="assets/img/logo.svg"/><span class="font-headline-lg text-headline-lg tracking-tight text-on-surface font-bold">TokPure</span></a><div class="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-high"><span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span><span class="font-label-sm text-label-sm text-tertiary-fixed">v2.4 macOS / Win</span></div></div><nav class="hidden lg:flex items-center gap-1" data-active-classes="text-on-surface bg-surface-container font-headline-sm rounded-lg shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]"><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="home" href="index.html">首页</a><a aria-current="page" class="px-3 py-1.5 transition-colors text-on-surface bg-surface-container font-headline-sm rounded-lg shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]" data-path="download" href="download.html">下载客户端</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="pricing" href="pricing.html">价格方案</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="about-us" href="about.html">关于我们</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="documentation" href="download.html">文档/API</a></nav><div class="flex items-center gap-space-md"><div class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-lowest"><span class="w-2 h-2 rounded-full bg-tertiary"></span><span class="font-label-sm text-label-sm text-on-surface">100% LOCAL COMPUTE</span></div><a class="hidden sm:inline-block font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface transition-colors px-2" data-path="login" href="login.html">登录</a><a class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25)] hover:bg-primary transition-all" data-path="download" href="download.html">免费下载体验</a><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-16 bg-background min-h-screen"><div class="flex flex-col w-full">
+<!-- Subtle Ambient Glow Orbs -->
+<div class="relative w-full overflow-hidden">
+<div class="absolute -top-32 left-1/4 w-96 h-96 bg-primary-container/10 rounded-full blur-[120px] pointer-events-none"></div>
+<div class="absolute top-20 right-1/4 w-80 h-80 bg-secondary-container/10 rounded-full blur-[110px] pointer-events-none"></div>
+<!-- Hero Header Section -->
+<div class="max-w-7xl mx-auto px-6 lg:px-12 pt-12 pb-14 text-center">
+<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-container-high shadow-sm mb-6 animate-pulse">
+<span class="material-symbols-outlined text-[16px] text-tertiary">verified</span>
+<span class="font-label-sm text-label-sm text-on-surface">v2.4.0 (Build 2408) · 2025 年最新稳定版 · macOS 与 Windows 双平台</span>
+</div>
+<h1 class="font-headline-xl text-headline-xl sm:text-[36px] sm:leading-[44px] tracking-tight text-on-surface mb-4">
+        下载 TokPure 桌面客户端
+      </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl mx-auto">
+        选择适配你设备的版本：macOS 提供 Universal 双架构原生支持，Windows 11 / 10 提供 x64 原生安装包，本地离线极速重构。
+      </p>
+<!-- Trust Badges Bar -->
+<div class="flex flex-wrap items-center justify-center gap-6 mt-8 font-label-sm text-label-sm text-on-surface-variant">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-tertiary text-[18px]">lock</span>
+<span>Apple Gatekeeper 签名公证</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-secondary-fixed text-[18px]">shield</span>
+<span>Windows Defender SmartScreen 兼容</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-primary-fixed text-[18px]">cloud_off</span>
+<span>100% 离线本地模型推断</span>
+</div>
+</div>
+</div>
+<!-- Download Cards Grid (Bento Dual Option) -->
+<div class="max-w-7xl mx-auto px-6 lg:px-12 pb-20">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+<!-- Card 1: Apple Silicon (Featured / Primary) -->
+<div class="lg:col-span-7 bg-surface-container-high rounded-xl p-8 shadow-xl flex flex-col justify-between relative overflow-hidden group">
+<!-- Background Subtle Gradient Splash -->
+<div class="absolute -right-20 -bottom-20 w-64 h-64 bg-primary-container/15 rounded-full blur-[80px] pointer-events-none"></div>
+<div>
+<div class="flex items-start justify-between gap-4 mb-6">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-lg bg-surface-container-lowest flex items-center justify-center shadow-inner">
+<span class="material-symbols-outlined text-primary-container text-2xl">neurology</span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<span class="font-headline-md text-headline-md text-on-surface">Apple Silicon 原生版</span>
+<span class="px-2 py-0.5 rounded-full bg-primary-container/20 text-primary-fixed font-label-sm text-label-sm font-semibold">强烈推荐</span>
+</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">适用于搭载 M1 / M2 / M3 / M4 系列芯片的 Mac</p>
+</div>
+</div>
+<span class="font-label-md text-label-md text-tertiary bg-surface-container-lowest px-2.5 py-1 rounded">ARM64</span>
+</div>
+<!-- Highlights Specs -->
+<div class="space-y-3 mb-8">
+<div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low shadow-sm">
+<span class="material-symbols-outlined text-tertiary text-[20px]">bolt</span>
+<span class="font-body-md text-body-md text-on-surface">极致调用 16/32 核 Neural Engine，能效比提升 400%</span>
+</div>
+<div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low shadow-sm">
+<span class="material-symbols-outlined text-secondary-fixed text-[20px]">video_settings</span>
+<span class="font-body-md text-body-md text-on-surface">VideoToolbox 专用硬件单元硬解，零风扇噪音声浪</span>
+</div>
+<div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low shadow-sm">
+<span class="material-symbols-outlined text-primary-fixed text-[20px]">devices</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">MacBook Pro, MacBook Air, Mac mini, Mac Studio, iMac 全系列</span>
+</div>
+</div>
+</div>
+<!-- Action Buttons -->
+<div class="space-y-4 pt-4">
+<a class="w-full py-4 px-6 rounded-lg bg-primary-container text-on-primary-container font-headline-md text-headline-md flex items-center justify-center gap-3 shadow-lg hover:bg-primary transition-all duration-200 cursor-pointer" href="#">
+<span class="material-symbols-outlined text-2xl">download</span>
+<span>下载 .dmg 安装包 (Apple Silicon · 92.4 MB)</span>
+</a>
+<!-- Homebrew Terminal Block -->
+<div class="p-3 rounded-lg bg-surface-container-lowest flex items-center justify-between gap-3 shadow-inner">
+<div class="flex items-center gap-2 overflow-hidden">
+<span class="font-label-sm text-label-sm text-on-surface-variant select-none">$</span>
+<code class="font-label-sm text-label-sm text-secondary truncate" id="brew-cmd">brew install --cask tokpure</code>
+</div>
+<button class="px-3 py-1 rounded bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-sm text-label-sm transition-colors cursor-pointer shrink-0" onclick="navigator.clipboard.writeText('brew install --cask tokpure'); this.innerText='已复制!';">
+                复制命令
+              </button>
+</div>
+</div>
+</div>
+<!-- Card 2: Intel Architecture -->
+<div class="lg:col-span-5 bg-surface-container rounded-xl p-8 shadow-md flex flex-col justify-between relative overflow-hidden">
+<div>
+<div class="flex items-start justify-between gap-4 mb-6">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-lg bg-surface-container-low flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface text-2xl">laptop_mac</span>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface">Intel 处理器通用版</h3>
+<p class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">适用于 2020 年及更早期的 Intel Mac</p>
+</div>
+</div>
+<span class="font-label-md text-label-md text-on-surface-variant bg-surface-container-low px-2.5 py-1 rounded">x86_64</span>
+</div>
+<!-- Highlights Specs -->
+<div class="space-y-3 mb-8">
+<div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low">
+<span class="material-symbols-outlined text-on-surface-variant text-[20px]">memory_alt</span>
+<span class="font-body-md text-body-md text-on-surface">搭载 OpenVINO / CPU 高速并发优化计算引擎</span>
+</div>
+<div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low">
+<span class="material-symbols-outlined text-on-surface-variant text-[20px]">check_circle</span>
+<span class="font-body-md text-body-md text-on-surface">完整向下兼容至 macOS Monterey (12.0)</span>
+</div>
+<div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low">
+<span class="material-symbols-outlined text-on-surface-variant text-[20px]">info</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">经典 MacBook Pro / Air 与 iMac 架构支持</span>
+</div>
+</div>
+</div>
+<!-- Download Action -->
+<div class="space-y-4 pt-4">
+<a class="w-full py-3.5 px-6 rounded-lg bg-surface-container-highest text-on-surface font-headline-sm text-headline-sm flex items-center justify-center gap-2 hover:bg-surface-bright transition-all duration-200 cursor-pointer" href="#">
+<span class="material-symbols-outlined text-xl">download</span>
+<span>下载 .dmg 安装包 (Intel 架构 · 108.6 MB)</span>
+</a>
+<div class="text-center font-label-sm text-label-sm text-on-surface-variant">
+              SHA256: e871cf8d...29a1b4
+            </div>
+</div>
+</div>
+<!-- Card 3: Windows x64 -->
+<div class="lg:col-span-12 bg-surface-container-high rounded-xl p-8 shadow-xl flex flex-col justify-between relative overflow-hidden group">
+<div class="absolute -right-24 -top-24 w-72 h-72 bg-secondary-container/10 rounded-full blur-[90px] pointer-events-none"></div>
+<div>
+<div class="flex items-start justify-between gap-4 mb-6">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-lg bg-surface-container-lowest flex items-center justify-center shadow-inner">
+<span class="material-symbols-outlined text-secondary-fixed text-2xl">desktop_windows</span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<span class="font-headline-md text-headline-md text-on-surface">Windows 11 / 10 原生版</span>
+<span class="px-2 py-0.5 rounded-full bg-secondary-container/20 text-secondary-fixed font-label-sm text-label-sm font-semibold">全新发布</span>
+</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">适用于 64 位 Windows 11 与 Windows 10 (21H2 及以上)</p>
+</div>
+</div>
+<span class="font-label-md text-label-md text-secondary-fixed bg-surface-container-lowest px-2.5 py-1 rounded">x64</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-8">
+<div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low shadow-sm">
+<span class="material-symbols-outlined text-tertiary text-[20px]">movie_filter</span>
+<span class="font-body-md text-body-md text-on-surface">内置完整 FFmpeg 离线引擎，MP3 提取与本地去水印开箱即用</span>
+</div>
+<div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low shadow-sm">
+<span class="material-symbols-outlined text-secondary-fixed text-[20px]">vpn_lock</span>
+<span class="font-body-md text-body-md text-on-surface">自动联动 Windows 系统代理设置，无需手动填写</span>
+</div>
+<div class="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low shadow-sm">
+<span class="material-symbols-outlined text-primary-fixed text-[20px]">install_desktop</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">NSIS 安装向导，支持自定义安装目录与桌面快捷方式</span>
+</div>
+</div>
+</div>
+<div class="space-y-4 pt-4">
+<a class="w-full py-4 px-6 rounded-lg bg-secondary-container text-on-secondary-container font-headline-md text-headline-md flex items-center justify-center gap-3 shadow-lg hover:bg-secondary-fixed transition-all duration-200 cursor-pointer" href="#">
+<span class="material-symbols-outlined text-2xl">download</span>
+<span>下载 .exe 安装包 (Windows 11 / 10 · x64)</span>
+</a>
+<div class="flex flex-col sm:flex-row items-center justify-between gap-2 font-label-sm text-label-sm text-on-surface-variant">
+<span>安装包已内置完整 FFmpeg 引擎，无需额外安装任何依赖。</span>
+<span>SHA256: 4a17d0c2...8f6e21</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- System Requirements Bento Grid -->
+<div class="max-w-7xl mx-auto px-6 lg:px-12 pb-20">
+<div class="text-center mb-10">
+<h2 class="font-headline-lg text-headline-lg text-on-surface">系统要求与运行规格</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-2">macOS 与 Windows 双平台原生适配，本地离线引擎开箱即用</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<div class="p-6 rounded-xl bg-surface-container shadow-md">
+<div class="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center mb-4">
+<span class="material-symbols-outlined text-secondary-fixed text-xl">laptop_mac</span>
+</div>
+<div class="font-headline-sm text-headline-sm text-on-surface mb-1">macOS 系统版本</div>
+<div class="font-body-lg text-body-lg text-secondary-fixed font-semibold mb-2">macOS 12.0 (Monterey) 或更高</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">全功能无缝支持 macOS Sonoma 及最新 macOS Sequoia 深度安全框架。</p>
+</div>
+<div class="p-6 rounded-xl bg-surface-container shadow-md">
+<div class="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center mb-4">
+<span class="material-symbols-outlined text-secondary-fixed text-xl">desktop_windows</span>
+</div>
+<div class="font-headline-sm text-headline-sm text-on-surface mb-1">Windows 系统版本</div>
+<div class="font-body-lg text-body-lg text-secondary-fixed font-semibold mb-2">Windows 11 / Windows 10 (21H2) x64</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">提供 x64 原生安装包，NSIS 向导支持自定义安装目录与桌面快捷方式。</p>
+</div>
+<div class="p-6 rounded-xl bg-surface-container shadow-md">
+<div class="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center mb-4">
+<span class="material-symbols-outlined text-tertiary-fixed text-xl">speed</span>
+</div>
+<div class="font-headline-sm text-headline-sm text-on-surface mb-1">运行内存</div>
+<div class="font-body-lg text-body-lg text-tertiary-fixed font-semibold mb-2">建议 8GB 内存及以上</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">批量高分辨率处理建议使用 16GB 或以上内存配置以获得最快速度。</p>
+</div>
+<div class="p-6 rounded-xl bg-surface-container shadow-md">
+<div class="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center mb-4">
+<span class="material-symbols-outlined text-primary-fixed text-xl">hard_drive</span>
+</div>
+<div class="font-headline-sm text-headline-sm text-on-surface mb-1">磁盘存储</div>
+<div class="font-body-lg text-body-lg text-primary-fixed font-semibold mb-2">预留 500 MB 可用空间</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">用于本地离线重构模型与缓存数据读写分配，双平台占用一致。</p>
+</div>
+</div>
+</div>
+<!-- Quick Installation Guide (Step-by-step visual cards) -->
+<div class="max-w-7xl mx-auto px-6 lg:px-12 pb-24">
+<div class="p-8 lg:p-12 rounded-xl bg-surface-container-low shadow-xl">
+<div class="text-center max-w-xl mx-auto mb-12">
+<h2 class="font-headline-lg text-headline-lg text-on-surface">3 步快速安装</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-2">macOS 拖拽即装，Windows 向导式部署，双平台均为 3 步</p>
+</div>
+<div class="flex items-center justify-center gap-3 mb-8">
+<span class="material-symbols-outlined text-primary-fixed text-xl">laptop_mac</span>
+<h3 class="font-headline-md text-headline-md text-on-surface">macOS 安装步骤</h3>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+<!-- Step 1 -->
+<div class="flex flex-col items-center text-center p-6 rounded-lg bg-surface-container shadow-sm">
+<div class="w-12 h-12 rounded-full bg-primary-container/20 text-primary flex items-center justify-center font-headline-md text-headline-md mb-4">
+              1
+            </div>
+<div class="w-full h-32 rounded bg-surface-container-high mb-4 flex flex-col items-center justify-center gap-2 p-4">
+<span class="material-symbols-outlined text-3xl text-on-surface-variant">album</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">TokPure-v2.4.0.dmg</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-2">打开下载镜像</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">双击已下载的 .dmg 磁盘映像包，系统将自动挂载至访达。</p>
+</div>
+<!-- Step 2 -->
+<div class="flex flex-col items-center text-center p-6 rounded-lg bg-surface-container shadow-sm">
+<div class="w-12 h-12 rounded-full bg-secondary-container/20 text-secondary-fixed flex items-center justify-center font-headline-md text-headline-md mb-4">
+              2
+            </div>
+<div class="w-full h-32 rounded bg-surface-container-high mb-4 flex items-center justify-center gap-4 p-4">
+<span class="material-symbols-outlined text-3xl text-primary">auto_fix_high</span>
+<span class="material-symbols-outlined text-xl text-on-surface-variant">arrow_forward</span>
+<span class="material-symbols-outlined text-3xl text-tertiary">folder_open</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-2">拖移至应用程序</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">将 TokPure 图标拖动至 “Applications” 文件夹中完成安装部署。</p>
+</div>
+<!-- Step 3 -->
+<div class="flex flex-col items-center text-center p-6 rounded-lg bg-surface-container shadow-sm">
+<div class="w-12 h-12 rounded-full bg-tertiary-container/20 text-tertiary flex items-center justify-center font-headline-md text-headline-md mb-4">
+              3
+            </div>
+<div class="w-full h-32 rounded bg-surface-container-high mb-4 flex flex-col items-center justify-center gap-2 p-4">
+<span class="material-symbols-outlined text-3xl text-tertiary">security</span>
+<span class="font-label-sm text-label-sm text-on-surface">本地授权就绪</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-2">启动并授权</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">通过聚焦或启动台运行 TokPure，首次启动授予读写与剪贴板权限。</p>
+</div>
+</div>
+<!-- Windows Install Steps -->
+<div class="flex items-center justify-center gap-3 mb-8 mt-16">
+<span class="material-symbols-outlined text-secondary-fixed text-xl">desktop_windows</span>
+<h3 class="font-headline-md text-headline-md text-on-surface">Windows 安装步骤</h3>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<!-- Win Step 1 -->
+<div class="flex flex-col items-center text-center p-6 rounded-lg bg-surface-container shadow-sm">
+<div class="w-12 h-12 rounded-full bg-secondary-container/20 text-secondary-fixed flex items-center justify-center font-headline-md text-headline-md mb-4">
+              1
+            </div>
+<div class="w-full h-32 rounded bg-surface-container-high mb-4 flex flex-col items-center justify-center gap-2 p-4">
+<span class="material-symbols-outlined text-3xl text-on-surface-variant">install_desktop</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">TokPure-Setup-2.4.0-x64.exe</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-2">运行安装向导</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">双击 .exe 安装包，如遇 SmartScreen 提示请点击「更多信息」&gt;「仍要运行」。</p>
+</div>
+<!-- Win Step 2 -->
+<div class="flex flex-col items-center text-center p-6 rounded-lg bg-surface-container shadow-sm">
+<div class="w-12 h-12 rounded-full bg-secondary-container/20 text-secondary-fixed flex items-center justify-center font-headline-md text-headline-md mb-4">
+              2
+            </div>
+<div class="w-full h-32 rounded bg-surface-container-high mb-4 flex flex-col items-center justify-center gap-2 p-4">
+<span class="material-symbols-outlined text-3xl text-secondary-fixed">folder_open</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">选择安装目录</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-2">选择安装位置</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">在向导中指定安装目录，可勾选创建桌面快捷方式与开始菜单项。</p>
+</div>
+<!-- Win Step 3 -->
+<div class="flex flex-col items-center text-center p-6 rounded-lg bg-surface-container shadow-sm">
+<div class="w-12 h-12 rounded-full bg-secondary-container/20 text-secondary-fixed flex items-center justify-center font-headline-md text-headline-md mb-4">
+              3
+            </div>
+<div class="w-full h-32 rounded bg-surface-container-high mb-4 flex flex-col items-center justify-center gap-2 p-4">
+<span class="material-symbols-outlined text-3xl text-tertiary">verified</span>
+<span class="font-label-sm text-label-sm text-on-surface">引擎已内置</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-2">启动即可使用</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">从开始菜单或桌面快捷方式启动，内置 FFmpeg 引擎无需额外安装。</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Visual Divider & Release Notes Section -->
+<div class="max-w-7xl mx-auto px-6 lg:px-12 pb-24">
+<div class="flex items-center justify-between mb-8 pb-4">
+<div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface">版本演进与更新历史</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1">持续打磨的本地算法引擎，保持最高可用性</p>
+</div>
+<span class="font-label-sm text-label-sm text-tertiary bg-surface-container px-3 py-1.5 rounded-full">
+          Release Channel: Stable
+        </span>
+</div>
+<div class="space-y-6">
+<!-- Version 2.4.0 -->
+<div class="p-6 rounded-xl bg-surface-container shadow-md">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+<div class="flex items-center gap-3">
+<span class="font-headline-md text-headline-md text-on-surface">v2.4.0 稳定版</span>
+<span class="px-2 py-0.5 rounded bg-tertiary/20 text-tertiary font-label-sm text-label-sm">当前版本</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">2025 年 2 月发布</span>
+</div>
+<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
+<span><strong>全新 CoreML v3 动态弹跳水印跟踪算法：</strong> 针对带有透明度与位移的动态角标，修复精度提升 60%。</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
+<span><strong>1080P 60fps 原画母带解析：</strong> 支持批量直链提取，无损保留 HDR 动态范围与杜比音轨。</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
+<span><strong>macOS Sequoia 深度适配：</strong> 优化窗口交互质感与剪贴板后台监听静默唤醒逻辑。</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
+<span><strong>Windows 11 / 10 客户端首发：</strong> 提供 x64 原生安装包，内置 FFmpeg 引擎，自动联动 Windows 系统代理设置。</span>
+</li>
+</ul>
+</div>
+<!-- Version 2.3.2 -->
+<div class="p-6 rounded-xl bg-surface-container shadow-sm">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+<span class="font-headline-md text-headline-md text-on-surface">v2.3.2 维护版</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">2024 年 12 月发布</span>
+</div>
+<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-secondary-fixed text-base shrink-0 mt-0.5">tune</span>
+<span>优化 Intel 芯片机型在导出 4K 视频时的内存释放策略，有效降低 CPU 占用达 25%。</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-secondary-fixed text-base shrink-0 mt-0.5">tune</span>
+<span>新增 CLI 命令行参数 <code>--no-gui</code> 与 <code>--export-path</code>，支持自动化脚本调用。</span>
+</li>
+</ul>
+</div>
+<!-- Version 2.2.0 -->
+<div class="p-6 rounded-xl bg-surface-container shadow-sm">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+<span class="font-headline-md text-headline-md text-on-surface">v2.2.0 大版本更新</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">2024 年 9 月发布</span>
+</div>
+<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-on-surface-variant text-base shrink-0 mt-0.5">auto_awesome</span>
+<span>首发集成离线式音频分离提取器，一键导出 Studio 级高保真 320kbps MP3 / AAC 背景音乐。</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-on-surface-variant text-base shrink-0 mt-0.5">auto_awesome</span>
+<span>全面重构用户界面体系，引入原生深色玻璃拟物组件设计。</span>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<!-- FAQ Section -->
+<div class="max-w-7xl mx-auto px-6 lg:px-12 pb-24">
+<div class="text-center max-w-2xl mx-auto mb-12">
+<h2 class="font-headline-lg text-headline-lg text-on-surface">常见安装与使用疑问</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-2">遇到问题？这里有你需要的快速指引</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Question 1 -->
+<div class="p-6 rounded-xl bg-surface-container shadow-sm">
+<div class="flex items-center gap-3 mb-3">
+<span class="material-symbols-outlined text-primary-container text-xl">help_outline</span>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">如何确认我的 Mac 属于 Apple Silicon 还是 Intel？</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+            点击屏幕左上角苹果图标 () &gt; 选择「关于本机」。若「芯片」处标注为 Apple M1/M2/M3/M4 系列，请选择 Apple Silicon 原生版；若显示为「处理器：Intel Core」，请下载 Intel 架构版本。
+          </p>
+</div>
+<!-- Question 2 -->
+<div class="p-6 rounded-xl bg-surface-container shadow-sm">
+<div class="flex items-center gap-3 mb-3">
+<span class="material-symbols-outlined text-primary-container text-xl">admin_panel_settings</span>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">提示“无法打开，因为无法验证开发者”怎么办？</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+            TokPure 已获得 Apple 官方公证签名。如因特殊安全策略拦截，可打开 macOS「系统设置」&gt;「隐私与安全性」，滑到底部点击「仍要打开」，或在访达中右键点击应用选择「打开」即可。
+          </p>
+</div>
+<!-- Question 3 -->
+<div class="p-6 rounded-xl bg-surface-container shadow-sm">
+<div class="flex items-center gap-3 mb-3">
+<span class="material-symbols-outlined text-secondary-fixed text-xl">privacy_tip</span>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">应用运行时是否会向服务器上传我的视频数据？</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+            绝不。TokPure 的所有视频解析、模型重构以及音频提取动作均完全运行在您的 Mac 本地芯片核心上，零云端中转存储，具备完全的离线断网处理能力。
+          </p>
+</div>
+<!-- Question 4 -->
+<div class="p-6 rounded-xl bg-surface-container shadow-sm">
+<div class="flex items-center gap-3 mb-3">
+<span class="material-symbols-outlined text-secondary-fixed text-xl">devices_other</span>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">是否支持 Windows 平台？</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+            支持。自 v2.4.0 起 TokPure 已提供 Windows 11 / Windows 10 (21H2) x64 原生客户端，功能与 macOS 版完全对齐：TikTok 解析、无水印下载、批量任务队列、本地媒体库、MP3 提取与本地 FFmpeg 去水印。Linux 版本仍在评估中。
+          </p>
+</div>
+<!-- Question 5 -->
+<div class="p-6 rounded-xl bg-surface-container shadow-sm">
+<div class="flex items-center gap-3 mb-3">
+<span class="material-symbols-outlined text-secondary-fixed text-xl">movie_filter</span>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Windows 版需要自己安装 FFmpeg 或其它依赖吗？</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+            不需要。Windows 安装包已内置完整的本地 FFmpeg 引擎，去水印与 MP3 提取开箱即用，无需额外下载或配置环境变量。
+          </p>
+</div>
+</div>
+</div>
+<!-- Final Callout Banner -->
+<div class="max-w-7xl mx-auto px-6 lg:px-12 pb-24">
+<div class="rounded-xl bg-gradient-to-r from-surface-container-high via-surface-container to-surface-container-high p-8 lg:p-12 text-center shadow-2xl relative overflow-hidden">
+<div class="max-w-2xl mx-auto space-y-4">
+<h2 class="font-headline-lg text-headline-lg text-on-surface">立刻开启极速无损视频重构</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">完全免费下载体验，支持批量排队处理，让本地 Mac 或 Windows PC 成为你的超强音视频实验室。</p>
+<div class="pt-4 flex flex-wrap justify-center gap-4">
+<a class="px-8 py-3.5 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm shadow-md hover:bg-primary transition-all duration-200" href="#">
+              立即下载 Apple Silicon 版
+            </a>
+<a class="px-8 py-3.5 rounded-lg bg-secondary-container text-on-secondary-container font-headline-sm text-headline-sm shadow-md hover:bg-secondary-fixed transition-all duration-200" href="#">
+              下载 Windows 版
+            </a>
+<a class="px-6 py-3.5 rounded-lg bg-surface-container-highest text-on-surface font-headline-sm text-headline-sm hover:bg-surface-bright transition-all duration-200" href="#">
+              查看开发文档与 CLI
+            </a>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div></main><footer class="w-full bg-surface-container-lowest"><div class="max-w-7xl mx-auto px-6 lg:px-12 pt-16 pb-12"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-space-xl mb-12"><div class="lg:col-span-2 space-y-space-md"><div class="flex items-center gap-space-sm"><img alt="Brand logo. - Primary color: #fe2c55
+- Font: plusJakartaSans
+- Mode: dark
+- Roundness: rounded-md
+" class="h-8 w-auto object-contain" src="assets/img/logo.svg"/><span class="font-headline-lg text-headline-lg text-on-surface font-bold">TokPure</span></div><p class="font-body-md text-body-md text-on-surface-variant max-w-sm">基于本地离线引擎的下一代 macOS / Windows 桌面极速无水印视频下载与 AI 超分无损重构套件。零云端留存，零隐私泄露风险。</p><div class="flex items-center gap-2 p-2.5 rounded-lg bg-surface-container-low"><span class="material-symbols-outlined text-tertiary text-lg">verified_user</span><div class="font-label-sm text-label-sm text-on-surface-variant"><span class="text-tertiary font-bold">Zero-Cloud-Leak:</span> 本地离线执行智能修复</div></div></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">产品矩阵</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="home" href="index.html">核心架构</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">macOS / Windows 客户端</a></li><li><a class="hover:text-on-surface transition-colors" data-path="pricing" href="pricing.html">Pro 终身许可</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">更新日志 (v2.4)</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">开发者 &amp; 支持</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">文档中心</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">CLI 命令行工具</a></li><li><a class="hover:text-on-surface transition-colors" data-path="about-us" href="about.html">关于团队</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私审计报告</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">运行状态</h4><div class="p-3 rounded-lg bg-surface-container-low space-y-2"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span><span class="font-label-sm text-label-sm text-on-surface">全线引擎正常运行</span></div><p class="font-body-sm text-body-sm text-on-surface-variant">Local Offline Engine v4.2 Ready</p></div><div class="mt-4"><div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant font-label-sm text-label-sm"><span class="material-symbols-outlined text-[16px]">language</span><span>简体中文 (中国)</span></div></div></div></div><div class="pt-8 space-y-4"><p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed text-center lg:text-left">免责声明：TokPure 属于独立研发的高性能本地音视频分析工程软件，与 TikTok、ByteDance 或任何第三方社交网络服务无关且未获得其官方赞助或背书。请在遵守当地版权法律与合理使用协议的前提下处理属于您个人所有的创作内容。</p><div class="flex flex-col sm:flex-row items-center justify-between gap-4 font-body-sm text-body-sm text-on-surface-variant"><div>© 2024 TokPure Studio Inc. 专为 macOS 与 Windows 打造。保留所有权利。</div><div class="flex items-center gap-6 font-label-sm text-label-sm"><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">服务条款</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私政策</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">安全白皮书</a></div></div></div></div></footer></body></html>

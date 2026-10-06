@@ -1,0 +1,33 @@
+# === 凭证与本地环境（切勿提交） ===
+.tokpure-secrets.env
+*.env
+*.env.*
+!.env.example
+
+# === 依赖 ===
+node_modules/
+
+# === 构建产物 / 大体积二进制（走 GitHub Releases 或 R2 分发） ===
+dist/
+out/
+*.blockmap
+tokpure-app/resources/bin/*
+!tokpure-app/resources/bin/.gitkeep
+
+# === 与 TokPure 无关的原始素材 ===
+stitch_tiktok_watermark_remover_mac/
+stitch_tiktok_watermark_remover_mac 2/
+stitch_tiktok_watermark_remover_mac*.zip
+__MACOSX/
+
+# === 系统 ===
+.DS_Store
+
+# === 日志 ===
+*.log
+npm-debug.log*
+
+# === 编辑器 ===
+.idea/
+.vscode/
+*.swp

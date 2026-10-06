@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head><meta charset="utf-8"/><title>TokPure · 本地无水印 TikTok 视频下载与 AI 修复工作站</title><meta name="description" content="TokPure 是专为 macOS 打造的桌面端短视频无水印下载与 AI 修复工具。100% 本地算力，零云端中转，零画质压缩。"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><link rel="stylesheet" href="assets/css/fonts.css"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="assets/vendor/tailwind.js"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"secondary-fixed":"#35fbf5","surface-container-highest":"#333539","on-background":"#e2e2e8","outline-variant":"#5d3f40","on-tertiary-fixed-variant":"#005236","surface-container-low":"#1a1c20","primary-fixed-dim":"#ffb3b6","error-container":"#93000a","on-tertiary":"#003824","secondary-container":"#05ece7","background":"#111317","surface-container-lowest":"#0c0e12","secondary":"#affffb","on-error-container":"#ffdad6","primary-fixed":"#ffdada","on-error":"#690005","surface-variant":"#333539","error":"#ffb4ab","on-primary-fixed-variant":"#920027","on-surface-variant":"#e6bcbd","on-tertiary-container":"#00311f","surface-container":"#1e2024","secondary-fixed-dim":"#00ddd8","on-secondary-fixed-variant":"#00504d","surface-container-high":"#282a2e","tertiary-fixed":"#6ffbbe","on-primary-fixed":"#40000c","surface-tint":"#ffb3b6","primary":"#ffb3b6","inverse-on-surface":"#2f3035","primary-container":"#ff5168","tertiary":"#4edea3","on-secondary-container":"#006764","on-primary-container":"#5b0015","inverse-primary":"#be0036","outline":"#ad8889","on-secondary":"#003735","inverse-surface":"#e2e2e8","surface-bright":"#37393e","surface-dim":"#111317","tertiary-fixed-dim":"#4edea3","on-primary":"#680019","surface":"#111317","on-secondary-fixed":"#00201f","on-surface":"#e2e2e8","on-tertiary-fixed":"#002113","tertiary-container":"#00a572"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"spacing":{"margin":"1.25rem","space-sm":"0.5rem","space-xs":"0.25rem","gutter":"1rem","space-xl":"1.75rem","space-lg":"1.25rem","space-md":"0.75rem"},"fontFamily":{"headline-xl":["Plus Jakarta Sans"],"headline-sm":["Plus Jakarta Sans"],"body-sm":["Plus Jakarta Sans"],"body-md":["Plus Jakarta Sans"],"label-md":["JetBrains Mono"],"headline-md":["Plus Jakarta Sans"],"label-sm":["JetBrains Mono"],"body-lg":["Plus Jakarta Sans"],"headline-lg":["Plus Jakarta Sans"]},"fontSize":{"headline-xl":["28px",{"lineHeight":"34px","letterSpacing":"-0.02em","fontWeight":"700"}],"headline-sm":["14px",{"lineHeight":"18px","letterSpacing":"-0.05em","fontWeight":"600"}],"body-sm":["11px",{"lineHeight":"15px","fontWeight":"400"}],"body-md":["13px",{"lineHeight":"18px","fontWeight":"400"}],"label-md":["12px",{"lineHeight":"16px","letterSpacing":"0.02em","fontWeight":"500"}],"headline-md":["16px",{"lineHeight":"22px","letterSpacing":"-0.01em","fontWeight":"600"}],"label-sm":["10px",{"lineHeight":"14px","letterSpacing":"0.04em","fontWeight":"500"}],"body-lg":["14px",{"lineHeight":"20px","fontWeight":"400"}],"headline-lg":["20px",{"lineHeight":"26px","letterSpacing":"-0.015em","fontWeight":"600"}]}}}}</script><link rel="stylesheet" href="assets/css/site.css"/></head><body class="bg-background font-body-md text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container"><header class="fixed top-0 left-0 right-0 z-50 bg-surface/75 backdrop-blur-2xl shadow-[0_1px_16px_rgba(0,0,0,0.45)]"><div class="h-16 max-w-7xl mx-auto px-6 lg:px-12 flex items-center justify-between gap-space-md"><div class="flex items-center gap-space-md"><a class="flex items-center gap-space-sm group" data-path="home" href="index.html"><img alt="Brand logo. - Primary color: #fe2c55
+- Font: plusJakartaSans
+- Mode: dark
+- Roundness: rounded-md
+" class="h-8 w-auto object-contain" src="assets/img/logo.svg"/><span class="font-headline-lg text-headline-lg tracking-tight text-on-surface font-bold">TokPure</span></a><div class="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-high"><span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span><span class="font-label-sm text-label-sm text-tertiary-fixed">v2.4 macOS / Win</span></div></div><nav class="hidden lg:flex items-center gap-1" data-active-classes="text-on-surface bg-surface-container font-headline-sm rounded-lg shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]"><a aria-current="page" class="px-3 py-1.5 transition-colors text-on-surface bg-surface-container font-headline-sm rounded-lg shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]" data-path="home" href="index.html">首页</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="download" href="download.html">下载客户端</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="pricing" href="pricing.html">价格方案</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="about-us" href="about.html">关于我们</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="documentation" href="download.html">文档/API</a></nav><div class="flex items-center gap-space-md"><div class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-lowest"><span class="w-2 h-2 rounded-full bg-tertiary"></span><span class="font-label-sm text-label-sm text-on-surface">100% LOCAL COMPUTE</span></div><a class="hidden sm:inline-block font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface transition-colors px-2" data-path="login" href="login.html">登录</a><a class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25)] hover:bg-primary transition-all" data-path="download" href="download.html">免费下载体验</a><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-16 bg-background min-h-screen"><div class="flex flex-col w-full selection:bg-primary-container selection:text-on-primary-container">
+<!-- Subtle Ambient Glow -->
+<div class="relative w-full overflow-hidden">
+<div class="absolute -top-32 left-1/2 -translate-x-1/2 w-[720px] h-[340px] bg-gradient-to-r from-primary-container/20 via-secondary-container/15 to-transparent blur-[120px] pointer-events-none -z-10"></div>
+<div class="absolute top-[380px] -left-32 w-[380px] h-[380px] bg-secondary-container/10 blur-[140px] pointer-events-none -z-10"></div>
+<div class="absolute top-[640px] -right-32 w-[420px] h-[420px] bg-primary-container/10 blur-[150px] pointer-events-none -z-10"></div>
+<!-- Section 1: Hero Section -->
+<section class="max-w-7xl mx-auto px-6 lg:px-12 pt-8 pb-20 flex flex-col items-center text-center">
+<!-- Badge Pill -->
+<div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-surface-container-high shadow-sm hover:bg-surface-container-highest transition-all cursor-default">
+<span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span>
+<span class="font-label-sm text-label-sm text-on-surface tracking-wide">macOS 与 Windows 双平台 · 本地离线视频去水印引擎</span>
+<span class="font-label-sm text-label-sm text-secondary-fixed bg-surface-container-low px-1.5 py-0.5 rounded font-bold">Local Engine Ready</span>
+</div>
+<!-- Main Headline -->
+<h1 class="mt-6 max-w-4xl font-headline-xl text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-on-surface leading-[1.15]">
+        纯净无界，极致无损。<br class="hidden sm:inline"/>
+<span class="bg-gradient-to-r from-on-surface via-primary to-secondary bg-clip-text text-transparent">TokPure 桌面端短视频下载</span> 与 AI 修复工作站
+      </h1>
+<!-- Subtitle -->
+<p class="mt-5 max-w-2xl font-body-lg text-body-lg text-on-surface-variant leading-relaxed">
+        完全基于本地离线引擎驱动，macOS 与 Windows 双平台同样强悍。零云端中转、零画质压缩损伤、原生母带直连提取或毫秒级神经补全。
+      </p>
+<!-- Action Buttons -->
+<div class="mt-8 flex flex-wrap items-center justify-center gap-4">
+<a class="inline-flex items-center gap-3 px-6 py-3.5 rounded-xl bg-primary-container text-on-primary-container font-headline-sm text-headline-sm shadow-xl hover:bg-primary transition-all group scale-100 hover:scale-[1.01]" data-path="download" href="download.html">
+<span class="material-symbols-outlined text-[20px] group-hover:translate-y-0.5 transition-transform">download</span>
+<span>免费下载桌面客户端 (macOS / Windows)</span>
+<span class="px-2 py-0.5 rounded bg-surface-container-lowest/40 font-label-sm text-label-sm text-primary-fixed">v2.4.0</span>
+</a>
+<a class="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-surface-container-high text-on-surface hover:bg-surface-container-highest transition-colors font-headline-sm text-headline-sm" href="#core-capabilities">
+<span>查看功能概览</span>
+<span class="material-symbols-outlined text-[18px]">arrow_downward</span>
+</a>
+</div>
+<!-- System Compatibility & Security Guarantee Strip -->
+<div class="mt-6 flex flex-wrap items-center justify-center gap-6 text-on-surface-variant font-label-sm text-label-sm">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-tertiary text-[16px]">verified</span>
+<span>Apple 公证 + Windows SmartScreen 兼容</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-secondary text-[16px]">memory</span>
+<span>macOS 12+ · Windows 10 21H2 / 11 x64</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-primary text-[16px]">lock</span>
+<span>100% 本地运算 · 零遥测上传</span>
+</div>
+</div>
+<!-- Software Showcase: macOS Dual Window Mockup -->
+<div class="mt-14 w-full max-w-5xl rounded-2xl bg-surface-container-low shadow-2xl p-2 sm:p-3 relative group">
+<!-- Window Chrome / Toolbar -->
+<div class="w-full h-11 px-4 rounded-xl bg-surface-container-lowest flex items-center justify-between">
+<!-- Traffic Lights -->
+<div class="flex items-center gap-2">
+<span class="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
+<span class="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
+<span class="w-3 h-3 rounded-full bg-[#27c93f]"></span>
+</div>
+<!-- Central Title & State -->
+<div class="flex items-center gap-2 font-label-sm text-label-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-[15px] text-tertiary">offline_bolt</span>
+<span class="text-on-surface font-medium">TokPure Studio - Batch_Session_0914.tpp</span>
+<span class="px-1.5 py-0.2 rounded bg-surface-container font-label-sm text-[9px] text-tertiary-fixed">LIVE REPAIR</span>
+</div>
+<!-- Right Hardware Pill -->
+<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container">
+<span class="w-2 h-2 rounded-full bg-tertiary animate-ping"></span>
+<span class="font-label-sm text-label-sm text-on-surface">CoreML Neural Engine ON</span>
+</div>
+</div>
+<!-- Inner Content Area -->
+<div class="p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+<!-- Left Mini-Queue Navigation (Sidebar) -->
+<div class="hidden lg:flex lg:col-span-3 flex-col gap-2.5 p-3 rounded-xl bg-surface-container-lowest">
+<div class="flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm pb-1">
+<span>待处理队列 (3)</span>
+<span class="text-secondary">全部执行</span>
+</div>
+<div class="p-2.5 rounded-lg bg-surface-container text-left flex items-center gap-2.5">
+<div class="w-10 h-10 rounded bg-surface-container-high flex items-center justify-center shrink-0 overflow-hidden relative">
+<img class="w-full h-full object-cover" data-alt="High quality neon cyberpunk street dance short video thumbnail preview showing a silhouette performer under violet lights" src="assets/img/neon-dance.jpg"/>
+</div>
+<div class="min-w-0 flex-1">
+<p class="font-headline-sm text-[12px] text-on-surface truncate">dance_trend_tokyo_4k.mp4</p>
+<div class="flex items-center gap-1.5 mt-0.5">
+<span class="font-label-sm text-[10px] text-tertiary">修整中 88%</span>
+<span class="text-on-surface-variant text-[10px]">· 48MB</span>
+</div>
+</div>
+</div>
+<div class="p-2.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container/40 transition-colors text-left flex items-center gap-2.5">
+<div class="w-10 h-10 rounded bg-surface-container-high flex items-center justify-center shrink-0 overflow-hidden relative">
+<img class="w-full h-full object-cover" data-alt="Minimalist cinematic architecture drone shot video thumbnail featuring clean concrete museum curves in soft morning sunlight" src="assets/img/architecture-drone.jpg"/>
+</div>
+<div class="min-w-0 flex-1">
+<p class="font-headline-sm text-[12px] text-on-surface truncate">arch_tour_nordic.mp4</p>
+<div class="flex items-center gap-1.5 mt-0.5">
+<span class="font-label-sm text-[10px] text-secondary">等待直链母带</span>
+<span class="text-on-surface-variant text-[10px]">· 124MB</span>
+</div>
+</div>
+</div>
+<div class="p-2.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container/40 transition-colors text-left flex items-center gap-2.5">
+<div class="w-10 h-10 rounded bg-surface-container-high flex items-center justify-center shrink-0 overflow-hidden relative">
+<img class="w-full h-full object-cover" data-alt="Satisfying culinary pasta creation macro shot video thumbnail vibrant green basil and yellow handmade noodles" src="assets/img/culinary-pasta.jpg"/>
+</div>
+<div class="min-w-0 flex-1">
+<p class="font-headline-sm text-[12px] text-on-surface truncate">culinary_artisan_prep.mov</p>
+<div class="flex items-center gap-1.5 mt-0.5">
+<span class="font-label-sm text-[10px] text-on-surface-variant">排队中</span>
+<span class="text-on-surface-variant text-[10px]">· 92MB</span>
+</div>
+</div>
+</div>
+<!-- Quick Import Zone -->
+<div class="mt-auto p-3 rounded-lg bg-surface-container/40 text-center flex flex-col items-center gap-1 cursor-pointer hover:bg-surface-container/70 transition-colors">
+<span class="material-symbols-outlined text-secondary text-[20px]">content_paste</span>
+<span class="font-label-sm text-[11px] text-on-surface">Cmd + V 自动捕获剪贴板</span>
+</div>
+</div>
+<!-- Right Video Canvas: Visual Comparison Split View -->
+<div class="lg:col-span-9 flex flex-col gap-3">
+<div class="relative w-full h-[280px] sm:h-[380px] rounded-xl overflow-hidden bg-surface-container-lowest flex items-center justify-center">
+<!-- Split Comparison Viewport -->
+<div class="absolute inset-0 grid grid-cols-2">
+<!-- Left: Original with Watermark Overlay -->
+<div class="relative h-full overflow-hidden bg-surface-container-high">
+<img class="w-full h-full object-cover" data-alt="Dramatic urban night skyline short video frame with neon signs and motion blur representing raw unprocessed social clip" src="assets/img/urban-night-raw.jpg"/>
+<div class="absolute inset-0 bg-background/30 pointer-events-none"></div>
+<!-- Artificial Watermark Simulation -->
+<div class="absolute top-8 left-6 p-2 rounded bg-surface-container-lowest/80 backdrop-blur-md flex items-center gap-1.5 shadow-md">
+<span class="material-symbols-outlined text-primary text-[14px]">brand_awareness</span>
+<span class="font-label-sm text-[10px] text-on-surface line-through opacity-75">@Creator_Handle_WM</span>
+</div>
+<div class="absolute bottom-8 right-6 p-2 rounded bg-surface-container-lowest/80 backdrop-blur-md flex items-center gap-1.5 shadow-md">
+<span class="material-symbols-outlined text-secondary text-[14px]">water_drop</span>
+<span class="font-label-sm text-[10px] text-on-surface line-through opacity-75">TikTok ID: 89312984</span>
+</div>
+<!-- Badge -->
+<div class="absolute bottom-4 left-4 px-2 py-1 rounded bg-error-container/80 text-on-error-container font-label-sm text-[10px]">
+                    输入源：带跳动漂移水印帧 (Raw Stream)
+                  </div>
+</div>
+<!-- Right: Neural Repaired & Restored 4K -->
+<div class="relative h-full overflow-hidden bg-surface-container-low">
+<img class="w-full h-full object-cover" data-alt="Crystal clear 4k cinematic render of dramatic urban night skyline short video without watermark perfectly sharp clean neon lights" src="assets/img/urban-night-clean.jpg"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background/40 to-transparent pointer-events-none"></div>
+<!-- High Precision Target Markers -->
+<div class="absolute top-7 left-6 px-2.5 py-1 rounded-md bg-surface-container-lowest/90 backdrop-blur-md flex items-center gap-1.5 shadow-lg shadow-tertiary-container/20">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<span class="font-label-sm text-[10px] text-tertiary-fixed">时间序列修补完成 · 0% 残影</span>
+</div>
+<!-- Status Badge -->
+<div class="absolute bottom-4 right-4 px-2 py-1 rounded bg-tertiary-container/80 text-on-tertiary-container font-label-sm text-[10px] flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">auto_fix_high</span>
+                    TokPure 4K 神经母带重构
+                  </div>
+</div>
+</div>
+<!-- Center Interactive Divider Marker -->
+<div class="absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5 bg-gradient-to-b from-primary via-secondary to-tertiary pointer-events-none flex items-center justify-center">
+<div class="w-7 h-7 rounded-full bg-surface-container-lowest shadow-lg flex items-center justify-center text-on-surface pointer-events-auto cursor-ew-resize">
+<span class="material-symbols-outlined text-[16px]">compare_arrows</span>
+</div>
+</div>
+</div>
+<!-- Bottom Live Metric Bar -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-left">
+<div class="p-2.5 rounded-lg bg-surface-container-lowest">
+<span class="font-label-sm text-[10px] text-on-surface-variant block">本地 CoreML 吞吐</span>
+<span class="font-headline-md text-headline-md text-tertiary font-bold tracking-tight">142.8 FPS</span>
+</div>
+<div class="p-2.5 rounded-lg bg-surface-container-lowest">
+<span class="font-label-sm text-[10px] text-on-surface-variant block">画质保真度 (PSNR)</span>
+<span class="font-headline-md text-headline-md text-secondary font-bold tracking-tight">49.2 dB</span>
+</div>
+<div class="p-2.5 rounded-lg bg-surface-container-lowest">
+<span class="font-label-sm text-[10px] text-on-surface-variant block">安全沙盒</span>
+<span class="font-headline-md text-headline-md text-on-surface font-bold tracking-tight">100% 离线内存</span>
+</div>
+<div class="p-2.5 rounded-lg bg-surface-container-lowest">
+<span class="font-label-sm text-[10px] text-on-surface-variant block">GPU/NPU 加速</span>
+<span class="font-headline-md text-headline-md text-primary font-bold tracking-tight">Metal 3 激活</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 2: Core Capabilities Grid -->
+<section class="max-w-7xl mx-auto px-6 lg:px-12 py-20" id="core-capabilities">
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+<div>
+<div class="inline-flex items-center gap-1.5 text-primary font-label-sm text-label-sm font-semibold tracking-wider uppercase mb-2">
+<span>// ARCHITECTURE &amp; WORKFLOW</span>
+</div>
+<h2 class="font-headline-xl text-2xl sm:text-3xl text-on-surface font-bold tracking-tight">
+            工业级桌面流处理，重塑无水印提取范式
+          </h2>
+</div>
+<p class="max-w-md font-body-md text-body-md text-on-surface-variant">
+          TokPure 专为追求极致效率与内容纯净度的数字归档师、MCN 机构剪辑师与科研工作者打造，全面释放 Mac 算力潜能。
+        </p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<!-- Card 01 -->
+<div class="p-6 rounded-2xl bg-surface-container-low hover:bg-surface-container transition-all flex flex-col justify-between group">
+<div>
+<div class="flex items-center justify-between mb-5">
+<span class="font-label-md text-label-md text-primary font-bold">01</span>
+<div class="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-[22px]">link</span>
+</div>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface font-semibold mb-2">
+              原生无水印源流直取
+            </h3>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+              底层逆向解析直接穿透社交分发网络，精准截获源服务器无重编码的纯净原片 MP4 格式，彻底规避二次转码导致的色阶断裂与噪点。
+            </p>
+</div>
+<div class="mt-6 pt-4 bg-surface-container-lowest/60 -mx-6 -mb-6 p-4 rounded-b-2xl">
+<div class="flex items-center justify-between font-label-sm text-[11px] text-on-surface-variant">
+<span>母带级比特率</span>
+<span class="text-tertiary font-bold">1:1 Bit-Exact</span>
+</div>
+</div>
+</div>
+<!-- Card 02 -->
+<div class="p-6 rounded-2xl bg-surface-container-low hover:bg-surface-container transition-all flex flex-col justify-between group">
+<div>
+<div class="flex items-center justify-between mb-5">
+<span class="font-label-md text-label-md text-secondary font-bold">02</span>
+<div class="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center text-secondary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-[22px]">auto_fix_high</span>
+</div>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface font-semibold mb-2">
+              CoreML 神经补全重构
+            </h3>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+              针对烧录在视频关键帧内的跳动文字、静态角标及片尾全屏动态 Logo，使用双向时间注意力机制 (ST-Inpainting) 毫秒级修复，宛若原生未加。
+            </p>
+</div>
+<div class="mt-6 pt-4 bg-surface-container-lowest/60 -mx-6 -mb-6 p-4 rounded-b-2xl">
+<div class="flex items-center justify-between font-label-sm text-[11px] text-on-surface-variant">
+<span>模型推理架构</span>
+<span class="text-secondary font-bold">Neural Engine v4.2</span>
+</div>
+</div>
+</div>
+<!-- Card 03 -->
+<div class="p-6 rounded-2xl bg-surface-container-low hover:bg-surface-container transition-all flex flex-col justify-between group">
+<div>
+<div class="flex items-center justify-between mb-5">
+<span class="font-label-md text-label-md text-tertiary font-bold">03</span>
+<div class="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center text-tertiary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-[22px]">queue_play_next</span>
+</div>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface font-semibold mb-2">
+              多任务并发批处理矩阵
+            </h3>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+              一键黏贴创作者主页合集，或导入 TXT/CSV 包含数千条短视频链接的清单。异步线程池与断点续传支持，夜间挂机自动化归档无需人工干预。
+            </p>
+</div>
+<div class="mt-6 pt-4 bg-surface-container-lowest/60 -mx-6 -mb-6 p-4 rounded-b-2xl">
+<div class="flex items-center justify-between font-label-sm text-[11px] text-on-surface-variant">
+<span>并发下载吞吐</span>
+<span class="text-tertiary font-bold">高达 32 线程</span>
+</div>
+</div>
+</div>
+<!-- Card 04 -->
+<div class="p-6 rounded-2xl bg-surface-container-low hover:bg-surface-container transition-all flex flex-col justify-between group">
+<div>
+<div class="flex items-center justify-between mb-5">
+<span class="font-label-md text-label-md text-primary-fixed-dim font-bold">04</span>
+<div class="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center text-primary-fixed-dim group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-[22px]">shield</span>
+</div>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface font-semibold mb-2">
+              本地回环网络安全沙箱
+            </h3>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+              内置反指纹探测引擎与动态 User-Agent 轮换。全链路遵循零外部服务器日志政策，支持绑定本地 SOCKS5/HTTP 节点，彻底杜绝 IP 限流。
+            </p>
+</div>
+<div class="mt-6 pt-4 bg-surface-container-lowest/60 -mx-6 -mb-6 p-4 rounded-b-2xl">
+<div class="flex items-center justify-between font-label-sm text-[11px] text-on-surface-variant">
+<span>云端数据暂存</span>
+<span class="text-on-surface font-bold">0 字节 (Zero-Leak)</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 3: Technical Comparison & Benchmarks -->
+<section class="max-w-7xl mx-auto px-6 lg:px-12 py-16">
+<div class="p-8 sm:p-12 rounded-3xl bg-surface-container-low shadow-xl">
+<div class="max-w-3xl mb-10">
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-widest font-semibold">// BENCHMARK ANALYSIS</span>
+<h2 class="mt-2 font-headline-xl text-2xl sm:text-3xl text-on-surface font-bold tracking-tight">
+            本地原生客户端 vs 传统网页云端解析
+          </h2>
+<p class="mt-3 font-body-md text-body-md text-on-surface-variant">
+            为什么严肃创作者与企业团队纷纷弃用简陋的 Web 网页版去水印工具，转向 TokPure 本地工作流？
+          </p>
+</div>
+<!-- Comparison Table Representation -->
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-lowest text-on-surface-variant font-label-md text-label-md">
+<th class="py-4 px-6 rounded-l-xl">评估维度 (Metrics)</th>
+<th class="py-4 px-6 text-on-surface font-bold bg-surface-container-high rounded-t-xl">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[18px]">verified</span>
+<span>TokPure 桌面客户端</span>
+</div>
+</th>
+<th class="py-4 px-6 rounded-r-xl">普通在线网页/云端去水印</th>
+</tr>
+</thead>
+<tbody class="divide-y-0 text-body-md font-body-md">
+<tr class="hover:bg-surface-container/50 transition-colors">
+<td class="py-5 px-6 text-on-surface font-medium">
+<div class="font-headline-sm text-headline-sm">解析提取速度</div>
+<div class="text-on-surface-variant text-body-sm">单条 1080P/4K 视频直链处理</div>
+</td>
+<td class="py-5 px-6 bg-surface-container-high/60 text-secondary font-semibold">
+<span class="inline-flex items-center gap-1.5 font-label-md">
+<span class="material-symbols-outlined text-secondary text-[16px]">bolt</span>
+                    0.28 秒 (本地并发直取)
+                  </span>
+</td>
+<td class="py-5 px-6 text-on-surface-variant">
+                  8 ~ 25 秒 (排队上传 + 云端编码 + 漫长等待)
+                </td>
+</tr>
+<tr class="hover:bg-surface-container/50 transition-colors">
+<td class="py-5 px-6 text-on-surface font-medium">
+<div class="font-headline-sm text-headline-sm">画质输出品质 (PSNR)</div>
+<div class="text-on-surface-variant text-body-sm">峰值信噪比与色彩失真度</div>
+</td>
+<td class="py-5 px-6 bg-surface-container-high/60 text-tertiary font-semibold">
+<span class="inline-flex items-center gap-1.5 font-label-md">
+<span class="material-symbols-outlined text-tertiary text-[16px]">check_circle</span>
+                    49.2 dB · 无二次二次压缩
+                  </span>
+</td>
+<td class="py-5 px-6 text-on-surface-variant">
+                  28.4 dB (强制降级 720P，模糊严重)
+                </td>
+</tr>
+<tr class="hover:bg-surface-container/50 transition-colors">
+<td class="py-5 px-6 text-on-surface font-medium">
+<div class="font-headline-sm text-headline-sm">隐私与文件版权安全</div>
+<div class="text-on-surface-variant text-body-sm">原片内容数据归属与留存风险</div>
+</td>
+<td class="py-5 px-6 bg-surface-container-high/60 text-on-surface font-semibold">
+<span class="inline-flex items-center gap-1.5 font-label-md text-tertiary">
+<span class="material-symbols-outlined text-[16px]">lock</span>
+                    100% 离线沙盒运行 · 零泄露
+                  </span>
+</td>
+<td class="py-5 px-6 text-error">
+                  所有未发布素材强制上传第三方未知云服务器
+                </td>
+</tr>
+<tr class="hover:bg-surface-container/50 transition-colors">
+<td class="py-5 px-6 text-on-surface font-medium">
+<div class="font-headline-sm text-headline-sm">批量批处理能力</div>
+<div class="text-on-surface-variant text-body-sm">面对百级、千级作者合集归档</div>
+</td>
+<td class="py-5 px-6 bg-surface-container-high/60 text-on-surface font-semibold rounded-b-xl">
+<span class="inline-flex items-center gap-1.5 font-label-md text-secondary">
+<span class="material-symbols-outlined text-[16px]">dataset</span>
+                    无上限并发 · 挂机导出
+                  </span>
+</td>
+<td class="py-5 px-6 text-on-surface-variant">
+                  单次限 1-3 条 · 充斥垃圾广告与弹窗验证码
+                </td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Hardware Graph Summary -->
+<div class="mt-8 p-5 rounded-2xl bg-surface-container-lowest flex flex-col md:flex-row items-center justify-between gap-6">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[28px]">speed</span>
+</div>
+<div>
+<p class="font-headline-sm text-headline-sm text-on-surface">最高释放 16 核 Neural Engine 全部潜能</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">TokPure 已针对 Apple M1/M2/M3/M4 系列芯片完成 Metal 3 底层着色指令集特化调优。</p>
+</div>
+</div>
+<div class="flex items-center gap-4 shrink-0">
+<span class="font-label-sm text-label-sm text-on-surface-variant">能耗效率：</span>
+<span class="px-3 py-1 rounded bg-surface-container text-tertiary font-label-md text-label-md">低至 4.2W 运行功率</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 4: Final Call To Action Banner -->
+<section class="max-w-7xl mx-auto px-6 lg:px-12 pt-8 pb-24 w-full">
+<div class="relative rounded-3xl overflow-hidden bg-gradient-to-br from-surface-container-high via-surface-container to-surface-container-lowest p-8 sm:p-14 text-center flex flex-col items-center">
+<!-- Background Decorative Neon Flare -->
+<div class="absolute -top-24 right-1/4 w-96 h-96 bg-primary-container/20 rounded-full blur-[100px] pointer-events-none"></div>
+<div class="absolute -bottom-24 left-1/4 w-96 h-96 bg-secondary-container/20 rounded-full blur-[100px] pointer-events-none"></div>
+<div class="relative z-10 max-w-2xl flex flex-col items-center">
+<div class="w-16 h-16 rounded-2xl bg-surface-container-lowest shadow-2xl flex items-center justify-center mb-6">
+<img alt="TokPure logo" class="w-10 h-10 object-contain" src="assets/img/logo.svg"/>
+</div>
+<h2 class="font-headline-xl text-3xl sm:text-4xl text-on-surface font-extrabold tracking-tight">
+            立即开启极速无损视频重构体验
+          </h2>
+<p class="mt-4 font-body-lg text-body-lg text-on-surface-variant">
+            完全支持 Apple Silicon M1-M4、Intel 64 位 Mac 与 Windows 11 / 10 x64 设备。下载即享免费原生无水印解析，解锁短视频处理新高度。
+          </p>
+<!-- Primary Download & Install Links -->
+<div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 w-full sm:w-auto">
+<a class="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-8 py-4 rounded-xl bg-primary-container text-on-primary-container font-headline-md text-headline-md shadow-xl hover:bg-primary transition-all" data-path="download" href="download.html">
+<span class="material-symbols-outlined text-[22px]">download</span>
+<span>下载适用于 macOS 的安装包</span>
+</a>
+<a class="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-8 py-4 rounded-xl bg-secondary-container text-on-secondary-container font-headline-md text-headline-md shadow-xl hover:bg-secondary-fixed transition-all" data-path="download" href="download.html">
+<span class="material-symbols-outlined text-[22px]">download</span>
+<span>下载适用于 Windows 的安装包</span>
+</a>
+<a class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-surface-container-high text-on-surface hover:bg-surface-container-highest transition-colors font-headline-md text-headline-md" data-path="documentation" href="download.html">
+<span class="material-symbols-outlined text-[20px]">terminal</span>
+<span>查看安装指引与 CLI</span>
+</a>
+</div>
+<div class="mt-6 flex items-center gap-3 text-on-surface-variant font-label-sm text-label-sm">
+<span>SHA-256 校验和已认证</span>
+<span>·</span>
+<span>无内嵌任何广告插件</span>
+<span>·</span>
+<a class="text-secondary hover:underline" data-path="download" href="download.html">查看完整更新日志 (v2.4.0)</a>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div></main><footer class="w-full bg-surface-container-lowest"><div class="max-w-7xl mx-auto px-6 lg:px-12 pt-16 pb-12"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-space-xl mb-12"><div class="lg:col-span-2 space-y-space-md"><div class="flex items-center gap-space-sm"><img alt="Brand logo. - Primary color: #fe2c55
+- Font: plusJakartaSans
+- Mode: dark
+- Roundness: rounded-md
+" class="h-8 w-auto object-contain" src="assets/img/logo.svg"/><span class="font-headline-lg text-headline-lg text-on-surface font-bold">TokPure</span></div><p class="font-body-md text-body-md text-on-surface-variant max-w-sm">基于本地离线引擎的下一代 macOS / Windows 桌面极速无水印视频下载与 AI 超分无损重构套件。零云端留存，零隐私泄露风险。</p><div class="flex items-center gap-2 p-2.5 rounded-lg bg-surface-container-low"><span class="material-symbols-outlined text-tertiary text-lg">verified_user</span><div class="font-label-sm text-label-sm text-on-surface-variant"><span class="text-tertiary font-bold">Zero-Cloud-Leak:</span> 本地离线执行智能修复</div></div></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">产品矩阵</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="home" href="index.html">核心架构</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">macOS / Windows 客户端</a></li><li><a class="hover:text-on-surface transition-colors" data-path="pricing" href="pricing.html">Pro 终身许可</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">更新日志 (v2.4)</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">开发者 &amp; 支持</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">文档中心</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">CLI 命令行工具</a></li><li><a class="hover:text-on-surface transition-colors" data-path="about-us" href="about.html">关于团队</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私审计报告</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">运行状态</h4><div class="p-3 rounded-lg bg-surface-container-low space-y-2"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span><span class="font-label-sm text-label-sm text-on-surface">全线引擎正常运行</span></div><p class="font-body-sm text-body-sm text-on-surface-variant">Local Offline Engine v4.2 Ready</p></div><div class="mt-4"><div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant font-label-sm text-label-sm"><span class="material-symbols-outlined text-[16px]">language</span><span>简体中文 (中国)</span></div></div></div></div><div class="pt-8 space-y-4"><p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed text-center lg:text-left">免责声明：TokPure 属于独立研发的高性能本地音视频分析工程软件，与 TikTok、ByteDance 或任何第三方社交网络服务无关且未获得其官方赞助或背书。请在遵守当地版权法律与合理使用协议的前提下处理属于您个人所有的创作内容。</p><div class="flex flex-col sm:flex-row items-center justify-between gap-4 font-body-sm text-body-sm text-on-surface-variant"><div>© 2024 TokPure Studio Inc. 专为 macOS 与 Windows 打造。保留所有权利。</div><div class="flex items-center gap-6 font-label-sm text-label-sm"><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">服务条款</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私政策</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">安全白皮书</a></div></div></div></div></footer></body></html>

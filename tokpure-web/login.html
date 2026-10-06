@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head><meta charset="utf-8"/><title>登录 · TokPure 创作者中心</title><meta name="description" content="登录 TokPure 创作者中心，管理你的设备授权、订阅许可与 CloudSync 预设配置。"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_blank" name="shell-type"/><link rel="stylesheet" href="assets/css/fonts.css"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="assets/vendor/tailwind.js"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"secondary-fixed":"#35fbf5","surface-container-highest":"#333539","on-background":"#e2e2e8","outline-variant":"#5d3f40","on-tertiary-fixed-variant":"#005236","surface-container-low":"#1a1c20","primary-fixed-dim":"#ffb3b6","error-container":"#93000a","on-tertiary":"#003824","secondary-container":"#05ece7","background":"#111317","surface-container-lowest":"#0c0e12","secondary":"#affffb","on-error-container":"#ffdad6","primary-fixed":"#ffdada","on-error":"#690005","surface-variant":"#333539","error":"#ffb4ab","on-primary-fixed-variant":"#920027","on-surface-variant":"#e6bcbd","on-tertiary-container":"#00311f","surface-container":"#1e2024","secondary-fixed-dim":"#00ddd8","on-secondary-fixed-variant":"#00504d","surface-container-high":"#282a2e","tertiary-fixed":"#6ffbbe","on-primary-fixed":"#40000c","surface-tint":"#ffb3b6","primary":"#ffb3b6","inverse-on-surface":"#2f3035","primary-container":"#ff5168","tertiary":"#4edea3","on-secondary-container":"#006764","on-primary-container":"#5b0015","inverse-primary":"#be0036","outline":"#ad8889","on-secondary":"#003735","inverse-surface":"#e2e2e8","surface-bright":"#37393e","surface-dim":"#111317","tertiary-fixed-dim":"#4edea3","on-primary":"#680019","surface":"#111317","on-secondary-fixed":"#00201f","on-surface":"#e2e2e8","on-tertiary-fixed":"#002113","tertiary-container":"#00a572"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"spacing":{"margin":"1.25rem","space-sm":"0.5rem","space-xs":"0.25rem","gutter":"1rem","space-xl":"1.75rem","space-lg":"1.25rem","space-md":"0.75rem"},"fontFamily":{"headline-xl":["Plus Jakarta Sans"],"headline-sm":["Plus Jakarta Sans"],"body-sm":["Plus Jakarta Sans"],"body-md":["Plus Jakarta Sans"],"label-md":["JetBrains Mono"],"headline-md":["Plus Jakarta Sans"],"label-sm":["JetBrains Mono"],"body-lg":["Plus Jakarta Sans"],"headline-lg":["Plus Jakarta Sans"]},"fontSize":{"headline-xl":["28px",{"lineHeight":"34px","letterSpacing":"-0.02em","fontWeight":"700"}],"headline-sm":["14px",{"lineHeight":"18px","letterSpacing":"-0.05em","fontWeight":"600"}],"body-sm":["11px",{"lineHeight":"15px","fontWeight":"400"}],"body-md":["13px",{"lineHeight":"18px","fontWeight":"400"}],"label-md":["12px",{"lineHeight":"16px","letterSpacing":"0.02em","fontWeight":"500"}],"headline-md":["16px",{"lineHeight":"22px","letterSpacing":"-0.01em","fontWeight":"600"}],"label-sm":["10px",{"lineHeight":"14px","letterSpacing":"0.04em","fontWeight":"500"}],"body-lg":["14px",{"lineHeight":"20px","fontWeight":"400"}],"headline-lg":["20px",{"lineHeight":"26px","letterSpacing":"-0.015em","fontWeight":"600"}]}}}}</script><link rel="stylesheet" href="assets/css/site.css"/></head><body class="bg-background font-body-md text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container"><main class="w-full bg-background min-h-screen flex flex-col justify-center items-center"><div class="flex flex-col w-full items-center justify-center py-10 px-4 min-h-[92vh] relative overflow-hidden select-none">
+<!-- Subtle Ambient Glow Orbs -->
+<div class="absolute top-1/4 -left-32 w-96 h-96 rounded-full bg-primary/10 blur-[120px] pointer-events-none"></div>
+<div class="absolute bottom-1/4 -right-32 w-96 h-96 rounded-full bg-secondary-fixed/10 blur-[130px] pointer-events-none"></div>
+<!-- Main Auth Card Container -->
+<div class="w-full max-w-lg z-10 flex flex-col items-center"><a href="index.html" class="mb-6 inline-flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors"><span class="material-symbols-outlined text-[16px]">arrow_back</span><span>返回 TokPure 首页</span></a>
+<!-- Top Branding & App Icon -->
+<div class="flex flex-col items-center text-center mb-6">
+<div class="relative group cursor-pointer mb-3">
+<div class="absolute -inset-1 rounded-2xl bg-gradient-to-r from-primary via-secondary-fixed to-tertiary opacity-30 blur-lg transition duration-500 group-hover:opacity-60"></div>
+<div class="relative w-16 h-16 rounded-2xl bg-surface-container-high flex items-center justify-center shadow-xl p-1.5 overflow-hidden">
+<img alt="TokPure Logo" class="w-full h-full object-contain rounded-xl" src="assets/img/logo.svg"/>
+</div>
+</div>
+<div class="flex items-center gap-2 mb-1">
+<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight font-bold">TokPure</h1>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-high text-tertiary font-label-sm text-label-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span>
+          100% LOCAL AI
+        </span>
+</div>
+<h2 class="font-headline-md text-headline-md text-on-surface font-semibold" id="viewHeading">
+        欢迎登录 TokPure 创作者中心
+      </h2>
+<p class="font-body-sm text-body-sm text-outline mt-1 max-w-xs text-balance">
+        管理你的设备授权、订阅许可与 CloudSync 预设配置
+      </p>
+</div>
+<!-- Elevated Acrylic Card -->
+<div class="w-full bg-surface-container/85 backdrop-blur-xl rounded-2xl p-6 sm:p-8 shadow-2xl transition-all duration-300 relative">
+<!-- Segmented Switcher (Login vs Register) -->
+<div class="grid grid-cols-2 p-1 bg-surface-container-lowest rounded-xl mb-6 shadow-inner relative">
+<button class="py-2 text-center rounded-lg font-headline-sm text-headline-sm transition-all duration-200 bg-surface-container text-on-surface shadow-sm font-medium" id="tabLogin" type="button">
+          登录账号
+        </button>
+<button class="py-2 text-center rounded-lg font-headline-sm text-headline-sm transition-all duration-200 text-outline hover:text-on-surface" id="tabRegister" type="button">
+          快速注册
+        </button>
+</div>
+<!-- Quick Social Connectors -->
+<div class="flex flex-col gap-2.5 mb-6">
+<!-- Sign in with Apple -->
+<button class="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-xl bg-surface-bright text-on-surface hover:bg-surface-container-highest transition-all duration-150 font-body-md text-body-md font-medium shadow-sm" type="button">
+<svg class="w-4 h-4 fill-current" viewbox="0 0 170 170">
+<path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.69-3.04-7.67-7.81-11.96-14.34-7.46-11.39-13.06-24.16-16.81-38.33-3.75-14.17-5.63-27.18-5.63-39.04 0-14.99 3.84-27.18 11.51-36.57 7.67-9.39 17.06-14.18 28.18-14.36 4.35 0 9.27 1.15 14.75 3.47 5.48 2.32 9.17 3.53 11.06 3.64 1.52-.22 5.37-1.48 11.56-3.77 6.18-2.29 11.2-3.26 15.03-2.92 11.52.87 20.73 5.32 27.61 13.35-10.22 6.19-15.22 14.89-15 26.09.22 8.7 3.59 15.98 10.11 21.84 6.52 5.87 14.02 9.24 22.5 10.11-2.39 7.39-5.33 14.67-8.81 21.85zM119.22 33.15c0-7.18 2.6-13.9 7.82-20.17 5.21-6.26 11.63-10.42 19.23-12.48.22 1.3.33 2.39.33 3.26 0 7.07-2.67 13.91-8 20.54-5.33 6.63-11.85 10.76-19.57 12.39-.22-1.09-.33-2.26-.33-3.54z"></path>
+</svg>
+<span>通过 Apple 账号快速验证</span>
+<span class="ml-auto font-label-sm text-label-sm text-outline px-1.5 py-0.5 rounded bg-surface-container-highest">桌面客户端</span>
+</button>
+<div class="grid grid-cols-2 gap-2.5">
+<!-- Google Auth -->
+<button class="flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-surface-container-high hover:bg-surface-variant text-on-surface transition-all font-body-sm text-body-sm" type="button">
+<svg class="w-3.5 h-3.5" viewbox="0 0 24 24">
+<path d="M12 5c1.56 0 2.97.55 4.08 1.45l3.06-3.06C17.29 1.7 14.81 1 12 1 7.42 1 3.53 3.61 1.64 7.43l3.66 2.84C6.18 7.36 8.86 5 12 5z" fill="#EA4335"></path>
+<path d="M23.49 12.28c0-.79-.07-1.54-.19-2.28H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58l3.71 2.88c2.16-1.99 3.71-4.93 3.71-8.69z" fill="#4285F4"></path>
+<path d="M5.3 14.73A7.05 7.05 0 0 1 4.93 12c0-.95.14-1.87.37-2.73L1.64 6.43C.6 8.5 0 10.82 0 13.29c0 2.47.6 4.79 1.64 6.86l3.66-5.42z" fill="#FBBC05"></path>
+<path d="M12 23c3.24 0 5.95-1.08 7.93-2.91l-3.71-2.88c-1.08.72-2.45 1.16-4.22 1.16-3.14 0-5.82-2.36-6.7-5.27L1.64 16.02C3.53 20.39 7.42 23 12 23z" fill="#34A853"></path>
+</svg>
+            Google 登录
+          </button>
+<!-- GitHub Auth -->
+<button class="flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-surface-container-high hover:bg-surface-variant text-on-surface transition-all font-body-sm text-body-sm" type="button">
+<svg class="w-3.5 h-3.5 fill-current" viewbox="0 0 24 24">
+<path clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" fill-rule="evenodd"></path>
+</svg>
+            GitHub 通道
+          </button>
+</div>
+</div>
+<!-- Divider -->
+<div class="relative flex items-center justify-center my-5">
+<div class="w-full h-px bg-surface-variant"></div>
+<span class="absolute bg-surface-container px-3 font-label-sm text-label-sm text-outline uppercase tracking-wider">
+          或者使用邮箱凭证
+        </span>
+</div>
+<!-- Main Form -->
+<form class="flex flex-col gap-4" id="authForm" onsubmit="event.preventDefault();">
+<!-- Registration Full Name Field (Hidden on Login) -->
+<div class="hidden flex-col gap-1.5 transition-all duration-200" id="registerNameGroup">
+<label class="font-label-sm text-label-sm text-on-surface font-medium">创作者称呼 / 团队名</label>
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-3 text-outline text-[18px]">badge</span>
+<input class="w-full bg-surface-container-low text-on-surface placeholder:text-outline font-body-md text-body-md pl-9 pr-4 py-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary shadow-inner" placeholder="例如：Alex Chen" type="text"/>
+</div>
+</div>
+<!-- Email Field -->
+<div class="flex flex-col gap-1.5">
+<label class="font-label-sm text-label-sm text-on-surface font-medium">电子邮箱地址</label>
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-3 text-outline text-[18px]">mail</span>
+<input class="w-full bg-surface-container-low text-on-surface placeholder:text-outline font-body-md text-body-md pl-9 pr-4 py-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary shadow-inner" placeholder="your@email.com" required="" type="email"/>
+</div>
+</div>
+<!-- Password Field -->
+<div class="flex flex-col gap-1.5">
+<div class="flex items-center justify-between">
+<label class="font-label-sm text-label-sm text-on-surface font-medium">密码</label>
+<a class="font-label-sm text-label-sm text-primary hover:underline" href="javascript:void(0)" id="forgotPwdLink">
+              忘记密码？
+            </a>
+</div>
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-3 text-outline text-[18px]">lock</span>
+<input class="w-full bg-surface-container-low text-on-surface placeholder:text-outline font-body-md text-body-md pl-9 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary shadow-inner" id="pwdInput" placeholder="••••••••••••" required="" type="password"/>
+<button class="absolute right-3 text-outline hover:text-on-surface flex items-center" id="togglePwd" type="button">
+<span class="material-symbols-outlined text-[18px]" id="eyeIcon">visibility</span>
+</button>
+</div>
+</div>
+<!-- Auxiliary Row (Remember me) -->
+<div class="flex items-center justify-between py-1">
+<label class="flex items-center gap-2 cursor-pointer">
+<input checked="" class="w-4 h-4 rounded bg-surface-container-low text-primary accent-primary cursor-pointer" type="checkbox"/>
+<span class="font-body-sm text-body-sm text-on-surface">记住此设备 (30天内免登录)</span>
+</label>
+<span class="font-label-sm text-label-sm text-secondary-fixed flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">bolt</span>
+            极速解算同步
+          </span>
+</div>
+<!-- Primary Action Submit -->
+<button class="mt-2 w-full py-3 px-4 rounded-xl bg-gradient-to-r from-primary-container to-[#fe2c55] text-white font-headline-sm text-headline-sm font-semibold tracking-wide shadow-lg hover:shadow-primary-container/30 hover:scale-[1.01] active:scale-[0.99] transition-all duration-150 flex items-center justify-center gap-2" id="submitBtn" type="submit">
+<span id="submitText">登录并同步设备授权</span>
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+</form>
+<!-- License Key Activation Quick Accordion -->
+<div class="mt-6 pt-5 border-t border-surface-container-high/40">
+<button class="w-full flex items-center justify-between text-left p-2.5 rounded-xl bg-surface-container-low hover:bg-surface-container-high transition-colors" id="toggleLicense" type="button">
+<div class="flex items-center gap-2.5">
+<span class="material-symbols-outlined text-secondary-fixed text-[20px]">key</span>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">离线许可证激活 (Device Key)</span>
+<span class="font-body-sm text-body-sm text-outline">拥有终身授权码？直接绑定本机硬件 ID</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline transition-transform duration-200" id="licenseChevron">expand_more</span>
+</button>
+<div class="hidden flex-col gap-3 mt-3 px-1 transition-all" id="licenseDrawer">
+<div class="flex items-center gap-2">
+<input class="flex-1 uppercase font-label-md text-label-md bg-surface-container-lowest text-on-surface placeholder:text-surface-variant px-3 py-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-secondary-fixed shadow-inner" placeholder="TP-XXXX-XXXX-XXXX-CORE" type="text"/>
+<button class="px-3.5 py-2 bg-secondary-fixed text-on-secondary-fixed font-headline-sm text-headline-sm rounded-lg hover:opacity-90 transition-opacity" type="button">
+              验证硬件
+            </button>
+</div>
+<p class="font-label-sm text-label-sm text-outline flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px] text-tertiary">verified_user</span>
+            基于本地硬件签名加密，离线无需持续联网。
+          </p>
+</div>
+</div>
+<!-- Legal & Privacy Statement -->
+<div class="mt-6 text-center">
+<p class="font-body-sm text-body-sm text-outline leading-relaxed">
+          继续操作即代表您同意 TokPure 的 
+          <a class="text-on-surface underline hover:text-primary" href="javascript:void(0)">服务条款</a> 与 
+          <a class="text-on-surface underline hover:text-primary" href="javascript:void(0)">100% 本地隐私安全承诺</a>
+</p>
+</div>
+</div>
+<!-- Security & Trust Indicators -->
+<div class="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-outline font-label-sm text-label-sm">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-tertiary text-[16px]">lock</span>
+<span>端到端加密认证</span>
+</div>
+<span class="text-surface-container-highest">•</span>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-secondary-fixed text-[16px]">format_image_left</span>
+<span>绝不泄露个人使用数据</span>
+</div>
+<span class="text-surface-container-highest">•</span>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-primary text-[16px]">security</span>
+<span>支持双重验证 (2FA)</span>
+</div>
+</div>
+</div>
+</div>
+<script>
+  (function initTokPureAuth() {
+    const tabLogin = document.getElementById('tabLogin');
+    const tabRegister = document.getElementById('tabRegister');
+    const registerNameGroup = document.getElementById('registerNameGroup');
+    const submitText = document.getElementById('submitText');
+    const viewHeading = document.getElementById('viewHeading');
+    const forgotPwdLink = document.getElementById('forgotPwdLink');
+
+    // Tab switcher
+    tabLogin.addEventListener('click', () => {
+      tabLogin.className = 'py-2 text-center rounded-lg font-headline-sm text-headline-sm transition-all duration-200 bg-surface-container text-on-surface shadow-sm font-medium';
+      tabRegister.className = 'py-2 text-center rounded-lg font-headline-sm text-headline-sm transition-all duration-200 text-outline hover:text-on-surface';
+      registerNameGroup.classList.add('hidden');
+      forgotPwdLink.classList.remove('hidden');
+      submitText.textContent = '登录并同步设备授权';
+      viewHeading.textContent = '欢迎登录 TokPure 创作者中心';
+    });
+
+    tabRegister.addEventListener('click', () => {
+      tabRegister.className = 'py-2 text-center rounded-lg font-headline-sm text-headline-sm transition-all duration-200 bg-surface-container text-on-surface shadow-sm font-medium';
+      tabLogin.className = 'py-2 text-center rounded-lg font-headline-sm text-headline-sm transition-all duration-200 text-outline hover:text-on-surface';
+      registerNameGroup.classList.remove('hidden');
+      forgotPwdLink.classList.add('hidden');
+      submitText.textContent = '立即注册并获取 7 天完整许可';
+      viewHeading.textContent = '开启 TokPure 原生纯净体验';
+    });
+
+    // Password visibility toggle
+    const pwdInput = document.getElementById('pwdInput');
+    const togglePwd = document.getElementById('togglePwd');
+    const eyeIcon = document.getElementById('eyeIcon');
+
+    togglePwd.addEventListener('click', () => {
+      const isPassword = pwdInput.type === 'password';
+      pwdInput.type = isPassword ? 'text' : 'password';
+      eyeIcon.textContent = isPassword ? 'visibility_off' : 'visibility';
+    });
+
+    // License key accordion toggle
+    const toggleLicense = document.getElementById('toggleLicense');
+    const licenseDrawer = document.getElementById('licenseDrawer');
+    const licenseChevron = document.getElementById('licenseChevron');
+
+    toggleLicense.addEventListener('click', () => {
+      const isHidden = licenseDrawer.classList.contains('hidden');
+      if (isHidden) {
+        licenseDrawer.classList.remove('hidden');
+        licenseDrawer.classList.add('flex');
+        licenseChevron.style.transform = 'rotate(180deg)';
+      } else {
+        licenseDrawer.classList.add('hidden');
+        licenseDrawer.classList.remove('flex');
+        licenseChevron.style.transform = 'rotate(0deg)';
+      }
+    });
+  })();
+</script></main></body></html>

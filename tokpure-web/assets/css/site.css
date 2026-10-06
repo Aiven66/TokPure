@@ -1,0 +1,45 @@
+/* TokPure 官网全局样式补充（在 Tailwind Play CDN 样式之后加载） */
+html {
+  scroll-behavior: smooth;
+  background-color: #111317;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 覆盖设计稿中为截图隐藏滚动条的规则，还原真实浏览体验 */
+::-webkit-scrollbar {
+  display: block;
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 数字类文本统一使用等宽 tabular 数字，避免实时数据跳动 */
+.font-label-sm,
+.font-label-md,
+code,
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Material Symbols 基础对齐 */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+  line-height: 1;
+}
