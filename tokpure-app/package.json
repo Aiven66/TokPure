@@ -1,7 +1,7 @@
 {
   "name": "tokpure",
   "productName": "TokPure",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "TokPure — TikTok local video engine & no-watermark downloader",
   "main": "electron/main.js",
   "author": "TokPure",

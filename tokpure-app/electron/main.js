@@ -56,17 +56,22 @@ function networkSettings() {
 }
 
 function createWindow() {
-  // macOS-only window effects: hidden titlebar + inset traffic lights + vibrancy.
-  // Windows keeps the same frameless custom titlebar without them.
+  // macOS: keep the window framed so the OS draws its native traffic lights on
+  // top of the content — `titleBarStyle: 'hidden'` only hides the title bar.
+  // These native buttons always receive mouse events. The previous `frame: false`
+  // removed them completely and left only self-drawn buttons living inside the
+  // window's drag region, where macOS swallows the click (hit-test counts as a
+  // window drag), so minimize/maximize/close never fired.
+  // Windows/Linux: frameless window with the self-drawn title-bar buttons.
   const platformWindow = isMac
     ? {
         titleBarStyle: 'hidden',
-        trafficLightPosition: { x: -100, y: -100 },
+        trafficLightPosition: { x: 18, y: 20 },
         vibrancy: 'under-window',
         visualEffectState: 'active',
         roundedCorners: true
       }
-    : {};
+    : { frame: false };
 
   mainWindow = new BrowserWindow({
     width: 1320,
@@ -74,7 +79,6 @@ function createWindow() {
     minWidth: 1120,
     minHeight: 720,
     show: false,
-    frame: false,
     backgroundColor: '#111317',
     ...platformWindow,
     webPreferences: {
