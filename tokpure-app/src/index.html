@@ -9,6 +9,12 @@
 </head>
 <body>
   <div class="app">
+    <!-- 窗口按钮：macOS 由 CSS 定位到窗口左上角；Windows 由 app.js 移到标题栏右侧 -->
+    <div class="traffic">
+      <button class="c" id="win-close" title="关闭"></button>
+      <button class="m" id="win-min" title="最小化"></button>
+      <button class="z" id="win-max" title="缩放"></button>
+    </div>
     <!-- ================= Sidebar ================= -->
     <aside class="sidebar">
       <div style="display:flex;flex-direction:column;gap:14px">
@@ -54,12 +60,6 @@
     <div class="main-wrap">
       <header class="titlebar">
         <div class="tl-left">
-          <div class="traffic">
-            <button class="c" id="win-close" title="关闭"></button>
-            <button class="m" id="win-min" title="最小化"></button>
-            <button class="z" id="win-max" title="缩放"></button>
-          </div>
-          <div class="tl-divider"></div>
           <span class="tl-title">TokPure — TikTok Local Video Engine &amp; Watermark Lab</span>
         </div>
         <div class="tl-right">

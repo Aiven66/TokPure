@@ -307,6 +307,31 @@ svg {
 .traffic .m { background: #ffbd2e; }
 .traffic .z { background: #27c93f; }
 
+/* ---- macOS: 窗口按钮锚定到窗口左上角 ----
+   侧栏占据左上角，标题栏从 232px 处才开始，且标题栏带 backdrop-filter 会
+   成为绝对定位的包含块，因此红黄绿点改为 .app 的直接子元素，在 macOS 下
+   绝对定位到窗口左上角，并让侧栏顶部让出同高的一条可拖拽区域。 */
+body:not(.platform-win) .traffic {
+  position: absolute;
+  left: 18px;
+  top: 20px;
+  z-index: 60;
+}
+body:not(.platform-win) .sidebar {
+  position: relative;
+  padding-top: 52px;
+}
+/* 侧栏顶部这条与标题栏等高的条带仍可拖拽窗口，避免左上角变成死区 */
+body:not(.platform-win) .sidebar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 52px;
+  -webkit-app-region: drag;
+}
+
 /* ---- Windows: window controls move to the right and become square glyph buttons ---- */
 .platform-win .traffic {
   margin-right: -10px;
