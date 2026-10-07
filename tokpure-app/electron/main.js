@@ -8,6 +8,7 @@ const net = require('./net');
 const tiktok = require('./tiktok');
 const ffmpeg = require('./ffmpeg');
 const Downloader = require('./downloader');
+const auth = require('./auth');
 
 let mainWindow = null;
 const isMac = process.platform === 'darwin';
@@ -150,6 +151,12 @@ function wireDownloader() {
 }
 
 function registerIpc() {
+  // ---- account / auth ----
+  ipcMain.handle('auth:getSession', () => auth.getSession());
+  ipcMain.handle('auth:login', () => auth.login());
+  ipcMain.handle('auth:logout', () => auth.logout());
+  ipcMain.handle('auth:openWeb', (_e, target) => auth.openWeb(target));
+
   // ---- settings ----
   ipcMain.handle('settings:get', () => store.get());
   ipcMain.handle('settings:save', async (_e, patch) => {
@@ -369,6 +376,8 @@ app.whenReady().then(async () => {
   buildMenu();
   registerIpc();
   wireDownloader();
+  // 登录态变化（浏览器回跳 / 退出登录）实时推给渲染层刷新账号 UI
+  auth.onSessionChange((session) => sendToRenderer('auth:changed', session));
   await refreshSystemProxy(true);
   // keep the auto-detected system proxy fresh (e.g. the user toggles their VPN client)
   setInterval(() => refreshSystemProxy(true), 60000);

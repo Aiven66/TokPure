@@ -431,9 +431,38 @@ body:not(.platform-win) .sidebar::before {
   width: 17px;
   height: 17px;
 }
-.avatar {
-  width: 30px;
+/* ---------------- Account (titlebar) ---------------- */
+.account {
+  position: relative;
+  -webkit-app-region: no-drag;
+}
+.account-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   height: 30px;
+  max-width: 190px;
+  padding: 0 11px 0 5px;
+  background: var(--fill);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.account-btn:hover {
+  background: var(--fill-hover);
+  color: var(--on-surface);
+}
+.account.logged-in .account-btn {
+  color: var(--on-surface);
+}
+.account-avatar {
+  width: 22px;
+  height: 22px;
+  flex: none;
   border-radius: 9999px;
   background: linear-gradient(180deg, var(--primary-soft), var(--primary));
   display: flex;
@@ -441,9 +470,151 @@ body:not(.platform-win) .sidebar::before {
   justify-content: center;
   color: #fff;
 }
-.avatar svg {
-  width: 16px;
-  height: 16px;
+.account-avatar svg {
+  width: 14px;
+  height: 14px;
+}
+.account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 224px;
+  padding: 6px;
+  background: var(--surface-container-high);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-window);
+  display: none;
+  z-index: 4000;
+}
+.account.open .account-menu {
+  display: block;
+}
+.am-head {
+  padding: 8px 10px 10px;
+  margin-bottom: 5px;
+  border-bottom: 1px solid var(--hairline);
+}
+.am-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--on-surface);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.am-mail {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.am-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-xs);
+  color: var(--on-surface);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.am-item:hover {
+  background: var(--fill-hover);
+}
+.am-item.danger {
+  color: var(--error);
+}
+.am-item svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  opacity: 0.9;
+}
+
+/* ---------------- Login gate (mandatory) ---------------- */
+.auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(900px 480px at 50% -10%, rgba(254, 44, 85, 0.12), transparent 62%),
+    rgba(10, 11, 14, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-app-region: drag;
+}
+.auth-gate-card {
+  width: 420px;
+  max-width: calc(100vw - 48px);
+  padding: 40px 36px;
+  text-align: center;
+  background: var(--surface-container);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-window);
+  -webkit-app-region: no-drag;
+}
+.auth-gate-logo {
+  width: 76px;
+  height: 76px;
+  margin-bottom: 16px;
+  border-radius: 20px;
+  object-fit: contain;
+}
+.auth-gate-title {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--on-surface);
+}
+.auth-gate-desc {
+  margin: 0 0 24px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+.auth-gate-btn {
+  width: 100%;
+  height: 44px;
+  font-size: 14px;
+}
+.auth-gate-status {
+  min-height: 16px;
+  margin: 14px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.auth-gate-link {
+  margin-top: 14px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.auth-gate-link:hover {
+  color: var(--on-surface);
 }
 
 /* ---------------- Content ---------------- */

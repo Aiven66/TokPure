@@ -22,7 +22,7 @@
           <img class="brand-logo" id="brand-logo" alt="TokPure" />
           <div>
             <div class="brand-name">TokPure</div>
-            <div class="brand-sub" id="brand-version">v2.4.1</div>
+            <div class="brand-sub" id="brand-version">v2.4.2</div>
           </div>
         </div>
         <nav class="nav" id="nav">
@@ -76,7 +76,21 @@
             <button class="icon-btn" id="btn-clear-completed" title="清除已完成"><span data-ic="broom" data-size="17"></span></button>
             <button class="icon-btn" id="btn-goto-settings" title="偏好设置"><span data-ic="settings" data-size="17"></span></button>
           </div>
-          <div class="avatar"><span data-ic="user" data-size="16"></span></div>
+          <div class="account" id="account">
+            <button class="account-btn" id="account-btn" type="button" title="账号">
+              <span class="account-avatar"><span data-ic="user" data-size="15"></span></span>
+              <span class="account-name" id="account-name">未登录</span>
+            </button>
+            <div class="account-menu" id="account-menu">
+              <div class="am-head">
+                <div class="am-name" id="account-menu-name">未登录</div>
+                <div class="am-mail" id="account-menu-mail">—</div>
+              </div>
+              <button class="am-item" id="account-menu-signin" type="button"><span data-ic="key" data-size="15"></span>登录 / 注册</button>
+              <button class="am-item" id="account-menu-web" type="button"><span data-ic="external" data-size="15"></span>打开官网</button>
+              <button class="am-item danger" id="account-menu-logout" type="button"><span data-ic="power" data-size="15"></span>退出登录</button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -531,6 +545,20 @@
           </div>
         </section>
       </main>
+    </div>
+  </div>
+
+  <!-- 登录门禁：未登录时覆盖整个客户端；登录在系统浏览器中完成 -->
+  <div class="auth-gate" id="auth-gate">
+    <div class="auth-gate-card">
+      <img class="auth-gate-logo" src="logo.png" alt="TokPure" />
+      <h1 class="auth-gate-title">登录 TokPure</h1>
+      <p class="auth-gate-desc">桌面客户端需登录后使用。点击下方按钮将在浏览器中打开官网，完成账号验证后会自动登录本客户端。</p>
+      <button class="btn primary auth-gate-btn" id="auth-gate-login" type="button" disabled>
+        <span data-ic="key" data-size="16"></span>登录 / 注册
+      </button>
+      <p class="auth-gate-status" id="auth-gate-status">正在检查登录状态…</p>
+      <button class="auth-gate-link" id="auth-gate-web" type="button">访问 TokPure 官网</button>
     </div>
   </div>
 

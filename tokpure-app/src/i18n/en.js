@@ -252,5 +252,21 @@
 "高清 720P": "HD 720P",
 "（当前为「本地直连」模式，如网络受限请在网络设置中改用「系统代理联动」）": "(Currently in \"Direct connection\" mode; if the network is restricted, switch to \"Use system proxy\" in network settings)",
 "（无描述）": "(No description)",
-"（未检测到系统代理，请在系统中开启代理，或改用「内置代理」手动填写）": "(No system proxy detected; enable a proxy in the system, or switch to \"Custom proxy\" and enter it manually)"
+"（未检测到系统代理，请在系统中开启代理，或改用「内置代理」手动填写）": "(No system proxy detected; enable a proxy in the system, or switch to \"Custom proxy\" and enter it manually)",
+"账号": "Account",
+"未登录": "Not signed in",
+"已登录": "Signed in",
+"已登录：{0}": "Signed in: {0}",
+"登录 / 注册": "Sign in / Sign up",
+"登录 TokPure": "Sign in to TokPure",
+"打开官网": "Open website",
+"访问 TokPure 官网": "Visit the TokPure website",
+"退出登录": "Sign out",
+"已退出登录": "Signed out",
+"已退出登录。": "Signed out.",
+"正在检查登录状态…": "Checking sign-in status…",
+"尚未登录，请点击下方按钮完成登录或注册。": "Not signed in yet. Click the button below to sign in or sign up.",
+"已打开浏览器，请在网页中完成登录，完成后会自动返回本客户端…": "Browser opened. Complete sign-in on the web page; you'll be returned here automatically.",
+"桌面客户端需登录后使用。点击下方按钮将在浏览器中打开官网，完成账号验证后会自动登录本客户端。": "The desktop app requires sign-in. Clicking the button below opens the website in your browser; you'll be signed in here automatically after verification.",
+"操作失败，请重试": "Operation failed, please try again"
 });

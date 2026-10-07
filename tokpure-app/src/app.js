@@ -11,6 +11,7 @@ const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
 const state = {
   settings: null,
+  session: null,
   current: null,
   parsed: null,
   batchMode: false,
@@ -616,6 +617,64 @@ async function labExport() {
   }
 }
 
+/* ---------------- account / auth ---------------- */
+function cleanIpcError(e) {
+  const msg = e && e.message ? String(e.message) : '';
+  return msg.replace(/^Error invoking remote method '[^']+':\s*/, '') || '操作失败，请重试';
+}
+
+/** 依据登录态刷新标题栏账号区与登录门禁。 */
+function renderAccount(session) {
+  state.session = session || null;
+  const loggedIn = !!state.session;
+  const name = loggedIn ? state.session.name || state.session.email || '已登录' : '未登录';
+  const mail = loggedIn ? state.session.email || '—' : '—';
+
+  const gate = $('#auth-gate');
+  if (gate) gate.classList.toggle('hidden', loggedIn);
+  $('#account').classList.toggle('logged-in', loggedIn);
+  $('#account-name').textContent = name;
+  $('#account-menu-name').textContent = name;
+  $('#account-menu-mail').textContent = mail;
+  $('#account-menu-signin').classList.toggle('hidden', loggedIn);
+  $('#account-menu-logout').classList.toggle('hidden', !loggedIn);
+  $('#account').classList.remove('open');
+}
+
+async function initAuth() {
+  const btn = $('#auth-gate-login');
+  try {
+    const session = await api.auth.getSession();
+    renderAccount(session);
+    $('#auth-gate-status').textContent = session ? '' : '尚未登录，请点击下方按钮完成登录或注册。';
+  } catch (e) {
+    $('#auth-gate-status').textContent = cleanIpcError(e);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+  api.auth.onChanged((s) => renderAccount(s));
+}
+
+/** 打开系统浏览器完成登录；网页登录成功回跳后 Promise 才 resolve。 */
+async function doLogin() {
+  const status = $('#auth-gate-status');
+  const btn = $('#auth-gate-login');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  if (status) status.textContent = '已打开浏览器，请在网页中完成登录，完成后会自动返回本客户端…';
+  try {
+    const session = await api.auth.login();
+    renderAccount(session);
+    toast(T('已登录：{0}', session.email || session.name || ''));
+  } catch (e) {
+    const msg = cleanIpcError(e);
+    if (status) status.textContent = msg;
+    toast(msg, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 /* ---------------- wire events ---------------- */
 function wireUi() {
   // 语言切换后重绘 JS 生成的文案（T() 产出的内容无法被 DOM 词表反向翻译）
@@ -630,6 +689,23 @@ function wireUi() {
   $('#win-close').onclick = () => api.win.close();
   $('#win-min').onclick = () => api.win.minimize();
   $('#win-max').onclick = () => api.win.maximize();
+
+  // account
+  $('#account-btn').onclick = (e) => {
+    e.stopPropagation();
+    $('#account').classList.toggle('open');
+  };
+  document.addEventListener('click', () => $('#account').classList.remove('open'));
+  $('#account-menu-signin').onclick = () => doLogin();
+  $('#account-menu-web').onclick = () => api.auth.openWeb();
+  $('#account-menu-logout').onclick = async () => {
+    await api.auth.logout();
+    renderAccount(null);
+    $('#auth-gate-status').textContent = '已退出登录。';
+    toast('已退出登录', 'info');
+  };
+  $('#auth-gate-login').onclick = () => doLogin();
+  $('#auth-gate-web').onclick = () => api.auth.openWeb();
 
   // nav
   $('#nav').addEventListener('click', (e) => {
@@ -865,6 +941,7 @@ async function boot() {
   $('#brand-logo').src = 'logo.png';
   hydrateIcons();
   wireUi();
+  initAuth();
 
   const info = await api.system.appInfo();
   applyPlatformUi(info.platform);

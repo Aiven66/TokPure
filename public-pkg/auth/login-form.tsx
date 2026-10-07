@@ -229,7 +229,9 @@ export function LoginForm({ className, onSuccess, showGoogle = true }: LoginForm
           <Link
             href={
               isDesktopFlow
-                ? `${config.brand.registerHref}?from=desktop${
+                ? `${config.brand.registerHref}${
+                    config.brand.registerHref.includes('?') ? '&' : '?'
+                  }from=desktop${
                     savedCallbackUrl ? `&callback=${encodeURIComponent(savedCallbackUrl)}` : ''
                   }`
                 : config.brand.registerHref

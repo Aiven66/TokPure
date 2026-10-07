@@ -252,5 +252,21 @@
 "高清 720P": "HD 720P",
 "（当前为「本地直连」模式，如网络受限请在网络设置中改用「系统代理联动」）": "(Modo atual: «Conexão direta»; se a rede estiver restrita, mude para «Usar proxy do sistema» nas configurações de rede)",
 "（无描述）": "(sem descrição)",
-"（未检测到系统代理，请在系统中开启代理，或改用「内置代理」手动填写）": "(Nenhum proxy do sistema detectado; ative um proxy no sistema ou mude para «Proxy personalizado» e preencha manualmente)"
+"（未检测到系统代理，请在系统中开启代理，或改用「内置代理」手动填写）": "(Nenhum proxy do sistema detectado; ative um proxy no sistema ou mude para «Proxy personalizado» e preencha manualmente)",
+"账号": "Conta",
+"未登录": "Não conectado",
+"已登录": "Conectado",
+"已登录：{0}": "Sessão iniciada: {0}",
+"登录 / 注册": "Entrar / Registar",
+"登录 TokPure": "Entrar na TokPure",
+"打开官网": "Abrir site",
+"访问 TokPure 官网": "Visitar o site da TokPure",
+"退出登录": "Terminar sessão",
+"已退出登录": "Sessão terminada",
+"已退出登录。": "Sessão terminada.",
+"正在检查登录状态…": "A verificar o estado de sessão…",
+"尚未登录，请点击下方按钮完成登录或注册。": "Ainda não iniciou sessão. Clique no botão abaixo para entrar ou registar-se.",
+"已打开浏览器，请在网页中完成登录，完成后会自动返回本客户端…": "Navegador aberto. Conclua o início de sessão na página; voltará aqui automaticamente.",
+"桌面客户端需登录后使用。点击下方按钮将在浏览器中打开官网，完成账号验证后会自动登录本客户端。": "A aplicação de ambiente de trabalho requer início de sessão. O botão abaixo abre o site no navegador; a sessão será iniciada aqui automaticamente após a verificação.",
+"操作失败，请重试": "A operação falhou, tente novamente"
 });

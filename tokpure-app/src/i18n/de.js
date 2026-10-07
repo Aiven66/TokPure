@@ -252,5 +252,21 @@
 "高清 720P": "HD 720P",
 "（当前为「本地直连」模式，如网络受限请在网络设置中改用「系统代理联动」）": "(Aktuell Modus „Direktverbindung“; bei Netzwerkeinschränkungen in den Netzwerkeinstellungen auf „Systemproxy verwenden“ wechseln)",
 "（无描述）": "(Keine Beschreibung)",
-"（未检测到系统代理，请在系统中开启代理，或改用「内置代理」手动填写）": "(Kein Systemproxy erkannt; bitte im System einen Proxy aktivieren oder „Eigener Proxy“ manuell ausfüllen)"
+"（未检测到系统代理，请在系统中开启代理，或改用「内置代理」手动填写）": "(Kein Systemproxy erkannt; bitte im System einen Proxy aktivieren oder „Eigener Proxy“ manuell ausfüllen)",
+"账号": "Konto",
+"未登录": "Nicht angemeldet",
+"已登录": "Angemeldet",
+"已登录：{0}": "Angemeldet: {0}",
+"登录 / 注册": "Anmelden / Registrieren",
+"登录 TokPure": "Bei TokPure anmelden",
+"打开官网": "Website öffnen",
+"访问 TokPure 官网": "TokPure-Website besuchen",
+"退出登录": "Abmelden",
+"已退出登录": "Abgemeldet",
+"已退出登录。": "Abgemeldet.",
+"正在检查登录状态…": "Anmeldestatus wird geprüft…",
+"尚未登录，请点击下方按钮完成登录或注册。": "Noch nicht angemeldet. Klicken Sie unten, um sich anzumelden oder zu registrieren.",
+"已打开浏览器，请在网页中完成登录，完成后会自动返回本客户端…": "Browser geöffnet. Schließen Sie die Anmeldung auf der Webseite ab; Sie kehren automatisch hierher zurück.",
+"桌面客户端需登录后使用。点击下方按钮将在浏览器中打开官网，完成账号验证后会自动登录本客户端。": "Die Desktop-App erfordert eine Anmeldung. Der Button unten öffnet die Website im Browser; nach der Bestätigung werden Sie hier automatisch angemeldet.",
+"操作失败，请重试": "Vorgang fehlgeschlagen, bitte erneut versuchen"
 });

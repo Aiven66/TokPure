@@ -5,6 +5,14 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args);
 
 contextBridge.exposeInMainWorld('tokpure', {
+  auth: {
+    getSession: () => invoke('auth:getSession'),
+    // 打开系统浏览器完成登录；用户在网页登录成功后 Promise 才 resolve
+    login: () => invoke('auth:login'),
+    logout: () => invoke('auth:logout'),
+    openWeb: (target) => invoke('auth:openWeb', target),
+    onChanged: (cb) => ipcRenderer.on('auth:changed', (_e, s) => cb(s))
+  },
   settings: {
     get: () => invoke('settings:get'),
     save: (patch) => invoke('settings:save', patch),
