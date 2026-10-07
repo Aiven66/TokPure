@@ -168,7 +168,7 @@ function updateProxySummary() {
   } else if (mode === 'system') {
     if (det) {
       on = true;
-      endpoint = `系统代理联动 · ${det.protocol.toUpperCase()} ${det.host}:${det.port}`;
+      endpoint = T('系统代理联动 · {0} {1}:{2}', det.protocol.toUpperCase(), det.host, det.port);
     } else {
       on = false;
       endpoint = '系统代理联动 · 未检测到系统代理';
@@ -248,7 +248,14 @@ async function doParse(url) {
     const meta = await api.tiktok.parse(raw);
     state.parsed = meta;
     renderResult(meta);
-    setParseStatus(`解析成功 · 来源 ${meta.source}${meta.video.noWatermark.length ? ' · 已命中无水印源' : ' · 未命中无水印源（将使用兜底）'}`, 'info');
+    setParseStatus(
+      T(
+        '解析成功 · 来源 {0} · {1}',
+        meta.source,
+        meta.video.noWatermark.length ? T('已命中无水印源') : T('未命中无水印源（将使用兜底）')
+      ),
+      'info'
+    );
   } catch (e) {
     setParseStatus(e.message || String(e), 'err');
     toast('解析失败，请检查链接或代理设置', 'err');
@@ -327,7 +334,7 @@ function taskRow(t) {
   if (t.duration) metaBits.push(`<span>${fmtDur(t.duration)}</span>`);
   if (t.total) metaBits.push(`<span>${fmtBytes(t.total)}</span>`);
   if (t.speed) metaBits.push(`<span style="color:var(--secondary)">${fmtSpeed(t.speed)}</span>`);
-  if (t.eta) metaBits.push(`<span>剩余 ${t.eta}s</span>`);
+  if (t.eta) metaBits.push(`<span>${esc(T('剩余 {0}s', t.eta))}</span>`);
   if (t.note) metaBits.push(`<span style="color:var(--tertiary-bright)">${esc(t.note)}</span>`);
   if (t.status === 'error') metaBits.push(`<span style="color:var(--error)">${esc(t.error || '')}</span>`);
 
@@ -360,7 +367,10 @@ function renderQueue() {
   const totalSpeed = active.reduce((a, t) => a + (t.speed || 0), 0);
   $('#tele-speed').innerHTML = `${(totalSpeed / 1024 / 1024).toFixed(1)}<small>MB/s</small>`;
   $('#sb-speed').textContent = fmtSpeed(totalSpeed);
-  $('#q-count').textContent = `当前队列共 ${state.tasks.length} 项${queued ? ` · 排队 ${queued}` : ''}${err ? ` · 失败 ${err}` : ''}`;
+  const qParts = [T('当前队列共 {0} 项', state.tasks.length)];
+  if (queued) qParts.push(T('排队 {0}', queued));
+  if (err) qParts.push(T('失败 {0}', err));
+  $('#q-count').textContent = qParts.join(' · ');
   $('#nav-queue-count').textContent = String(active.length + queued);
   pushWave(totalSpeed);
 
@@ -400,6 +410,19 @@ async function refreshQueueUI() {
   await updateQueueStatusbar();
 }
 
+/* FFmpeg 状态文案由 T() 产出，切换语言时需要重绘 */
+function renderFfmpegLabels() {
+  if (state.ffVersion === undefined) return;
+  const ok = !!state.ffmpegOk;
+  const ver = 'v' + (String(state.ffVersion).replace('ffmpeg version ', '').split(' ')[0] || '—');
+  $('#tele-ff').textContent = ok ? T('{0} · 已就绪', ver) : T('未检测到 FFmpeg');
+  $('#tele-ff-bar').style.width = ok ? '100%' : '0%';
+  $('#nav-ffmpeg-badge').textContent = ok ? 'FFmpeg' : T('未就绪');
+  $('#lab-sub').textContent = ok
+    ? T('100% 离线 · 本地运算 · {0}', String(state.ffVersion).split(' ').slice(0, 3).join(' '))
+    : T('100% 离线 · 未检测到 FFmpeg（MP3/去水印功能不可用）');
+}
+
 async function updateQueueStatusbar() {
   const info = await api.system.appInfo();
   const archLabel = info.platform === 'darwin' ? 'Apple Silicon' : info.platform === 'win32' ? 'Windows x64' : info.platform;
@@ -407,9 +430,8 @@ async function updateQueueStatusbar() {
   $('#sb-dir').textContent = state.settings ? state.settings.downloadDir : '';
   const ff = await api.system.ffmpeg();
   state.ffmpegOk = ff.ok;
-  $('#tele-ff').textContent = ff.ok ? ff.version.replace('ffmpeg version ', 'v').split(' ')[0] + ' · 已就绪' : '未检测到 FFmpeg';
-  $('#tele-ff-bar').style.width = ff.ok ? '100%' : '0%';
-  $('#nav-ffmpeg-badge').textContent = ff.ok ? 'FFmpeg' : '未就绪';
+  state.ffVersion = ff.version;
+  renderFfmpegLabels();
 }
 
 /* ---------------- library ---------------- */
@@ -424,7 +446,7 @@ async function loadLibrary() {
 
 function renderLibrary() {
   const files = (state.libraryFiles || []).filter((f) => state.libraryFilter === 'all' || f.kind === state.libraryFilter);
-  $('#lib-count').textContent = `${files.length} 个文件`;
+  $('#lib-count').textContent = T('{0} 个文件', files.length);
   const list = $('#library-list');
   if (!files.length) {
     list.innerHTML = `<div class="empty">${ic('library', 30)}<p>媒体库为空，下载完成的文件会出现在这里</p></div>`;
@@ -439,7 +461,7 @@ function renderLibrary() {
       <div class="row-actions">
         <button class="icon-btn" data-lib="open" data-path="${esc(f.path)}" title="打开">${ic(f.kind === 'video' || f.kind === 'audio' ? 'playFill' : 'eye', 16)}</button>
         <button class="icon-btn" data-lib="reveal" data-path="${esc(f.path)}" title="${state.revealLabel}">${ic('folderOpen', 16)}</button>
-        <button class="icon-btn" data-lib="delete" data-path="${esc(f.path)}" title="移到${state.platform === 'win32' ? '回收站' : '废纸篓'}">${ic('trash', 16)}</button>
+        <button class="icon-btn" data-lib="delete" data-path="${esc(f.path)}" title="${esc(T('移到{0}', state.platform === 'win32' ? T('回收站') : T('废纸篓')))}">${ic('trash', 16)}</button>
       </div>
     </div>`;
   }).join('');
@@ -492,18 +514,18 @@ async function runNetTest() {
     $('#net-http').innerHTML = r.tiktok && r.tiktok.status ? `${r.tiktok.status}` : `--`;
     $('#net-http-bar').style.width = r.tiktok && r.tiktok.ok ? '100%' : '0%';
     $('#net-http-bar').style.background = r.tiktok && r.tiktok.ok ? 'linear-gradient(90deg,var(--tertiary),var(--tertiary-bright))' : 'linear-gradient(90deg,#f87171,var(--error))';
-    if (r.tiktok && r.tiktok.ok) toast(`网络连通正常 · ${lat}ms${r.effective ? ' · ' + r.effective : ''}`, 'ok');
+    if (r.tiktok && r.tiktok.ok) toast(T('网络连通正常 · {0}ms', lat) + (r.effective ? ' · ' + r.effective : ''), 'ok');
     else {
-      const why = (r.tiktok && (r.tiktok.error || r.tiktok.status)) || '未知错误';
+      const why = (r.tiktok && (r.tiktok.error || r.tiktok.status)) || T('未知错误');
       const tip = r.mode === 'direct'
-        ? '（当前为「本地直连」模式，如网络受限请在网络设置中改用「系统代理联动」）'
+        ? T('（当前为「本地直连」模式，如网络受限请在网络设置中改用「系统代理联动」）')
         : r.mode === 'system' && !r.detected
-        ? '（未检测到系统代理，请在系统中开启代理，或改用「内置代理」手动填写）'
+        ? T('（未检测到系统代理，请在系统中开启代理，或改用「内置代理」手动填写）')
         : '';
-      toast(`TikTok 连接失败：${why}${tip}`, 'err');
+      toast(T('TikTok 连接失败：{0}{1}', why, tip), 'err');
     }
   } catch (e) {
-    toast('测试失败：' + (e.message || e), 'err');
+    toast(T('测试失败：{0}', e.message || e), 'err');
   } finally {
     btn.disabled = false;
     btn.innerHTML = `${ic('activity', 15)}立即测试网络连通性`;
@@ -541,7 +563,7 @@ async function labExport() {
     toast('本地导出完成', 'ok');
     loadLibrary();
   } catch (e) {
-    toast('导出失败：' + (e.message || e), 'err');
+    toast(T('导出失败：{0}', e.message || e), 'err');
     $('#lab-hint').textContent = '导出失败';
   } finally {
     btn.disabled = false;
@@ -551,6 +573,14 @@ async function labExport() {
 
 /* ---------------- wire events ---------------- */
 function wireUi() {
+  // 语言切换后重绘 JS 生成的文案（T() 产出的内容无法被 DOM 词表反向翻译）
+  document.addEventListener('tokpure:lang', () => {
+    if (state.settings) updateProxySummary();
+    renderFfmpegLabels();
+    renderQueue();
+    if (state.libraryFiles) renderLibrary();
+  });
+
   // window controls
   $('#win-close').onclick = () => api.win.close();
   $('#win-min').onclick = () => api.win.minimize();
@@ -616,7 +646,7 @@ function wireUi() {
     for (const l of lines) await api.downloads.add(l, opts);
     $('#q-textarea').value = '';
     $('#q-cancel-import').onclick();
-    toast(`已加入 ${lines.length} 个任务`, 'ok');
+    toast(T('已加入 {0} 个任务', lines.length), 'ok');
   };
   $('#q-sniff').onclick = async () => {
     const t = await api.clipboard.read();
@@ -630,7 +660,7 @@ function wireUi() {
   $('#q-clear').onclick = async () => { await api.downloads.clearCompleted(); toast('已清除完成/失败任务', 'ok'); };
   $('#q-concurrency').onchange = async (e) => {
     const n = await api.downloads.setConcurrency(Number(e.target.value));
-    toast(`并发限制已设为 ${n}`, 'ok');
+    toast(T('并发限制已设为 {0}', n), 'ok');
   };
   $('#queue-list').addEventListener('click', onTaskAction);
   $('#recent-list').addEventListener('click', onTaskAction);
@@ -682,7 +712,12 @@ function wireUi() {
     await refreshProxyInfo();
     if (mode === 'system') {
       const ok = !!state.detectedProxy;
-      toast(ok ? `已切换为系统代理联动 · ${state.detectedProxy.host}:${state.detectedProxy.port}` : '已切换为系统代理联动，但未检测到系统代理', ok ? 'ok' : 'err');
+      toast(
+        ok
+          ? T('已切换为系统代理联动 · {0}:{1}', state.detectedProxy.host, state.detectedProxy.port)
+          : '已切换为系统代理联动，但未检测到系统代理',
+        ok ? 'ok' : 'err'
+      );
     } else if (mode === 'direct') {
       toast('已切换为本地直连（不使用代理）', 'ok');
     } else {
@@ -786,9 +821,9 @@ async function boot() {
     : info.platform === 'win32' ? `v${info.version} Windows x64`
     : `v${info.version}`;
   const ff = await api.system.ffmpeg();
-  $('#lab-sub').textContent = ff.ok
-    ? `100% 离线 · 本地运算 · ${ff.version.split(' ').slice(0, 3).join(' ')}`
-    : '100% 离线 · 未检测到 FFmpeg（MP3/去水印功能不可用）';
+  state.ffmpegOk = ff.ok;
+  state.ffVersion = ff.version;
+  renderFfmpegLabels();
 
   const kvRow = (k, v) => `<div class="kv-row"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`;
   $('#net-engine-kv').innerHTML = [
