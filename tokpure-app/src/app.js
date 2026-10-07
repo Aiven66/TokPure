@@ -515,17 +515,80 @@ async function runNetTest() {
 }
 
 /* ---------------- lab ---------------- */
-async function labPick() {
-  const f = await api.lab.pickFile();
-  if (!f) return;
+// 路径可能含空格 / 中文 / # 等字符，直接拼 file:// 会让 <video> 静默加载失败
+function toFileUrl(p) {
+  return 'file://' + String(p).split('/').map(encodeURIComponent).join('/');
+}
+
+function applyLabFile(f) {
+  if (!f || !f.path) return;
   state.labFile = f;
+  state.labOutput = null;
   $('#lab-name').textContent = f.name;
   $('#lab-size').textContent = fmtBytes(f.size);
   const v = $('#lab-video');
-  v.src = 'file://' + f.path;
+  v.src = toFileUrl(f.path);
   v.load();
   $('#lab-reveal').disabled = true;
-  state.labOutput = null;
+  $('#lab-hint').textContent = '选择去除范围后导出';
+  const drop = $('#lab-drop');
+  if (drop) drop.classList.add('hidden');
+}
+
+async function labPick() {
+  try {
+    const f = await api.lab.pickFile();
+    if (!f) return;
+    applyLabFile(f);
+    toast(T('已导入 {0}', f.name), 'ok');
+  } catch (e) {
+    toast(T('导入失败：{0}', (e && e.message) || e), 'err');
+  }
+}
+
+// 拖拽进入的文件由 preload 通过 webUtils 还原为本地绝对路径
+async function labOpenPath(p) {
+  try {
+    const f = await api.lab.openPath(p);
+    if (f) {
+      applyLabFile(f);
+      toast(T('已导入 {0}', f.name), 'ok');
+    }
+  } catch (e) {
+    toast(T('导入失败：{0}', (e && e.message) || e), 'err');
+  }
+}
+
+function wireLabDnd() {
+  const preview = $('#lab-preview');
+  const drop = $('#lab-drop');
+  if (!preview) return;
+  ['dragenter', 'dragover'].forEach((ev) =>
+    preview.addEventListener(ev, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (drop) drop.classList.add('over');
+    })
+  );
+  preview.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    if (drop) drop.classList.remove('over');
+  });
+  preview.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (drop) drop.classList.remove('over');
+    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file) return;
+    let p = '';
+    try { p = api.fs.pathForFile(file) || ''; } catch (_) { p = ''; }
+    if (!p) p = file.path || '';
+    if (!p) { toast('无法读取文件路径，请改用「上传视频」按钮选择', 'err'); return; }
+    await labOpenPath(p);
+  });
+  // 阻止窗口其余区域拖入文件时被 Electron 默认「打开文件」行为接管
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', (e) => e.preventDefault());
 }
 
 async function labExport() {
@@ -726,8 +789,15 @@ function wireUi() {
 
   // lab
   $('#lab-pick').onclick = labPick;
+  $('#lab-pick-2').onclick = (e) => { e.stopPropagation(); labPick(); };
+  $('#lab-drop').onclick = labPick;
+  wireLabDnd();
   $('#lab-export').onclick = labExport;
   $('#lab-reveal').onclick = () => state.labOutput && api.fs.reveal(state.labOutput);
+  // 预览解码失败时给出提示（导出走 FFmpeg，不受影响），避免用户误以为「上传失败」
+  $('#lab-video').addEventListener('error', () => {
+    if (state.labFile) toast('该视频无法在本机预览，但导出仍可正常进行', 'err');
+  });
   $('#lab-crop').oninput = (e) => { $('#lab-crop-val').textContent = e.target.value + '%'; };
   $('#lab-mode-auto').onclick = () => {
     state.labMode = 'crop';

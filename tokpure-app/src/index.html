@@ -218,7 +218,7 @@
                 <p class="card-sub" id="lab-sub">100% 离线 · 本地运算 · 不上传云端</p>
               </div>
               <div class="gap-row">
-                <button class="btn small" id="lab-pick"><span data-ic="folderOpen" data-size="15"></span>导入本地视频 (MP4/MOV)</button>
+                <button class="btn primary" id="lab-pick"><span data-ic="cloud" data-size="16"></span>上传视频 (MP4/MOV)</button>
               </div>
             </div>
           </div>
@@ -240,6 +240,13 @@
 
               <div class="preview" id="lab-preview">
                 <video id="lab-video" controls playsinline></video>
+                <!-- 空态上传入口：无文件时显示，点击或拖拽均可上传 -->
+                <div class="lab-drop" id="lab-drop">
+                  <div class="ld-ic" data-ic="cloud" data-size="34"></div>
+                  <div class="ld-title">把视频拖到这里，或点击上传</div>
+                  <div class="ld-sub">支持 MP4 / MOV / WEBM / MKV · 全程本地处理，不上传云端</div>
+                  <button class="btn primary" id="lab-pick-2"><span data-ic="cloud" data-size="16"></span>选择视频文件</button>
+                </div>
                 <div class="p-top">
                   <span class="overlay-chip mono" id="lab-name">未导入文件</span>
                   <span class="overlay-chip emerald" style="color:var(--tertiary-bright)"><span data-ic="activity" data-size="13"></span>本地处理</span>

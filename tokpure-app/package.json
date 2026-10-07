@@ -8,7 +8,7 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "dist:mac": "electron-builder --mac",
+    "dist:mac": "electron-builder --mac --arm64 --x64",
     "dist:win": "electron-builder --win --x64"
   },
   "build": {
@@ -25,22 +25,7 @@
     ],
     "mac": {
       "category": "public.app-category.video",
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        }
-      ],
+      "target": ["dmg", "zip"],
       "artifactName": "${productName}-${version}-${arch}.${ext}",
       "icon": "build/icon.icns",
       "darkModeSupport": true,
@@ -69,14 +54,7 @@
       ]
     },
     "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
+      "target": ["nsis"],
       "icon": "build/icon.ico",
       "artifactName": "${productName}-Setup-${version}-${arch}.${ext}",
       "extraResources": [

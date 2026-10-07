@@ -1,6 +1,6 @@
 'use strict';
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args);
 
@@ -35,7 +35,11 @@ contextBridge.exposeInMainWorld('tokpure', {
     openPath: (p) => invoke('fs:openPath', p),
     openFolder: () => invoke('fs:openFolder'),
     library: () => invoke('fs:library'),
-    delete: (p) => invoke('fs:delete', p)
+    delete: (p) => invoke('fs:delete', p),
+    // Electron >=32 移除了 File.path，拖拽文件需经 webUtils 还原绝对路径
+    pathForFile: (file) => {
+      try { return webUtils.getPathForFile(file); } catch (_) { return ''; }
+    }
   },
   clipboard: {
     read: () => invoke('clip:read')
@@ -53,6 +57,7 @@ contextBridge.exposeInMainWorld('tokpure', {
   },
   lab: {
     pickFile: () => invoke('lab:pickFile'),
+    openPath: (p) => invoke('lab:openPath', p),
     process: (payload) => invoke('lab:process', payload)
   }
 });

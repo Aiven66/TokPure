@@ -336,6 +336,18 @@ function registerIpc() {
     return { path: p, name: path.basename(p), size: st.size };
   });
 
+  // 拖拽上传：渲染层拿到的只是 File 对象，路径由 preload 的 webUtils 还原后传入
+  ipcMain.handle('lab:openPath', async (_e, input) => {
+    if (!input || !fs.existsSync(input)) throw new Error('文件不存在或已被移动');
+    const st = fs.statSync(input);
+    if (!st.isFile()) throw new Error('不是有效的文件');
+    const ext = path.extname(input).toLowerCase();
+    if (!['.mp4', '.mov', '.webm', '.mkv'].includes(ext)) {
+      throw new Error('仅支持 MP4 / MOV / WEBM / MKV 格式');
+    }
+    return { path: input, name: path.basename(input), size: st.size };
+  });
+
   ipcMain.handle('lab:process', async (event, payload) => {
     const { input, mode, cropPercent, box } = payload || {};
     if (!input || !fs.existsSync(input)) throw new Error('文件不存在');
