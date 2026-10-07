@@ -390,5 +390,6 @@
   "高级防风控伪装：多节点代理池轮换、指纹标头伪装": "Advanced anti-detection disguise: multi-node proxy pool rotation and fingerprint header spoofing",
   "高达 32 线程": "Up to 32 threads",
   "，支持自动化脚本调用。": ", with automated script call support.",
-  "，无权扫描其他用户资产。": ", with no permission to scan other users' assets."
+  "，无权扫描其他用户资产。": ", with no permission to scan other users' assets.",
+  "博客": "Blog"
 }

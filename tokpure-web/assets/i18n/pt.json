@@ -390,5 +390,6 @@
   "高级防风控伪装：多节点代理池轮换、指纹标头伪装": "Disfarce avançado antifraude: rotação de pool de proxy com múltiplos nós e disfarce de cabeçalhos de fingerprint",
   "高达 32 线程": "Até 32 threads",
   "，支持自动化脚本调用。": ", com suporte a chamadas por scripts automatizados.",
-  "，无权扫描其他用户资产。": ", sem permissão para escanear os ativos de outros usuários."
+  "，无权扫描其他用户资产。": ", sem permissão para escanear os ativos de outros usuários.",
+  "博客": "Blog"
 }

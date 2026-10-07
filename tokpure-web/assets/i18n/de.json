@@ -390,5 +390,6 @@
   "高级防风控伪装：多节点代理池轮换、指纹标头伪装": "Erweiterte Anti-Block-Tarnung: rotierender Proxy-Pool mit mehreren Knoten, Fingerprint-Header-Tarnung",
   "高达 32 线程": "Bis zu 32 Threads",
   "，支持自动化脚本调用。": ", unterstützt Aufrufe durch Automatisierungsskripte.",
-  "，无权扫描其他用户资产。": ", kein Zugriff zum Scannen von Assets anderer Nutzer."
+  "，无权扫描其他用户资产。": ", kein Zugriff zum Scannen von Assets anderer Nutzer.",
+  "博客": "Blog"
 }

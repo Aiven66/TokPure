@@ -390,5 +390,6 @@
   "高级防风控伪装：多节点代理池轮换、指纹标头伪装": "Déguisement anti-détection avancé : rotation d'un pool de proxies multi-nœuds et usurpation d'en-têtes d'empreinte",
   "高达 32 线程": "Jusqu'à 32 threads",
   "，支持自动化脚本调用。": ", avec prise en charge des appels par scripts automatisés.",
-  "，无权扫描其他用户资产。": ", sans autorisation de scanner les ressources des autres utilisateurs."
+  "，无权扫描其他用户资产。": ", sans autorisation de scanner les ressources des autres utilisateurs.",
+  "博客": "Blog"
 }

@@ -390,5 +390,6 @@
   "高级防风控伪装：多节点代理池轮换、指纹标头伪装": "Enmascaramiento avanzado antitcontrol: rotación de un grupo de proxies multinodo y falsificación de cabeceras de huella digital",
   "高达 32 线程": "Hasta 32 hilos",
   "，支持自动化脚本调用。": ", compatible con la invocación de scripts automatizados.",
-  "，无权扫描其他用户资产。": ", sin permiso para escanear los recursos de otros usuarios."
+  "，无权扫描其他用户资产。": ", sin permiso para escanear los recursos de otros usuarios.",
+  "博客": "Blog"
 }
