@@ -85,24 +85,6 @@ function hydrateIcons(root = document) {
   });
 }
 
-/* ---------------- brand logo ---------------- */
-const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
-<defs>
-<linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#1e222b"/><stop offset="100%" stop-color="#0e1014"/></linearGradient>
-<linearGradient id="pk" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FF3B5C"/><stop offset="100%" stop-color="#FE2C55"/></linearGradient>
-<linearGradient id="cy" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#00F2FE"/><stop offset="100%" stop-color="#25F4EE"/></linearGradient>
-<filter id="gl" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="3" result="b"/><feComposite in="SourceGraphic" in2="b" operator="over"/></filter>
-</defs>
-<rect x="8" y="8" width="104" height="104" rx="24" fill="url(#bg)" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"/>
-<rect x="9" y="9" width="102" height="102" rx="23" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
-<g transform="translate(60,58)">
-<path d="M-8,-20 C-8,-20 0,-15 12,-15 L12,-6 C4,-6 -2,-9 -8,-9 L-8,12 C-8,17 -13,20 -19,19 C-25,18 -29,13 -28,7 C-27,2 -22,-2 -16,-2 C-13,-2 -10,-1 -8,1 Z" fill="url(#cy)" opacity="0.8" transform="translate(-2,-2)"/>
-<path d="M-8,-20 C-8,-20 0,-15 12,-15 L12,-6 C4,-6 -2,-9 -8,-9 L-8,12 C-8,17 -13,20 -19,19 C-25,18 -29,13 -28,7 C-27,2 -22,-2 -16,-2 C-13,-2 -10,-1 -8,1 Z" fill="url(#pk)"/>
-<path d="M14,-14 L16,-7 L23,-5 L16,-3 L14,4 L12,-3 L5,-5 L12,-7 Z" fill="#FFFFFF" filter="url(#gl)"/>
-<circle cx="21" cy="6" r="2" fill="#25F4EE"/>
-<path d="M8,12 L8,24 M4,20 L8,24 L12,20" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-</g></svg>`;
-
 /* ---------------- view switching ---------------- */
 function switchView(name) {
   state.currentView = name;
@@ -810,7 +792,7 @@ function applyPlatformUi(platform) {
 
 /* ---------------- boot ---------------- */
 async function boot() {
-  $('#brand-logo').src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(LOGO_SVG);
+  $('#brand-logo').src = 'logo.png';
   hydrateIcons();
   wireUi();
 
