@@ -158,12 +158,21 @@ function login() {
     state.done = true;
     pending = null;
     if (state.timer) clearTimeout(state.timer);
-    if (state.server) {
-      try {
-        state.server.close();
-      } catch (_) {
-        /* ignore */
+    const closeServer = () => {
+      if (state.server) {
+        try {
+          state.server.close();
+        } catch (_) {
+          /* ignore */
+        }
       }
+    };
+    if (session) {
+      // 成功：延迟关闭 loopback 服务器。网页端会自动回跳，用户若同时手动点击按钮，
+      // 第二个请求仍能拿到成功页，而不是连接被拒绝的错误页。
+      setTimeout(closeServer, 3000);
+    } else {
+      closeServer();
     }
     if (err) rejectFn(err);
     else resolveFn(session);

@@ -17,7 +17,7 @@
  * `config.brand.termsHref / privacyHref`；跳转目标取自 `config.auth.afterRegisterHref`。
  */
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AlertCircle, CheckCircle, KeyRound, Loader2, Lock, Mail, Monitor, User, Video } from 'lucide-react';
@@ -35,6 +35,7 @@ import {
   buildDesktopReturnUrl,
   getDesktopCallback,
   isDesktopAuthRequest,
+  readStoredTokens,
   rememberDesktopCallback,
 } from './session-storage';
 
@@ -68,6 +69,13 @@ export function RegisterForm({ className, onSuccess }: RegisterFormProps) {
   const isDesktopFlow = isDesktopAuthRequest(config, sp);
   const savedCallbackUrl = getDesktopCallback(config, sp);
 
+  // 桌面流程：把 loopback 回调地址持久化到 sessionStorage。
+  // buildDesktopReturnUrl 只从 sessionStorage 读取回调地址（不接受 searchParams），
+  // 缺少这一步会让「自动回跳」与「返回应用」按钮都静默失效。
+  useEffect(() => {
+    if (isDesktopFlow) rememberDesktopCallback(config, sp.get('callback'));
+  }, [isDesktopFlow, config, sp]);
+
   const validate = (): string | null => {
     if (!name.trim()) return t('register.errorNameRequired');
     if (!email.trim()) return t('register.errorEmailRequired');
@@ -88,6 +96,23 @@ export function RegisterForm({ className, onSuccess }: RegisterFormProps) {
       router.refresh();
     }
   };
+
+  // 桌面流程：注册成功后自动回跳 loopback 地址，免去用户手动点击（与客户端提示一致）。
+  useEffect(() => {
+    if (!isDesktopFlow || step !== 'done') return;
+    const url = buildDesktopReturnUrl(config, {
+      token: accessToken,
+      refreshToken: readStoredTokens(config).refresh,
+      email: user?.email || email,
+      userId: user?.id || '',
+      name: user?.name || name,
+    });
+    if (!url) return;
+    const timer = setTimeout(() => {
+      window.location.href = url;
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [isDesktopFlow, step, accessToken, config, user, email, name]);
 
   const startCountdown = () => {
     setCountdown(60);
@@ -225,6 +250,7 @@ export function RegisterForm({ className, onSuccess }: RegisterFormProps) {
             onClick={() => {
               const url = buildDesktopReturnUrl(config, {
                 token: accessToken,
+                refreshToken: readStoredTokens(config).refresh,
                 email: user?.email || email,
                 userId: user?.id || '',
                 name: user?.name || name,

@@ -10,7 +10,13 @@
  */
 
 import { Suspense } from 'react';
-import { isAdminUser, LoginForm, RegisterForm, useAuth } from '@pkg';
+import {
+  isAdminUser,
+  isDesktopAuthRequest,
+  LoginForm,
+  RegisterForm,
+  useAuth,
+} from '@pkg';
 import { PkgRoot } from '@/components/PkgRoot';
 import { mount, readSiteLocale } from '@/lib/mount';
 import { pkgConfig } from '@/lib/pkg-config';
@@ -54,11 +60,20 @@ function AccountPanel() {
 
 function AuthIsland() {
   const { user, loading } = useAuth();
-  const mode = new URLSearchParams(window.location.search).get('mode');
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get('mode');
+  const isDesktop = isDesktopAuthRequest(pkgConfig, params);
 
   const handleSuccess = () => {
     window.location.assign(pkgConfig.auth.afterLoginHref);
   };
+
+  // 桌面端 deep-link 流程：必须始终渲染表单岛屿。
+  // 登录/注册成功后 user 会被置位，若此处提前切到 AccountPanel，
+  // 表单组件会被卸载，桌面成功页与自动回跳就永远不会执行。
+  if (isDesktop) {
+    return mode === 'register' ? <RegisterForm /> : <LoginForm />;
+  }
 
   if (loading) {
     return (

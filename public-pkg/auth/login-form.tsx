@@ -33,6 +33,7 @@ import {
   getDesktopCallback,
   isDesktopAuthRequest,
   normalizeAuthInput,
+  readStoredTokens,
   rememberDesktopCallback,
 } from './session-storage';
 
@@ -74,6 +75,23 @@ export function LoginForm({ className, onSuccess, showGoogle = true }: LoginForm
       setDesktopResult({ token: accessToken, email: user.email });
     }
   }, [isDesktopFlow, desktopResult, authLoading, user, accessToken]);
+
+  // 桌面流程：成功后自动回跳 loopback 地址，免去用户手动点击（与客户端提示一致）。
+  useEffect(() => {
+    if (!desktopResult) return;
+    const url = buildDesktopReturnUrl(config, {
+      token: desktopResult.token,
+      refreshToken: readStoredTokens(config).refresh,
+      email: desktopResult.email,
+      userId: user?.id || '',
+      name: user?.name || '',
+    });
+    if (!url) return;
+    const timer = setTimeout(() => {
+      window.location.href = url;
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [desktopResult, config, user]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -123,6 +141,7 @@ export function LoginForm({ className, onSuccess, showGoogle = true }: LoginForm
             onClick={() => {
               const url = buildDesktopReturnUrl(config, {
                 token: desktopResult.token,
+                refreshToken: readStoredTokens(config).refresh,
                 email: desktopResult.email,
                 userId: user?.id || '',
                 name: user?.name || '',
