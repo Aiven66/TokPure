@@ -53,6 +53,14 @@ module.exports = async (req, res) => {
 
   console.log('[Waffo Webhook] 事件:', event.eventType, orderId);
 
+  // 该 Waffo 商店同时服务 Clipop 与 TokPure，两个站点共用同一个 store。
+  // 只处理 TokPure 自己的事件，其余一律忽略并回 200，避免误落库或触发无效重试。
+  const belongsToTokpure = meta.source === 'tokpure' || String(planId).startsWith('tokpure-');
+  if (!belongsToTokpure) {
+    console.log('[Waffo Webhook] 非 TokPure 事件，已忽略:', event.eventType, orderId);
+    return res.status(200).json({ received: true });
+  }
+
   try {
     switch (event.eventType) {
       case WebhookEventType.OrderCompleted:
