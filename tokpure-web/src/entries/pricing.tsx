@@ -12,13 +12,14 @@ import { useEffect } from 'react';
 import { useAuth } from '@pkg';
 import type { PlanConfig } from '@pkg';
 import { PkgRoot } from '@/components/PkgRoot';
+import { PaymentModal } from '@/components/PaymentModal';
 import { mount, readSiteLocale } from '@/lib/mount';
 import { pkgConfig } from '@/lib/pkg-config';
 
 /** [data-checkout] 取值 → 收银台套餐标识（与页面档位一一对应）。 */
-const CHECKOUT_PLANS: Record<string, { id: string; name: string }> = {
-  pro: { id: 'tokpure-pro', name: 'TokPure 专业创作者版' },
-  studio: { id: 'tokpure-studio', name: 'TokPure 团队与工作室版' },
+const CHECKOUT_PLANS: Record<string, { id: string; name: string; priceUsd: number }> = {
+  pro: { id: 'tokpure-pro', name: 'TokPure 专业创作者版', priceUsd: 9.9 },
+  studio: { id: 'tokpure-studio', name: 'TokPure 团队与工作室版', priceUsd: 29 },
 };
 
 function CheckoutBridge() {
@@ -40,8 +41,12 @@ function CheckoutBridge() {
         window.location.href = pkgConfig.brand.registerHref;
         return;
       }
-      // 只用到 id / name，其余 PlanConfig 字段由宿主收银台自行解析
-      const planConfig = { id: plan.id, name: plan.name } as PlanConfig;
+      // 只用到 id / name / price，其余 PlanConfig 字段由宿主收银台自行解析
+      const planConfig = {
+        id: plan.id,
+        name: plan.name,
+        price: { cn: plan.priceUsd, intl: plan.priceUsd },
+      } as PlanConfig;
       void pkgConfig.pricing.onSubscribe?.(planConfig);
     };
 
@@ -56,5 +61,6 @@ mount(
   'pricing-bridge',
   <PkgRoot initialLocale={readSiteLocale()}>
     <CheckoutBridge />
+    <PaymentModal />
   </PkgRoot>,
 );

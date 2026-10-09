@@ -132,9 +132,21 @@ export const pkgConfig = createDefaultConfig({
     },
   },
   pricing: {
-    // 点击订阅 / 购买积分 → 打开可配置的收银台 URL（未配置时提示“即将开放”）
-    onSubscribe: (plan) => openCheckout({ id: plan.id, kind: 'plan', name: plan.name }),
-    onBuyPack: (pack) => openCheckout({ id: pack.id, kind: 'pack', name: pack.name }),
+    // 点击订阅 / 购买积分 → 打开 Creem / Waffo 二选一收银台
+    onSubscribe: (plan) =>
+      openCheckout({
+        id: plan.id,
+        kind: 'plan',
+        name: plan.name,
+        priceUsd: plan.price?.intl || plan.price?.cn,
+      }),
+    onBuyPack: (pack) =>
+      openCheckout({
+        id: pack.id,
+        kind: 'pack',
+        name: pack.name,
+        priceUsd: pack.price?.intl || pack.price?.cn,
+      }),
     requireAuthToSubscribe: true,
     showCreditPacks: true,
     contentOverrides: {

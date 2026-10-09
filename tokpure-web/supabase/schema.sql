@@ -50,7 +50,11 @@ create table if not exists public.subscriptions (
   email      text,
   plan       text,
   amount     numeric(10, 2),
-  created_at timestamptz not null default now()
+  -- 支付渠道回写的订阅周期（webhook 落库）
+  current_period_start timestamptz,
+  current_period_end   timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create index if not exists subscriptions_user_id_idx on public.subscriptions(user_id);
@@ -96,6 +100,10 @@ create trigger users_touch before update on public.users
 
 drop trigger if exists blogs_touch on public.blogs;
 create trigger blogs_touch before update on public.blogs
+  for each row execute function public.touch_updated_at();
+
+drop trigger if exists subscriptions_touch on public.subscriptions;
+create trigger subscriptions_touch before update on public.subscriptions
   for each row execute function public.touch_updated_at();
 
 -- ────────────────────────────────────────────────────────────
@@ -162,3 +170,11 @@ create policy blogs_admin_update on public.blogs
 drop policy if exists blogs_admin_delete on public.blogs;
 create policy blogs_admin_delete on public.blogs
   for delete using (public.is_admin());
+
+-- ────────────────────────────────────────────────────────────
+-- 增量迁移：支付渠道 webhook 需要回写订阅周期
+-- （对已存在的库幂等补齐列，供 Creem / Waffo 回调落库）
+-- ────────────────────────────────────────────────────────────
+alter table public.subscriptions add column if not exists current_period_start timestamptz;
+alter table public.subscriptions add column if not exists current_period_end   timestamptz;
+alter table public.subscriptions add column if not exists updated_at timestamptz not null default now();
