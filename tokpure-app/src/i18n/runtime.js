@@ -258,19 +258,12 @@
     }
   }
 
+  // 默认语言固定为英文：仅当用户手动切换过（localStorage 有记录）时才沿用其偏好，
+  // 不再依据系统/浏览器语言自动判定，避免中文系统首次打开直接落到简体中文。
   function detect() {
     var saved = null;
     try { saved = localStorage.getItem(STORE_KEY); } catch (e) { saved = null; }
     if (saved && LANGS.some(function (l) { return l.code === saved; })) return saved;
-    var list = navigator.languages || [navigator.language || ''];
-    for (var i = 0; i < list.length; i++) {
-      var t = String(list[i]).toLowerCase();
-      if (!t) continue;
-      if (t.indexOf('zh') === 0) return /hant|tw|hk|mo/.test(t) ? 'zh-TW' : 'zh-CN';
-      var base = t.split('-')[0];
-      var hit = LANGS.filter(function (l) { return l.code === base; })[0];
-      if (hit) return hit.code;
-    }
     return FALLBACK;
   }
 

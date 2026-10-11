@@ -49,23 +49,14 @@
     return (idx >= 0 ? src.slice(0, idx) + '/assets/' : 'assets/') + 'i18n/';
   }
 
+  // 默认语言固定为英文：仅在用户手动切换过（localStorage 有记录）时才沿用其偏好，
+  // 不再依据浏览器语言自动判定，避免中文浏览器首次访问直接落到简体中文。
   function detect() {
     var saved = null;
     try { saved = window.localStorage.getItem(STORE_KEY); } catch (e) { saved = null; }
     if (saved) {
       for (var i = 0; i < LANGS.length; i++) {
         if (LANGS[i].code === saved) return saved;
-      }
-    }
-    var nav = navigator.languages || [navigator.language || FALLBACK];
-    for (var n = 0; n < nav.length; n++) {
-      var tag = String(nav[n]).toLowerCase();
-      if (tag.indexOf('zh') === 0) {
-        return /hant|tw|hk|mo/.test(tag) ? 'zh-TW' : 'zh-CN';
-      }
-      for (var j = 0; j < LANGS.length; j++) {
-        var base = LANGS[j].code.split('-')[0].toLowerCase();
-        if (tag === base || tag.indexOf(base + '-') === 0) return LANGS[j].code;
       }
     }
     return FALLBACK;

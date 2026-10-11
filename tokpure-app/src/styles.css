@@ -282,6 +282,11 @@ svg {
   backdrop-filter: blur(24px) saturate(180%);
   border-bottom: 1px solid var(--hairline);
   -webkit-app-region: drag;
+  /* backdrop-filter 会为标题栏创建独立层叠上下文，导致其内部下拉菜单的
+     z-index 被限制在本层内；下方 .content 处于同一层叠级别且 DOM 靠后，
+     会盖住菜单。显式提升标题栏层级，让账号/语言弹窗始终显示在最外层。 */
+  position: relative;
+  z-index: 50;
 }
 .titlebar .tl-left,
 .titlebar .tl-right {
