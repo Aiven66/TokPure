@@ -1482,3 +1482,86 @@ textarea.ta:focus { border-color: rgba(37, 244, 238, 0.5); }
 
 .spin { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* ============================================================
+   v2.5 本地 AI 视图（桌面引擎 / AI 字幕 / 画质增强 / 去水印 2.0）
+   ============================================================ */
+.btn.tiny { padding: 4px 9px; font-size: 11px; border-radius: 8px; }
+
+/* 引擎页 */
+.hub-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border-radius: var(--radius-md);
+  background: rgba(255,255,255,.035); border: 1px solid var(--hairline);
+  margin-bottom: 8px;
+}
+.hub-row:last-child { margin-bottom: 0; }
+.hub-ic {
+  width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(37,244,238,.1); color: var(--secondary);
+}
+.hub-main { flex: 1; min-width: 0; }
+.hub-t { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.hub-d { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; line-height: 1.45; }
+.hub-progress { height: 4px; border-radius: 999px; background: rgba(255,255,255,.08); margin-top: 8px; overflow: hidden; }
+.hub-progress > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg,var(--secondary-dim),var(--secondary)); transition: width .25s; }
+.hub-pct { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); min-width: 88px; text-align: right; }
+.hub-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+.hub-license { font-size: 10px; color: var(--tertiary-bright); border: 1px solid rgba(78,222,163,.35); padding: 1px 6px; border-radius: 6px; }
+.hub-unsupported { opacity: .55; }
+
+/* AI 字幕 */
+.sub-segs { max-height: 440px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+.sub-seg { display: grid; grid-template-columns: 74px 1fr; gap: 8px; align-items: start; }
+.sub-seg .sub-time {
+  font-family: var(--font-mono); font-size: 10px; color: var(--secondary);
+  background: rgba(37,244,238,.08); border-radius: 6px; padding: 6px 4px; text-align: center; line-height: 1.5;
+}
+.sub-seg input[type="text"] {
+  width: 100%; background: var(--surface-container-high); border: 1px solid var(--hairline);
+  border-radius: 8px; color: var(--on-surface); font-size: 12.5px; padding: 7px 10px; outline: none;
+}
+.sub-seg input[type="text"]:focus { border-color: rgba(37,244,238,.5); }
+
+/* 画质增强模式卡 */
+.enh-modes { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+.enh-mode {
+  border: 1px solid var(--hairline); border-radius: 12px; padding: 13px;
+  background: rgba(12,14,18,.45); cursor: pointer; transition: border-color .15s, background .15s;
+}
+.enh-mode:hover { background: rgba(255,255,255,.05); }
+.enh-mode.on { border-color: rgba(37,244,238,.6); background: rgba(37,244,238,.07); }
+.em-ic { color: var(--secondary); margin-bottom: 8px; }
+.em-t { font-size: 13px; font-weight: 600; }
+.em-d { font-size: 11px; color: var(--text-dim); margin: 4px 0 9px; line-height: 1.45; min-height: 32px; }
+.em-scale { display: flex; gap: 10px; font-size: 11.5px; color: var(--text-muted); }
+.em-scale label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.em-scale input { accent-color: var(--secondary); }
+
+/* 去水印 2.0 区域列表 */
+.region-list { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; }
+.region-item {
+  border: 1px solid var(--hairline); border-radius: 10px; padding: 9px 10px;
+  background: rgba(12,14,18,.45);
+}
+.region-item .ri-head { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.region-item .ri-name { font-size: 11.5px; font-weight: 600; color: var(--secondary); flex: 1; }
+.region-item .ri-grid { display: grid; grid-template-columns: repeat(6,1fr); gap: 6px; }
+.region-item .ri-grid label { font-size: 9.5px; color: var(--text-dim); display: block; margin-bottom: 2px; }
+.region-item .ri-grid input {
+  width: 100%; background: var(--surface-container-high); border: 1px solid var(--hairline);
+  border-radius: 6px; color: var(--on-surface); font-size: 11px; padding: 4px 6px; outline: none;
+}
+.lab-region-layer { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.region-box {
+  position: absolute; border: 1.5px solid var(--secondary);
+  background: rgba(37,244,238,.12); border-radius: 3px;
+}
+.region-box span {
+  position: absolute; top: -17px; left: 0; font-size: 9.5px; color: #062b2a;
+  background: var(--secondary); padding: 0 5px; border-radius: 4px 4px 4px 0; white-space: nowrap;
+}
+
+@media (max-width: 1280px) {
+  .enh-modes { grid-template-columns: 1fr; }
+}

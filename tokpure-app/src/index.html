@@ -23,7 +23,7 @@
           <img class="brand-logo" id="brand-logo" alt="TokPure" />
           <div>
             <div class="brand-name">TokPure</div>
-            <div class="brand-sub" id="brand-version">v2.4.5</div>
+            <div class="brand-sub" id="brand-version">v2.5.0</div>
           </div>
         </div>
         <nav class="nav" id="nav">
@@ -34,6 +34,12 @@
             <span class="nav-left"><span data-ic="wand"></span><span class="nav-label">AI 智能去水印</span></span>
             <span class="nav-badge" id="nav-ffmpeg-badge">Local</span>
           </a>
+          <a class="nav-item" data-view="subtitle" aria-label="AI 字幕">
+            <span class="nav-left"><span data-ic="captions"></span><span class="nav-label">AI 字幕</span></span>
+          </a>
+          <a class="nav-item" data-view="enhance" aria-label="画质增强">
+            <span class="nav-left"><span data-ic="zap"></span><span class="nav-label">画质增强</span></span>
+          </a>
           <a class="nav-item" data-view="queue" aria-label="批量任务队列">
             <span class="nav-left"><span data-ic="queue"></span><span class="nav-label">批量任务队列</span></span>
             <span class="nav-count is-zero" id="nav-queue-count">0</span>
@@ -41,6 +47,9 @@
           <a class="nav-item" data-view="library" aria-label="本地媒体库">
             <span class="nav-left"><span data-ic="library"></span><span class="nav-label">本地媒体库</span></span>
             <span class="nav-meta" id="nav-lib-size">0 MB</span>
+          </a>
+          <a class="nav-item" data-view="engine" aria-label="桌面引擎">
+            <span class="nav-left"><span data-ic="box"></span><span class="nav-label">桌面引擎</span></span>
           </a>
           <a class="nav-item" data-view="network" aria-label="网络与代理设置">
             <span class="nav-left"><span data-ic="network"></span><span class="nav-label">网络与代理设置</span></span>
@@ -242,9 +251,10 @@
             <div style="display:flex;flex-direction:column;gap:12px">
               <div class="card" style="padding:11px">
                 <div class="gap-row" style="justify-content:space-between">
-                  <div class="gap-row">
+                  <div class="gap-row" style="flex-wrap:wrap">
                     <button class="btn small primary" id="lab-mode-auto"><span data-ic="sparkles" data-size="15"></span>自动裁剪去 Logo</button>
                     <button class="btn small" id="lab-mode-manual"><span data-ic="crop" data-size="15"></span>手动区域 delogo</button>
+                    <button class="btn small" id="lab-mode-regions"><span data-ic="sliders" data-size="15"></span>多区域修复 2.0</button>
                     <span class="muted" style="font-size:11px">裁剪比例</span>
                     <input type="range" class="range" id="lab-crop" min="0" max="20" value="6" style="width:130px" />
                     <span class="mono dim" id="lab-crop-val" style="font-size:11px">6%</span>
@@ -255,6 +265,7 @@
 
               <div class="preview" id="lab-preview">
                 <video id="lab-video" controls playsinline></video>
+                <div class="lab-region-layer" id="lab-region-layer"></div>
                 <!-- 空态上传入口：无文件时显示，点击或拖拽均可上传 -->
                 <div class="lab-drop" id="lab-drop">
                   <div class="ld-ic" data-ic="cloud" data-size="34"></div>
@@ -291,7 +302,7 @@
                 </div>
               </div>
 
-              <div class="card">
+              <div class="card" id="lab-box-card">
                 <div class="card-title" style="font-size:13px;margin-bottom:10px"><span data-ic="sliders" data-size="16" style="color:var(--secondary)"></span>去水印范围设定</div>
                 <div class="stack">
                   <label class="cbx"><input type="checkbox" id="lab-range-all" checked /><span class="box"><span data-ic="check" data-size="11"></span></span>全局裁剪所有边缘 Logo</label>
@@ -303,6 +314,22 @@
                   <div><span class="lbl">宽度 W</span><div class="field" style="padding:7px 10px"><input type="number" id="lab-box-w" value="240" /></div></div>
                   <div><span class="lbl">高度 H</span><div class="field" style="padding:7px 10px"><input type="number" id="lab-box-h" value="120" /></div></div>
                 </div>
+              </div>
+
+              <!-- R3：多区域 + 时间轴修复 -->
+              <div class="card hidden" id="lab-regions-card">
+                <div class="card-title" style="font-size:13px;margin-bottom:6px"><span data-ic="sliders" data-size="16" style="color:var(--secondary)"></span>多区域时间轴修复 <span class="pill emerald square" style="margin-left:6px">2.0</span></div>
+                <p class="card-sub" style="margin-bottom:10px">对飘动水印/多 Logo：添加多个修复框，并限定每段出现的起止秒数。</p>
+                <div class="gap-row" style="flex-wrap:wrap;margin-bottom:10px">
+                  <button class="btn tiny ghost" data-preset="tl">左上用户名</button>
+                  <button class="btn tiny ghost" data-preset="tr">右上</button>
+                  <button class="btn tiny ghost" data-preset="bl">左下</button>
+                  <button class="btn tiny ghost" data-preset="br">右下 Logo</button>
+                  <button class="btn tiny ghost" data-preset="cc">居中花字</button>
+                  <button class="btn tiny" id="lab-region-add"><span data-ic="plus" data-size="12"></span>自定义框</button>
+                </div>
+                <div id="lab-region-list" class="region-list"></div>
+                <div class="notice" style="margin-top:10px"><span data-ic="info" data-size="15"></span><span>坐标按画面百分比填写，起止时间为 0 表示全程；青色框为预览位置。</span></div>
               </div>
 
               <div class="notice"><span data-ic="info" data-size="15"></span><span>为获得最佳画质，建议优先在「URL 抓取与下载」页直接下载原生无水印源；本实验室用于对已下载/本地视频做兜底清理。</span></div>
@@ -406,6 +433,224 @@
             </div>
           </div>
           <div class="panel-list" id="library-list"></div>
+        </section>
+
+        <!-- ============ VIEW: SUBTITLE (R2) ============ -->
+        <section class="view" id="view-subtitle">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <div class="gap-row">
+                  <span class="card-title"><span data-ic="captions" data-size="17" style="color:var(--secondary)"></span>本地 AI 字幕</span>
+                  <span class="pill square">Whisper.cpp · MIT</span>
+                </div>
+                <p class="card-sub">视频语音离线转字幕，可编辑、导出 SRT 或直接烧录进视频，全程不联网。</p>
+              </div>
+              <button class="btn primary" id="sub-pick"><span data-ic="cloud" data-size="16"></span>选择视频</button>
+            </div>
+            <div class="gap-row" id="sub-filebar" style="margin-top:12px;display:none">
+              <span class="pill square" id="sub-file-name">—</span>
+              <span class="muted mono" id="sub-file-meta" style="font-size:11px"></span>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="card">
+                <div class="card-title" style="font-size:13px;margin-bottom:10px"><span data-ic="sliders" data-size="16" style="color:var(--secondary)"></span>识别设置</div>
+                <div class="grid-2">
+                  <div>
+                    <span class="lbl">识别模型</span>
+                    <div class="field"><span data-ic="cpu" data-size="15"></span><select id="sub-model" style="border:0;background:transparent;flex:1;color:inherit;font:inherit;outline:none"></select></div>
+                  </div>
+                  <div>
+                    <span class="lbl">语言</span>
+                    <div class="field"><span data-ic="languages" data-size="15"></span><select id="sub-lang" style="border:0;background:transparent;flex:1;color:inherit;font:inherit;outline:none">
+                      <option value="auto">自动检测</option>
+                      <option value="zh">中文</option>
+                      <option value="en">English</option>
+                      <option value="ja">日本語</option>
+                      <option value="ko">한국어</option>
+                      <option value="es">Español</option>
+                      <option value="pt">Português</option>
+                      <option value="fr">Français</option>
+                      <option value="de">Deutsch</option>
+                    </select></div>
+                  </div>
+                </div>
+                <div class="notice" id="sub-model-note" style="margin-top:10px"><span data-ic="info" data-size="15"></span><span>模型仅需下载一次，可在「桌面引擎」管理；8GB 内存推荐 Base 档。</span></div>
+                <div class="bar" style="margin-top:12px;padding:0;border-top:0">
+                  <div class="left">
+                    <button class="btn primary" id="sub-run" disabled><span data-ic="captions" data-size="16"></span>生成字幕</button>
+                    <button class="btn ghost" id="sub-goto-engine"><span data-ic="box" data-size="15"></span>管理引擎/模型</button>
+                  </div>
+                </div>
+                <div id="sub-progress" class="hidden" style="margin-top:10px">
+                  <div class="gap-row" style="justify-content:space-between;margin-bottom:6px">
+                    <span class="muted" id="sub-progress-label" style="font-size:11px">准备中…</span>
+                    <span class="muted mono" id="sub-progress-pct" style="font-size:11px">0%</span>
+                  </div>
+                  <div class="meter"><i id="sub-progress-bar" style="width:0%"></i></div>
+                </div>
+              </div>
+
+              <div class="card hidden" id="sub-burn-card">
+                <div class="card-title" style="font-size:13px;margin-bottom:10px"><span data-ic="film" data-size="16" style="color:var(--secondary)"></span>烧录样式</div>
+                <div class="grid-2">
+                  <div><span class="lbl">字号</span><div class="field" style="padding:7px 10px"><input type="number" id="sub-fontsize" value="18" min="10" max="40" /></div></div>
+                  <div><span class="lbl">底部边距</span><div class="field" style="padding:7px 10px"><input type="number" id="sub-marginv" value="36" min="0" max="200" /></div></div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="card hidden" id="sub-result-card">
+                <div class="card-head" style="margin-bottom:10px">
+                  <div class="card-title" style="font-size:13px"><span data-ic="checkCircle" data-size="16" style="color:var(--tertiary-bright)"></span>识别结果（可直接修改文案）</div>
+                  <span class="pill emerald square" id="sub-seg-count">0 句</span>
+                </div>
+                <div id="sub-segments" class="sub-segs"></div>
+                <div class="bar" style="margin-top:12px">
+                  <div class="left">
+                    <button class="btn cyan small" id="sub-export-srt"><span data-ic="save" data-size="15"></span>导出 SRT</button>
+                    <button class="btn primary small" id="sub-burn"><span data-ic="film" data-size="15"></span>烧录到视频</button>
+                    <button class="btn small" id="sub-reveal" disabled><span data-ic="folderOpen" data-size="14"></span>显示结果</button>
+                  </div>
+                </div>
+                <div id="sub-burn-progress" class="hidden" style="margin-top:10px">
+                  <div class="gap-row" style="justify-content:space-between;margin-bottom:6px">
+                    <span class="muted" id="sub-burn-label" style="font-size:11px">烧录中…</span>
+                    <span class="muted mono" id="sub-burn-pct" style="font-size:11px">0%</span>
+                  </div>
+                  <div class="meter"><i id="sub-burn-bar" style="width:0%"></i></div>
+                </div>
+              </div>
+              <div class="notice" id="sub-empty"><span data-ic="shieldCheck" data-size="15"></span><span>所有识别均在本机完成，音频不会离开你的电脑。</span></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ VIEW: ENHANCE (R4) ============ -->
+        <section class="view" id="view-enhance">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <div class="gap-row">
+                  <span class="card-title"><span data-ic="zap" data-size="17" style="color:var(--primary)"></span>本地画质增强</span>
+                  <span class="pill square">RealSR / Real-CUGAN / RIFE · MIT</span>
+                </div>
+                <p class="card-sub">超分辨率（2x/3x/4x）与智能插帧（帧率翻倍），ncnn + Vulkan 本地运算，老素材二次创作利器。</p>
+              </div>
+              <button class="btn primary" id="enh-pick"><span data-ic="cloud" data-size="16"></span>选择视频</button>
+            </div>
+            <div class="gap-row" id="enh-filebar" style="margin-top:12px;display:none">
+              <span class="pill square" id="enh-file-name">—</span>
+              <span class="muted mono" id="enh-file-meta" style="font-size:11px"></span>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="card">
+                <div class="card-title" style="font-size:13px;margin-bottom:10px"><span data-ic="cpu" data-size="16" style="color:var(--secondary)"></span>增强模式</div>
+                <div class="enh-modes" id="enh-modes">
+                  <div class="enh-mode on" data-engine="realsr">
+                    <div class="em-ic"><span data-ic="image" data-size="20"></span></div>
+                    <div class="em-t">RealSR 真人超分</div>
+                    <div class="em-d">真人实拍/口播视频 4x 放大降噪，推荐</div>
+                    <div class="em-scale"><span class="pill square">固定 4x 放大</span></div>
+                  </div>
+                  <div class="enh-mode" data-engine="realcugan">
+                    <div class="em-ic"><span data-ic="sparkles" data-size="20"></span></div>
+                    <div class="em-t">Real-CUGAN 动漫超分</div>
+                    <div class="em-d">二次元/动画视频，线条更锐利</div>
+                    <div class="em-scale">
+                      <label><input type="radio" name="realcugan-scale" value="2" checked /> 2x</label>
+                      <label><input type="radio" name="realcugan-scale" value="3" /> 3x</label>
+                    </div>
+                  </div>
+                  <div class="enh-mode" data-engine="rife">
+                    <div class="em-ic"><span data-ic="film" data-size="20"></span></div>
+                    <div class="em-t">RIFE 智能插帧</div>
+                    <div class="em-d">帧率翻倍（30→60fps），动作更丝滑</div>
+                    <div class="em-scale"><span class="pill square">固定 2x 帧率</span></div>
+                  </div>
+                </div>
+                <div class="notice" style="margin-top:10px"><span data-ic="info" data-size="15"></span><span id="enh-engine-note">选中的引擎首次使用需在「桌面引擎」下载（50–420MB，仅一次）。</span></div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="card">
+                <div class="card-title" style="font-size:13px;margin-bottom:10px"><span data-ic="activity" data-size="16" style="color:var(--secondary)"></span>任务</div>
+                <div class="stack">
+                  <label class="cbx"><input type="checkbox" id="enh-lowpower" checked /><span class="box"><span data-ic="check" data-size="11"></span></span>分块处理（低内存模式，8GB 建议开启）</label>
+                  <p class="card-sub">超分耗时较长（1080p 一分钟视频约需数分钟到十几分钟），可挂机等待；插帧速度最快。</p>
+                </div>
+                <div class="bar" style="margin-top:12px">
+                  <div class="left">
+                    <button class="btn primary" id="enh-run" disabled><span data-ic="zap" data-size="16"></span>开始增强</button>
+                    <button class="btn ghost" id="enh-goto-engine"><span data-ic="box" data-size="15"></span>下载引擎</button>
+                  </div>
+                </div>
+                <div id="enh-progress" class="hidden" style="margin-top:10px">
+                  <div class="gap-row" style="justify-content:space-between;margin-bottom:6px">
+                    <span class="muted" id="enh-progress-label" style="font-size:11px">准备中…</span>
+                    <span class="muted mono" id="enh-progress-pct" style="font-size:11px">0%</span>
+                  </div>
+                  <div class="meter"><i id="enh-progress-bar" style="width:0%"></i></div>
+                  <div class="gap-row" style="margin-top:8px;justify-content:space-between">
+                    <span class="muted mono" id="enh-frames" style="font-size:10.5px"></span>
+                    <button class="btn small danger" id="enh-cancel"><span data-ic="stop" data-size="13"></span>取消任务</button>
+                  </div>
+                </div>
+                <div class="gap-row hidden" id="enh-done" style="margin-top:12px">
+                  <span class="pill emerald square"><span data-ic="checkCircle" data-size="13"></span>增强完成</span>
+                  <button class="btn cyan small" id="enh-reveal"><span data-ic="folderOpen" data-size="14"></span>在访达中显示</button>
+                </div>
+              </div>
+              <div class="notice"><span data-ic="hardDrive" data-size="15"></span><span>处理过程需要数倍于视频大小的临时磁盘空间，完成后自动清理。</span></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ VIEW: ENGINE HUB (R1) ============ -->
+        <section class="view" id="view-engine">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <div class="gap-row">
+                  <span class="card-title"><span data-ic="box" data-size="17" style="color:var(--secondary)"></span>桌面引擎</span>
+                  <span class="pill square" id="hub-tier">检测中…</span>
+                </div>
+                <p class="card-sub">所有 AI 引擎与模型按需下载到本机，安装包保持精简；引擎仅下载一次，可随时删除。</p>
+              </div>
+              <div class="gap-row">
+                <button class="btn small" id="hub-refresh"><span data-ic="refresh" data-size="15"></span>刷新</button>
+                <button class="btn small" id="hub-open-dir"><span data-ic="folder" data-size="15"></span>引擎目录</button>
+              </div>
+            </div>
+            <div class="stat-grid" id="hub-hw" style="margin-top:14px">
+              <div class="stat"><div class="k">处理器</div><div class="v" style="font-size:14px" id="hub-cpu">—</div></div>
+              <div class="stat"><div class="k">内存 / 核心</div><div class="v" style="font-size:14px" id="hub-mem">—</div></div>
+              <div class="stat"><div class="k">图形加速</div><div class="v" style="font-size:13px" id="hub-gpu">—</div></div>
+              <div class="stat"><div class="k">磁盘可用 / 已用</div><div class="v" style="font-size:14px" id="hub-disk">—</div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title" style="font-size:13px;margin-bottom:4px"><span data-ic="cpu" data-size="16" style="color:var(--secondary)"></span>推理引擎</div>
+            <p class="card-sub" style="margin-bottom:10px">独立 sidecar 进程，崩溃不影响客户端主程序。</p>
+            <div class="panel-list" id="hub-engines"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title" style="font-size:13px;margin-bottom:4px"><span data-ic="hardDrive" data-size="16" style="color:var(--secondary)"></span>模型文件</div>
+            <p class="card-sub" style="margin-bottom:10px">模型来自开源社区（许可证均允许商用），支持 HuggingFace 与国内镜像。</p>
+            <div class="panel-list" id="hub-models"></div>
+          </div>
+
+          <div class="notice"><span data-ic="shieldCheck" data-size="15"></span><span>下载走你在「网络与代理设置」中配置的代理；所有引擎均通过官方发布页获取。</span></div>
         </section>
 
         <!-- ============ VIEW: NETWORK ============ -->

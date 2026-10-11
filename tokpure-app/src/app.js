@@ -22,6 +22,15 @@ const state = {
   labFile: null,
   labOutput: null,
   labMode: 'crop',
+  labRegions: [],
+  hub: null,
+  aiTask: null,
+  subFile: null,
+  subSegments: [],
+  subOutput: null,
+  enhFile: null,
+  enhEngine: 'realsr',
+  enhOutput: null,
   tasks: [],
   paused: false,
   platform: '',
@@ -93,6 +102,10 @@ function switchView(name) {
   $$('.view').forEach((el) => el.classList.toggle('active', el.id === `view-${name}`));
   if (name === 'library') loadLibrary();
   if (name === 'queue') refreshQueueUI();
+  if (name === 'engine' || name === 'subtitle' || name === 'enhance') {
+    if (!state.hub) loadHub();
+    else { renderHub(); updateSubModelSelect(); updateEnhNote(); }
+  }
 }
 
 /* ---------------- sidebar collapse / expand ----------------
@@ -627,22 +640,433 @@ async function labExport() {
   btn.innerHTML = `<span class="spin">${ic('refresh', 16)}</span>本地导出中…`;
   $('#lab-hint').textContent = 'FFmpeg 本地处理中，请稍候…';
   try {
-    const payload = state.labMode === 'crop'
-      ? { input: state.labFile.path, mode: 'crop', cropPercent: Number($('#lab-crop').value) || 6 }
-      : { input: state.labFile.path, mode: 'delogo', box: { x: Number($('#lab-box-x').value) || 20, y: Number($('#lab-box-y').value) || 20, w: Number($('#lab-box-w').value) || 240, h: Number($('#lab-box-h').value) || 120 } };
-    const res = await api.lab.process(payload);
+    let res;
+    if (state.labMode === 'regions2') {
+      if (!state.labRegions.length) { toast('请先添加至少一个修复区域', 'err'); throw new Error('empty-regions'); }
+      state.aiTask = 'lab';
+      res = await api.ai.clean2({
+        input: state.labFile.path,
+        mode: 'delogo2',
+        regions: state.labRegions.map((r) => ({ ...r }))
+      });
+    } else {
+      const payload = state.labMode === 'crop'
+        ? { input: state.labFile.path, mode: 'crop', cropPercent: Number($('#lab-crop').value) || 6 }
+        : { input: state.labFile.path, mode: 'delogo', box: { x: Number($('#lab-box-x').value) || 20, y: Number($('#lab-box-y').value) || 20, w: Number($('#lab-box-w').value) || 240, h: Number($('#lab-box-h').value) || 120 } };
+      res = await api.lab.process(payload);
+    }
     state.labOutput = res.output;
     $('#lab-reveal').disabled = false;
     $('#lab-hint').textContent = '导出完成';
     toast('本地导出完成', 'ok');
     loadLibrary();
   } catch (e) {
-    toast(T('导出失败：{0}', e.message || e), 'err');
-    $('#lab-hint').textContent = '导出失败';
+    if (e.message !== 'empty-regions') toast(T('导出失败：{0}', e.message || e), 'err');
+    if (e.message !== 'empty-regions') $('#lab-hint').textContent = '导出失败';
   } finally {
+    state.aiTask = null;
     btn.disabled = false;
     btn.innerHTML = `${ic('save', 16)}开始本地导出 (Export Clean Video)`;
   }
+}
+
+/* ============================================================
+   v2.5 本地 AI：去水印区域 / 桌面引擎 / 字幕 / 画质增强
+   ============================================================ */
+
+/* ---------------- R3：多区域时间轴 ---------------- */
+const REGION_PRESETS = {
+  tl: { name: '左上用户名', x: 3, y: 10, w: 36, h: 6 },
+  tr: { name: '右上', x: 61, y: 10, w: 36, h: 6 },
+  bl: { name: '左下', x: 3, y: 88, w: 24, h: 7 },
+  br: { name: '右下 Logo', x: 79, y: 87, w: 18, h: 8 },
+  cc: { name: '居中花字', x: 30, y: 42, w: 40, h: 8 }
+};
+
+function setLabMode(mode) {
+  state.labMode = mode;
+  $('#lab-mode-auto').classList.toggle('primary', mode === 'crop');
+  $('#lab-mode-manual').classList.toggle('primary', mode === 'delogo');
+  $('#lab-mode-regions').classList.toggle('primary', mode === 'regions2');
+  $('#lab-regions-card').classList.toggle('hidden', mode !== 'regions2');
+  $('#lab-box-card').classList.toggle('hidden', mode === 'regions2');
+  $('#lab-region-layer').style.display = mode === 'regions2' ? 'block' : 'none';
+  $$('#lab-algos .panel-item').forEach((x, i) => x.classList.toggle('on',
+    (mode === 'crop' && i === 0) || (mode === 'delogo' && i === 1)));
+  renderLabRegions();
+}
+
+function addLabRegion(region) {
+  state.labRegions.push({
+    id: 'r' + Date.now() + Math.random().toString(36).slice(2, 5),
+    name: region.name || ('区域 ' + (state.labRegions.length + 1)),
+    x: region.x, y: region.y, w: region.w, h: region.h, start: 0, end: 0
+  });
+  renderLabRegions();
+}
+
+function renderLabRegions() {
+  const list = $('#lab-region-list');
+  const layer = $('#lab-region-layer');
+  if (!list) return;
+  list.innerHTML = state.labRegions.map((r, i) => `
+    <div class="region-item" data-rid="${r.id}">
+      <div class="ri-head">
+        <span class="ri-name">${esc(r.name)}</span>
+        <button class="icon-btn" data-act="del" title="删除区域">${ic('trash2', 13)}</button>
+      </div>
+      <div class="ri-grid">
+        <div><label>X%</label><input type="number" step="0.5" data-k="x" value="${r.x}"></div>
+        <div><label>Y%</label><input type="number" step="0.5" data-k="y" value="${r.y}"></div>
+        <div><label>W%</label><input type="number" step="0.5" data-k="w" value="${r.w}"></div>
+        <div><label>H%</label><input type="number" step="0.5" data-k="h" value="${r.h}"></div>
+        <div><label>起 s</label><input type="number" step="0.1" data-k="start" value="${r.start}"></div>
+        <div><label>止 s</label><input type="number" step="0.1" data-k="end" value="${r.end}"></div>
+      </div>
+    </div>`).join('');
+  if (layer) {
+    layer.innerHTML = state.labRegions.map((r, i) =>
+      `<div class="region-box" style="left:${r.x}%;top:${r.y}%;width:${r.w}%;height:${r.h}%"><span>${i + 1} ${esc(r.name)}</span></div>`
+    ).join('');
+  }
+}
+
+function bindLabRegions() {
+  $$('[data-preset]').forEach((btn) => {
+    btn.onclick = () => addLabRegion({ ...REGION_PRESETS[btn.dataset.preset] });
+  });
+  $('#lab-region-add').onclick = () => addLabRegion({ name: '自定义', x: 30, y: 30, w: 30, h: 8 });
+  $('#lab-region-list').addEventListener('input', (e) => {
+    const item = e.target.closest('.region-item');
+    const k = e.target.dataset.k;
+    if (!item || !k) return;
+    const r = state.labRegions.find((x) => x.id === item.dataset.rid);
+    if (!r) return;
+    r[k] = Number(e.target.value) || 0;
+    renderLabRegions();
+    // 保持正在输入的焦点
+    const next = item.querySelector(`[data-k="${k}"]`);
+    if (next) { next.focus(); next.setSelectionRange(next.value.length, next.value.length); }
+  });
+  $('#lab-region-list').addEventListener('click', (e) => {
+    if (e.target.closest('[data-act="del"]')) {
+      const item = e.target.closest('.region-item');
+      state.labRegions = state.labRegions.filter((x) => x.id !== item.dataset.rid);
+      renderLabRegions();
+    }
+  });
+  $('#lab-mode-regions').onclick = () => setLabMode('regions2');
+}
+
+/* ---------------- R1：桌面引擎 ---------------- */
+async function loadHub() {
+  try {
+    state.hub = await api.hub.status();
+    renderHub();
+    updateSubModelSelect();
+    updateEnhNote();
+  } catch (e) {
+    toast('引擎状态读取失败：' + (e.message || e), 'err');
+  }
+}
+
+function hubEngine(id) {
+  return state.hub && state.hub.engines.find((x) => x.id === id);
+}
+
+function renderHub() {
+  if (!state.hub) return;
+  const hw = state.hub.hw;
+  $('#hub-tier').textContent = hw.tierLabel;
+  $('#hub-cpu').textContent = (hw.appleSilicon ? 'Apple Silicon · ' : '') + hw.cpuModel.slice(0, 34);
+  $('#hub-mem').textContent = fmtBytes(hw.memBytes) + ' · ' + hw.cores + ' 核';
+  $('#hub-gpu').textContent = hw.gpuLabel;
+  $('#hub-disk').textContent = fmtBytes(hw.freeDisk) + ' / 已用 ' + fmtBytes(state.hub.totalUsed);
+
+  const featIcon = { subtitle: 'captions', enhance: 'zap' };
+  $('#hub-engines').innerHTML = state.hub.engines.map((en) => {
+    const status = !en.supported
+      ? `<span class="hub-pct hub-unsupported">当前平台不支持</span>`
+      : en.installed
+      ? `<span class="pill emerald square">已安装</span><span class="hub-pct">${fmtBytes(en.installSize)}</span>
+         <span class="hub-actions"><button class="btn tiny ghost" data-act="uninstall-engine" data-id="${en.id}">删除</button></span>`
+      : `<span class="hub-pct">${en.downloadSize ? fmtBytes(en.downloadSize) : '约 6MB'}</span>
+         <span class="hub-actions"><button class="btn tiny primary" data-act="install-engine" data-id="${en.id}">下载</button></span>`;
+    return `<div class="hub-row ${en.supported ? '' : 'hub-unsupported'}" data-id="${en.id}">
+      <div class="hub-ic">${ic(featIcon[en.feature] || 'cpu', 18)}</div>
+      <div class="hub-main">
+        <div class="hub-t">${esc(en.name)} <span class="hub-license">${en.license}</span><span class="muted mono" style="font-size:10px;font-weight:400">v${en.version}</span></div>
+        <div class="hub-d">${esc(en.summary)}</div>
+        <div class="hub-progress hidden" id="hp-${en.id}"><i style="width:0%"></i></div>
+      </div>${status}
+    </div>`;
+  }).join('');
+
+  $('#hub-models').innerHTML = state.hub.models.map((m) => {
+    const status = m.installed
+      ? `<span class="pill emerald square">已下载</span><span class="hub-pct">${fmtBytes(m.installedSize)}</span>
+         <span class="hub-actions"><button class="btn tiny ghost" data-act="uninstall-model" data-id="${m.id}">删除</button></span>`
+      : `<span class="hub-pct">${fmtBytes(m.size)}</span>
+         <span class="hub-actions"><button class="btn tiny primary" data-act="install-model" data-id="${m.id}">下载</button></span>`;
+    return `<div class="hub-row" data-id="${m.id}">
+      <div class="hub-ic">${ic('hardDrive', 18)}</div>
+      <div class="hub-main">
+        <div class="hub-t">${esc(m.name)} <span class="muted" style="font-size:10px;font-weight:400">${esc(m.lang)}</span></div>
+        <div class="hub-d">${esc(m.note)}</div>
+        <div class="hub-progress hidden" id="hp-${m.id}"><i style="width:0%"></i></div>
+      </div>${status}
+    </div>`;
+  }).join('');
+}
+
+function setHubProgress(p) {
+  const row = $(`.hub-row[data-id="${p.id}"]`);
+  if (!row) return;
+  const bar = row.querySelector('.hub-progress');
+  const i = bar && bar.querySelector('i');
+  const pct = row.querySelector('.hub-pct');
+  if (p.phase === 'download' || p.phase === 'extract') {
+    if (bar) bar.classList.remove('hidden');
+    const pctVal = p.phase === 'extract' ? 99 : Math.round(p.percent || 0);
+    if (i) i.style.width = pctVal + '%';
+    if (pct) pct.textContent = p.phase === 'extract' ? '解压中…' : pctVal + '%';
+  }
+}
+
+function bindHub() {
+  $('#hub-refresh').onclick = () => loadHub();
+  $('#hub-open-dir').onclick = () => api.hub.openDir();
+  $('#hub-engines').addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'install-engine') await hubInstall('engine', b.dataset.id, b);
+    if (b.dataset.act === 'uninstall-engine') { api.hub.uninstall('engine', b.dataset.id); await loadHub(); toast('引擎已删除', 'info'); }
+  });
+  $('#hub-models').addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'install-model') await hubInstall('model', b.dataset.id, b);
+    if (b.dataset.act === 'uninstall-model') { api.hub.uninstall('model', b.dataset.id); await loadHub(); toast('模型已删除', 'info'); }
+  });
+}
+
+async function hubInstall(kind, id, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    await api.hub.install(kind, id);
+    toast('安装完成', 'ok');
+  } catch (e) {
+    toast('安装失败：' + cleanIpcError(e), 'err');
+  } finally {
+    await loadHub();
+  }
+}
+
+/* ---------------- R2：AI 字幕 ---------------- */
+function updateSubModelSelect() {
+  const sel = $('#sub-model');
+  if (!sel || !state.hub) return;
+  const cur = sel.value || 'whisper-base';
+  sel.innerHTML = state.hub.models.filter((m) => m.engine === 'whisper').map((m) =>
+    `<option value="${m.id}" ${m.id === cur ? 'selected' : ''}>${esc(m.name)}${m.installed ? ' · 已下载' : ' · 未下载'}</option>`
+  ).join('');
+  updateSubRunState();
+}
+
+function updateSubRunState() {
+  const run = $('#sub-run');
+  const note = $('#sub-model-note span:last-child') || $('#sub-model-note').querySelector('span:last-child');
+  if (!run || !state.hub) return;
+  const mid = $('#sub-model').value;
+  const m = state.hub.models.find((x) => x.id === mid);
+  const engine = hubEngine('whisper');
+  const ready = !!state.subFile && engine && engine.installed && m && m.installed;
+  run.disabled = !ready;
+  const why = !state.subFile ? '请先选择视频文件'
+    : !engine.installed ? '未安装 Whisper.cpp 引擎，请点「管理引擎/模型」下载（约 6MB）'
+    : !(m && m.installed) ? `模型「${m ? m.name : ''}」未下载，请点「管理引擎/模型」下载`
+    : '就绪：点击生成字幕';
+  const noteEl = $('#sub-model-note span:last-child');
+  if (noteEl) noteEl.textContent = why;
+}
+
+function srtTimestamp(sec) {
+  sec = Math.max(0, sec || 0);
+  const ms = Math.round(sec * 1000);
+  const p = (x, l = 2) => String(x).padStart(l, '0');
+  return `${p(ms / 3600000 | 0)}:${p((ms % 3600000) / 60000 | 0)}:${p((ms % 60000) / 1000 | 0)},${p(ms % 1000, 3)}`;
+}
+function segmentsToSrt(segs) {
+  return segs.map((s, i) => `${i + 1}\n${srtTimestamp(s.start)} --> ${srtTimestamp(s.end)}\n${s.text.trim()}\n`).join('\n');
+}
+
+function renderSubSegments() {
+  $('#sub-segments').innerHTML = state.subSegments.map((s, i) => `
+    <div class="sub-seg">
+      <div class="sub-time">${srtTimestamp(s.start)}<br>↓<br>${srtTimestamp(s.end)}</div>
+      <input type="text" data-i="${i}" value="${esc(s.text)}" />
+    </div>`).join('');
+  $('#sub-seg-count').textContent = state.subSegments.length + ' 句';
+}
+
+async function subPick() {
+  const f = await api.ai.pickFile();
+  if (!f) return;
+  state.subFile = f;
+  $('#sub-filebar').style.display = 'flex';
+  $('#sub-file-name').textContent = f.name;
+  $('#sub-file-meta').textContent = fmtBytes(f.size);
+  updateSubRunState();
+}
+
+async function subRun() {
+  const btn = $('#sub-run');
+  btn.disabled = true;
+  $('#sub-progress').classList.remove('hidden');
+  state.aiTask = 'sub';
+  try {
+    const res = await api.ai.transcribe({
+      input: state.subFile.path,
+      modelId: $('#sub-model').value,
+      language: $('#sub-lang').value
+    });
+    state.subSegments = res.segments;
+    renderSubSegments();
+    $('#sub-result-card').classList.remove('hidden');
+    $('#sub-burn-card').classList.remove('hidden');
+    toast('字幕识别完成', 'ok');
+  } catch (e) {
+    toast('识别失败：' + cleanIpcError(e), 'err');
+  } finally {
+    state.aiTask = null;
+    btn.disabled = false;
+    updateSubRunState();
+  }
+}
+
+function bindSubtitle() {
+  $('#sub-pick').onclick = subPick;
+  $('#sub-goto-engine').onclick = () => switchView('engine');
+  $('#sub-model').onchange = updateSubRunState;
+  $('#sub-run').onclick = subRun;
+  $('#sub-segments').addEventListener('input', (e) => {
+    const i = Number(e.target.dataset.i);
+    if (state.subSegments[i]) state.subSegments[i].text = e.target.value;
+  });
+  $('#sub-export-srt').onclick = async () => {
+    if (!state.subSegments.length) return;
+    const p = await api.ai.saveSrt(state.subFile.path, segmentsToSrt(state.subSegments));
+    if (p) toast('SRT 已导出', 'ok');
+  };
+  $('#sub-burn').onclick = async () => {
+    const btn = $('#sub-burn');
+    btn.disabled = true;
+    $('#sub-burn-progress').classList.remove('hidden');
+    state.aiTask = 'burn';
+    try {
+      const res = await api.ai.burn({
+        input: state.subFile.path,
+        srt: segmentsToSrt(state.subSegments),
+        fontSize: Number($('#sub-fontsize').value) || 18,
+        marginV: Number($('#sub-marginv').value) || 36
+      });
+      state.subOutput = res.output;
+      $('#sub-reveal').disabled = false;
+      toast('字幕烧录完成', 'ok');
+    } catch (e) {
+      toast('烧录失败：' + cleanIpcError(e), 'err');
+    } finally {
+      state.aiTask = null;
+      btn.disabled = false;
+    }
+  };
+  $('#sub-reveal').onclick = () => state.subOutput && api.fs.reveal(state.subOutput);
+}
+
+/* ---------------- R4：画质增强 ---------------- */
+function updateEnhNote() {
+  if (!state.hub) return;
+  const en = hubEngine(state.enhEngine);
+  const btn = $('#enh-run');
+  $('#enh-engine-note').textContent = en && en.installed
+    ? '引擎已就绪，可直接开始增强。'
+    : '选中的引擎尚未下载，请点「下载引擎」（50–420MB，仅一次）。';
+  if (btn) btn.disabled = !(state.enhFile && en && en.installed);
+}
+
+async function enhPick() {
+  const f = await api.ai.pickFile();
+  if (!f) return;
+  state.enhFile = f;
+  $('#enh-filebar').style.display = 'flex';
+  $('#enh-file-name').textContent = f.name;
+  $('#enh-file-meta').textContent = fmtBytes(f.size);
+  updateEnhNote();
+}
+
+function setEnhEngine(engine) {
+  state.enhEngine = engine;
+  $$('#enh-modes .enh-mode').forEach((el) => el.classList.toggle('on', el.dataset.engine === engine));
+  updateEnhNote();
+}
+
+function bindEnhance() {
+  $('#enh-pick').onclick = enhPick;
+  $('#enh-goto-engine').onclick = () => switchView('engine');
+  $('#enh-modes').addEventListener('click', (e) => {
+    const card = e.target.closest('.enh-mode');
+    if (card) setEnhEngine(card.dataset.engine);
+  });
+  $('#enh-run').onclick = async () => {
+    const btn = $('#enh-run');
+    btn.disabled = true;
+    $('#enh-progress').classList.remove('hidden');
+    $('#enh-done').classList.add('hidden');
+    const scaleRadio = $(`input[name="${state.enhEngine}-scale"]:checked`);
+    const scale = state.enhEngine === 'realsr' ? 4 : (scaleRadio ? Number(scaleRadio.value) : 2);
+    state.aiTask = 'enh';
+    try {
+      const res = await api.ai.enhance({ input: state.enhFile.path, engine: state.enhEngine, scale });
+      state.enhOutput = res.output;
+      $('#enh-done').classList.remove('hidden');
+      $('#enh-frames').textContent = '产出 ' + res.frames + ' 帧';
+      toast('画质增强完成', 'ok');
+    } catch (e) {
+      const msg = cleanIpcError(e);
+      if (msg !== '已取消') toast('增强失败：' + msg, 'err');
+      else toast('任务已取消', 'info');
+    } finally {
+      state.aiTask = null;
+      btn.disabled = false;
+      updateEnhNote();
+    }
+  };
+  $('#enh-cancel').onclick = () => api.ai.cancel();
+  $('#enh-reveal').onclick = () => state.enhOutput && api.fs.reveal(state.enhOutput);
+}
+
+/* AI 任务进度统一分发 */
+function bindAiProgress() {
+  api.ai.onProgress((p) => {
+    const pct = Math.round(p.percent || 0) + '%';
+    if (state.aiTask === 'sub') {
+      $('#sub-progress-label').textContent = p.stage || '';
+      $('#sub-progress-pct').textContent = pct;
+      $('#sub-progress-bar').style.width = pct;
+    } else if (state.aiTask === 'burn') {
+      $('#sub-burn-label').textContent = p.stage || '';
+      $('#sub-burn-pct').textContent = pct;
+      $('#sub-burn-bar').style.width = pct;
+    } else if (state.aiTask === 'enh') {
+      $('#enh-progress-label').textContent = p.stage || '';
+      $('#enh-progress-pct').textContent = pct;
+      $('#enh-progress-bar').style.width = pct;
+      if (p.totalFrames) $('#enh-frames').textContent = `${p.frames || 0} / ${p.totalFrames} 帧`;
+    } else if (state.aiTask === 'lab') {
+      $('#lab-hint').textContent = `${p.stage || '处理中'} ${pct}`;
+    }
+  });
+  api.hub.onProgress((p) => setHubProgress(p));
 }
 
 /* ---------------- account / auth ---------------- */
@@ -904,26 +1328,24 @@ function wireUi() {
     if (state.labFile) toast('该视频无法在本机预览，但导出仍可正常进行', 'err');
   });
   $('#lab-crop').oninput = (e) => { $('#lab-crop-val').textContent = e.target.value + '%'; };
-  $('#lab-mode-auto').onclick = () => {
-    state.labMode = 'crop';
-    $('#lab-mode-auto').classList.add('primary');
-    $('#lab-mode-manual').classList.remove('primary');
-    $$('#lab-algos .panel-item').forEach((x, i) => x.classList.toggle('on', i === 0));
-  };
-  $('#lab-mode-manual').onclick = () => {
-    state.labMode = 'delogo';
-    $('#lab-mode-manual').classList.add('primary');
-    $('#lab-mode-auto').classList.remove('primary');
-    $$('#lab-algos .panel-item').forEach((x, i) => x.classList.toggle('on', i === 1));
-  };
+  $('#lab-mode-auto').onclick = () => setLabMode('crop');
+  $('#lab-mode-manual').onclick = () => setLabMode('delogo');
   $('#lab-algos').addEventListener('click', (e) => {
     const el = e.target.closest('.panel-item');
     if (!el) return;
-    $$('#lab-algos .panel-item').forEach((x) => x.classList.toggle('on', x === el));
     const idx = $$('#lab-algos .panel-item').indexOf(el);
-    state.labMode = idx === 1 ? 'delogo' : 'crop';
+    setLabMode(idx === 1 ? 'delogo' : 'crop');
   });
   $('#lab-original').onchange = (e) => { $('#lab-video').style.filter = e.target.checked ? 'none' : 'saturate(1.05)'; };
+
+  // v2.5 本地 AI
+  bindLabRegions();
+  bindHub();
+  bindSubtitle();
+  bindEnhance();
+  bindAiProgress();
+  setEnhEngine('realsr');
+  setLabMode('crop');
 
   // global keys
   document.addEventListener('keydown', (e) => {

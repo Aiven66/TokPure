@@ -67,5 +67,23 @@ contextBridge.exposeInMainWorld('tokpure', {
     pickFile: () => invoke('lab:pickFile'),
     openPath: (p) => invoke('lab:openPath', p),
     process: (payload) => invoke('lab:process', payload)
+  },
+  hub: {
+    status: () => invoke('hub:status'),
+    install: (kind, id) => invoke('hub:install', kind, id),
+    uninstall: (kind, id) => invoke('hub:uninstall', kind, id),
+    cancel: (id) => invoke('hub:cancel', id),
+    openDir: () => invoke('hub:openDir'),
+    onProgress: (cb) => ipcRenderer.on('hub:progress', (_e, p) => cb(p))
+  },
+  ai: {
+    pickFile: () => invoke('ai:pickFile'),
+    saveSrt: (input, srt) => invoke('ai:saveSrt', { input, srt }),
+    transcribe: (payload) => invoke('ai:transcribe', payload),
+    burn: (payload) => invoke('ai:burn', payload),
+    clean2: (payload) => invoke('ai:clean2', payload),
+    enhance: (payload) => invoke('ai:enhance', payload),
+    cancel: () => invoke('ai:cancel'),
+    onProgress: (cb) => ipcRenderer.on('ai:progress', (_e, p) => cb(p))
   }
 });

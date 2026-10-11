@@ -9,6 +9,9 @@ const tiktok = require('./tiktok');
 const ffmpeg = require('./ffmpeg');
 const Downloader = require('./downloader');
 const auth = require('./auth');
+const enginehub = require('./enginehub');
+const hardware = require('./hardware');
+const aijobs = require('./aijobs');
 
 let mainWindow = null;
 const isMac = process.platform === 'darwin';
@@ -368,8 +371,52 @@ function registerIpc() {
     const base = path.basename(input).replace(/\.[^.]+$/, '');
     const out = path.join(dir, `${base} - clean.mp4`);
     await ffmpeg.cleanupWatermark(input, out, { mode: mode || 'crop', cropPercent: cropPercent || 6, box });
-    return { output: out };
+    return { output };
   });
+
+  // ===================== 本地 AI：引擎底座（R1） =====================
+  ipcMain.handle('hub:status', () => ({ hw: hardware.detect(), ...enginehub.status() }));
+  ipcMain.handle('hub:install', (_e, kind, id) => {
+    const emit = (p) => sendToRenderer('hub:progress', p);
+    const proxy = networkSettings().proxy;
+    if (kind === 'engine') return enginehub.installEngine(id, proxy, emit);
+    return enginehub.installModel(id, proxy, emit);
+  });
+  ipcMain.handle('hub:uninstall', (_e, kind, id) => enginehub.uninstall(kind, id));
+  ipcMain.handle('hub:cancel', (_e, id) => enginehub.cancelInstall(id));
+  ipcMain.handle('hub:openDir', () => shell.openPath(enginehub.status().root));
+
+  // AI 页面通用的文件选择（字幕/增强复用）
+  ipcMain.handle('ai:pickFile', async () => {
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: '选择本地视频',
+      properties: ['openFile'],
+      filters: [{ name: '视频', extensions: ['mp4', 'mov', 'webm', 'mkv'] }]
+    });
+    if (res.canceled || !res.filePaths.length) return null;
+    const p = res.filePaths[0];
+    const st = fs.statSync(p);
+    return { path: p, name: path.basename(p), size: st.size };
+  });
+  ipcMain.handle('ai:saveSrt', async (_e, payload) => {
+    const { input, srt } = payload || {};
+    const base = input ? path.basename(input).replace(/\.[^.]+$/, '') : 'subtitles';
+    const res = await dialog.showSaveDialog(mainWindow, {
+      title: '导出 SRT 字幕',
+      defaultPath: path.join(store.get().downloadDir || app.getPath('downloads'), `${base}.srt`),
+      filters: [{ name: 'SRT 字幕', extensions: ['srt'] }]
+    });
+    if (res.canceled || !res.filePath) return null;
+    fs.writeFileSync(res.filePath, srt, 'utf8');
+    return res.filePath;
+  });
+
+  const aiEmit = (p) => sendToRenderer('ai:progress', p);
+  ipcMain.handle('ai:transcribe', (_e, payload) => aijobs.transcribe(payload, aiEmit));
+  ipcMain.handle('ai:burn', (_e, payload) => aijobs.burnSubtitles(payload, aiEmit));
+  ipcMain.handle('ai:clean2', (_e, payload) => aijobs.cleanRegions(payload, aiEmit));
+  ipcMain.handle('ai:enhance', (_e, payload) => aijobs.enhance(payload, aiEmit));
+  ipcMain.handle('ai:cancel', () => aijobs.cancel());
 }
 
 app.whenReady().then(async () => {

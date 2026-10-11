@@ -59,7 +59,14 @@
     eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
     sortDesc: '<path d="M3 6h10"/><path d="M3 12h7"/><path d="M3 18h4"/><path d="M17 4v16"/><path d="M17 20l-4-4"/><path d="M17 20l4-4"/>',
     chevronsLeft: '<path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/>',
-    chevronsRight: '<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/>'
+    chevronsRight: '<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/>',
+    captions: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 13a2 2 0 1 0 .01 0"/><path d="M14 13a2 2 0 1 0 .01 0"/><path d="M11 13h.01"/><path d="M18 13h.01"/>',
+    box: '<path d="M21 8 12 3 3 8l9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+    stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+    languages: '<path d="M5 8h7"/><path d="M8 5v3"/><path d="M9 8c0 4-2 8-4 10"/><path d="M6 13c2 0 5-1 7-5"/><path d="M13 19c-1.5-3-2-6-2-9"/><path d="M13 10h7"/><path d="m15.5 17 3.5-7 3.5 7"/><path d="M16.5 14h5"/>',
+    zap: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/>',
+    square: '<rect x="4" y="4" width="16" height="16" rx="2"/>',
+    trash2: '<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/>'
   };
 
   const FILL = {
