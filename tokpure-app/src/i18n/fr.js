@@ -214,6 +214,8 @@
 "继续全部": "Tout reprendre",
 "缩放": "Échelle",
 "网络与代理设置": "Paramètres réseau et proxy",
+"收起侧边栏": "Réduire la barre latérale",
+"展开侧边栏": "Développer la barre latérale",
 "网络与节点路由引擎": "Moteur réseau et de routage des nœuds",
 "网络连通正常 · {0}ms": "Réseau connecté · {0}ms",
 "自动裁剪去 Logo": "Recadrage automatique pour retirer le logo",

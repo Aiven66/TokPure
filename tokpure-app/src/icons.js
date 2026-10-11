@@ -57,7 +57,9 @@
     power: '<path d="M12 3v9"/><path d="M6.5 6.5a8 8 0 1 0 11 0"/>',
     save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/>',
     eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
-    sortDesc: '<path d="M3 6h10"/><path d="M3 12h7"/><path d="M3 18h4"/><path d="M17 4v16"/><path d="M17 20l-4-4"/><path d="M17 20l4-4"/>'
+    sortDesc: '<path d="M3 6h10"/><path d="M3 12h7"/><path d="M3 18h4"/><path d="M17 4v16"/><path d="M17 20l-4-4"/><path d="M17 20l4-4"/>',
+    chevronsLeft: '<path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/>',
+    chevronsRight: '<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/>'
   };
 
   const FILL = {

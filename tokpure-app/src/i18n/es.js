@@ -214,6 +214,8 @@
 "继续全部": "Reanudar todo",
 "缩放": "Escala",
 "网络与代理设置": "Configuración de red y proxy",
+"收起侧边栏": "Contraer barra lateral",
+"展开侧边栏": "Expandir barra lateral",
 "网络与节点路由引擎": "Motor de red y enrutamiento de nodos",
 "网络连通正常 · {0}ms": "Red conectada · {0}ms",
 "自动裁剪去 Logo": "Recorte automático para quitar Logo",

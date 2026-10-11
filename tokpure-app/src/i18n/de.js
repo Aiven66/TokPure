@@ -214,6 +214,8 @@
 "继续全部": "Alle fortsetzen",
 "缩放": "Zoom",
 "网络与代理设置": "Netzwerk- & Proxy-Einstellungen",
+"收起侧边栏": "Seitenleiste einklappen",
+"展开侧边栏": "Seitenleiste ausklappen",
 "网络与节点路由引擎": "Netzwerk- & Knoten-Routing-Engine",
 "网络连通正常 · {0}ms": "Netzwerkverbindung OK · {0}ms",
 "自动裁剪去 Logo": "Logo automatisch wegschneiden",

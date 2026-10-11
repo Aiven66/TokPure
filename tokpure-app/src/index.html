@@ -16,33 +16,34 @@
       <button class="z" id="win-max" title="缩放"></button>
     </div>
     <!-- ================= Sidebar ================= -->
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
+      <button class="sidebar-toggle" id="sidebar-toggle" type="button" data-ic="chevronsLeft" data-size="15" aria-label="收起侧边栏" title="收起侧边栏"></button>
       <div style="display:flex;flex-direction:column;gap:14px">
         <div class="brand">
           <img class="brand-logo" id="brand-logo" alt="TokPure" />
           <div>
             <div class="brand-name">TokPure</div>
-            <div class="brand-sub" id="brand-version">v2.4.4</div>
+            <div class="brand-sub" id="brand-version">v2.4.5</div>
           </div>
         </div>
         <nav class="nav" id="nav">
-          <a class="nav-item active" data-view="download">
-            <span class="nav-left"><span data-ic="download"></span><span>URL 抓取与下载</span></span>
+          <a class="nav-item active" data-view="download" aria-label="URL 抓取与下载">
+            <span class="nav-left"><span data-ic="download"></span><span class="nav-label">URL 抓取与下载</span></span>
           </a>
-          <a class="nav-item" data-view="lab">
-            <span class="nav-left"><span data-ic="wand"></span><span>AI 智能去水印</span></span>
+          <a class="nav-item" data-view="lab" aria-label="AI 智能去水印">
+            <span class="nav-left"><span data-ic="wand"></span><span class="nav-label">AI 智能去水印</span></span>
             <span class="nav-badge" id="nav-ffmpeg-badge">Local</span>
           </a>
-          <a class="nav-item" data-view="queue">
-            <span class="nav-left"><span data-ic="queue"></span><span>批量任务队列</span></span>
-            <span class="nav-count" id="nav-queue-count">0</span>
+          <a class="nav-item" data-view="queue" aria-label="批量任务队列">
+            <span class="nav-left"><span data-ic="queue"></span><span class="nav-label">批量任务队列</span></span>
+            <span class="nav-count is-zero" id="nav-queue-count">0</span>
           </a>
-          <a class="nav-item" data-view="library">
-            <span class="nav-left"><span data-ic="library"></span><span>本地媒体库</span></span>
+          <a class="nav-item" data-view="library" aria-label="本地媒体库">
+            <span class="nav-left"><span data-ic="library"></span><span class="nav-label">本地媒体库</span></span>
             <span class="nav-meta" id="nav-lib-size">0 MB</span>
           </a>
-          <a class="nav-item" data-view="network">
-            <span class="nav-left"><span data-ic="network"></span><span>网络与代理设置</span></span>
+          <a class="nav-item" data-view="network" aria-label="网络与代理设置">
+            <span class="nav-left"><span data-ic="network"></span><span class="nav-label">网络与代理设置</span></span>
           </a>
         </nav>
       </div>

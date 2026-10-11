@@ -95,6 +95,30 @@ function switchView(name) {
   if (name === 'queue') refreshQueueUI();
 }
 
+/* ---------------- sidebar collapse / expand ----------------
+   纯渲染器偏好：localStorage 持久化，不经过主进程设置。 */
+const SIDEBAR_KEY = 'tokpure.sidebar';
+function setSidebarCollapsed(collapsed) {
+  const sb = $('#sidebar');
+  const btn = $('#sidebar-toggle');
+  if (!sb || !btn) return;
+  sb.classList.toggle('collapsed', collapsed);
+  btn.innerHTML = ic(collapsed ? 'chevronsRight' : 'chevronsLeft', 15);
+  // 用 setAttribute 而非 .title：i18n 运行时监听 title/aria-label 属性变更并自动翻译
+  const tip = collapsed ? '展开侧边栏' : '收起侧边栏';
+  btn.setAttribute('aria-label', tip);
+  btn.setAttribute('title', tip);
+  try { localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0'); } catch (_) { /* ignore */ }
+}
+function initSidebar() {
+  $('#sidebar-toggle').addEventListener('click', () => {
+    setSidebarCollapsed(!$('#sidebar').classList.contains('collapsed'));
+  });
+  let saved = '0';
+  try { saved = localStorage.getItem(SIDEBAR_KEY) || '0'; } catch (_) { /* ignore */ }
+  setSidebarCollapsed(saved === '1');
+}
+
 /* ---------------- settings ---------------- */
 async function loadSettings() {
   state.settings = await api.settings.get();
@@ -354,7 +378,11 @@ function renderQueue() {
   if (queued) qParts.push(T('排队 {0}', queued));
   if (err) qParts.push(T('失败 {0}', err));
   $('#q-count').textContent = qParts.join(' · ');
-  $('#nav-queue-count').textContent = String(active.length + queued);
+  const navCount = active.length + queued;
+  const navCountEl = $('#nav-queue-count');
+  navCountEl.textContent = String(navCount);
+  // 收起态下 0 不显示红色角标，避免噪音
+  navCountEl.classList.toggle('is-zero', navCount === 0);
   pushWave(totalSpeed);
 
   const recent = state.tasks.filter((t) => t.status === 'done').slice(-3).reverse();
@@ -712,6 +740,7 @@ function wireUi() {
     const item = e.target.closest('.nav-item');
     if (item) switchView(item.dataset.view);
   });
+  initSidebar();
   $('#btn-goto-settings').onclick = () => switchView('network');
   $('#btn-open-folder').onclick = () => api.fs.openFolder();
   $('#btn-open-library').onclick = () => switchView('library');
@@ -904,6 +933,10 @@ function wireUi() {
     if ((e.metaKey || e.ctrlKey) && e.key === '3') { switchView('queue'); e.preventDefault(); }
     if ((e.metaKey || e.ctrlKey) && e.key === '4') { switchView('library'); e.preventDefault(); }
     if ((e.metaKey || e.ctrlKey) && e.key === '5') { switchView('network'); e.preventDefault(); }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+      setSidebarCollapsed(!$('#sidebar').classList.contains('collapsed'));
+      e.preventDefault();
+    }
   });
 }
 

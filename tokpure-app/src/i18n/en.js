@@ -214,6 +214,8 @@
 "继续全部": "Resume all",
 "缩放": "Scale",
 "网络与代理设置": "Network & proxy settings",
+"收起侧边栏": "Collapse sidebar",
+"展开侧边栏": "Expand sidebar",
 "网络与节点路由引擎": "Network & node routing engine",
 "网络连通正常 · {0}ms": "Network connected · {0}ms",
 "自动裁剪去 Logo": "Auto crop to remove Logo",

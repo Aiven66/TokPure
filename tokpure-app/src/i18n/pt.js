@@ -214,6 +214,8 @@
 "继续全部": "Retomar todos",
 "缩放": "Zoom",
 "网络与代理设置": "Configurações de rede e proxy",
+"收起侧边栏": "Recolher barra lateral",
+"展开侧边栏": "Expandir barra lateral",
 "网络与节点路由引擎": "Mecanismo de rede e roteamento de nós",
 "网络连通正常 · {0}ms": "Conectividade de rede normal · {0}ms",
 "自动裁剪去 Logo": "Recorte automático de Logo",
