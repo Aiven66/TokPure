@@ -66,7 +66,12 @@
     languages: '<path d="M5 8h7"/><path d="M8 5v3"/><path d="M9 8c0 4-2 8-4 10"/><path d="M6 13c2 0 5-1 7-5"/><path d="M13 19c-1.5-3-2-6-2-9"/><path d="M13 10h7"/><path d="m15.5 17 3.5-7 3.5 7"/><path d="M16.5 14h5"/>',
     zap: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/>',
     square: '<rect x="4" y="4" width="16" height="16" rx="2"/>',
-    trash2: '<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/>'
+    trash2: '<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/>',
+    scissors: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/>',
+    inbox: '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.5 5.5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.5A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.5z"/>',
+    tags: '<path d="M9 5H2v7l6.3 6.3a2 2 0 0 0 2.8 0l5.2-5.2a2 2 0 0 0 0-2.8L9 5z"/><circle cx="6.5" cy="9.5" r="1.2"/>',
+    skip: '<polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>',
+    keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M8 14h8"/>'
   };
 
   const FILL = {

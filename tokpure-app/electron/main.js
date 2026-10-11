@@ -12,6 +12,7 @@ const auth = require('./auth');
 const enginehub = require('./enginehub');
 const hardware = require('./hardware');
 const aijobs = require('./aijobs');
+const clipai = require('./clipai');
 
 let mainWindow = null;
 const isMac = process.platform === 'darwin';
@@ -417,6 +418,24 @@ function registerIpc() {
   ipcMain.handle('ai:clean2', (_e, payload) => aijobs.cleanRegions(payload, aiEmit));
   ipcMain.handle('ai:enhance', (_e, payload) => aijobs.enhance(payload, aiEmit));
   ipcMain.handle('ai:cancel', () => aijobs.cancel());
+
+  // ===================== AI 批量切片（v2.6） =====================
+  ipcMain.handle('clip:pickFiles', () => clipai.pickFiles());
+  ipcMain.handle('clip:scanDir', () => clipai.scanDir());
+  ipcMain.handle('clip:getConfig', () => clipai.getConfig());
+  ipcMain.handle('clip:saveConfig', (_e, patch) => clipai.saveConfig(patch));
+  ipcMain.handle('clip:getSkus', () => clipai.getSkus());
+  ipcMain.handle('clip:saveSkus', (_e, list) => clipai.saveSkus(list));
+  ipcMain.handle('clip:importCsv', () => clipai.importSkusCsv());
+  ipcMain.handle('clip:exportCsv', () => clipai.exportSkusCsv());
+  ipcMain.handle('clip:analyze', (_e, payload) =>
+    clipai.analyze(payload.files, payload.opts || {}, (p) => sendToRenderer('clip:progress', p)));
+  ipcMain.handle('clip:list', () => clipai.listSources());
+  ipcMain.handle('clip:get', (_e, id) => clipai.getSource(id));
+  ipcMain.handle('clip:candidate', (_e, id, cid, patch) => clipai.updateCandidate(id, cid, patch));
+  ipcMain.handle('clip:remove', (_e, id) => clipai.removeSource(id));
+  ipcMain.handle('clip:render', (_e, opts) => clipai.render(opts || {}, (p) => sendToRenderer('clip:progress', p)));
+  ipcMain.handle('clip:cancel', () => clipai.cancel());
 }
 
 app.whenReady().then(async () => {

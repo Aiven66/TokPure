@@ -85,5 +85,23 @@ contextBridge.exposeInMainWorld('tokpure', {
     enhance: (payload) => invoke('ai:enhance', payload),
     cancel: () => invoke('ai:cancel'),
     onProgress: (cb) => ipcRenderer.on('ai:progress', (_e, p) => cb(p))
+  },
+  clips: {
+    pickFiles: () => invoke('clip:pickFiles'),
+    scanDir: () => invoke('clip:scanDir'),
+    getConfig: () => invoke('clip:getConfig'),
+    saveConfig: (patch) => invoke('clip:saveConfig', patch),
+    getSkus: () => invoke('clip:getSkus'),
+    saveSkus: (list) => invoke('clip:saveSkus', list),
+    importCsv: () => invoke('clip:importCsv'),
+    exportCsv: () => invoke('clip:exportCsv'),
+    analyze: (files, opts) => invoke('clip:analyze', { files, opts }),
+    list: () => invoke('clip:list'),
+    get: (id) => invoke('clip:get', id),
+    candidate: (id, cid, patch) => invoke('clip:candidate', id, cid, patch),
+    remove: (id) => invoke('clip:remove', id),
+    render: (opts) => invoke('clip:render', opts),
+    cancel: () => invoke('clip:cancel'),
+    onProgress: (cb) => ipcRenderer.on('clip:progress', (_e, p) => cb(p))
   }
 });

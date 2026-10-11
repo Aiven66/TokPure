@@ -106,6 +106,11 @@ function switchView(name) {
     if (!state.hub) loadHub();
     else { renderHub(); updateSubModelSelect(); updateEnhNote(); }
   }
+  if (name === 'clips') {
+    initClips();
+    if (!state.hub) loadHub().then(updateClipModelSelect);
+    else updateClipModelSelect();
+  }
 }
 
 /* ---------------- sidebar collapse / expand ----------------
@@ -1045,6 +1050,553 @@ function bindEnhance() {
   $('#enh-reveal').onclick = () => state.enhOutput && api.fs.reveal(state.enhOutput);
 }
 
+/* ---------------- v2.6：AI 批量切片 ---------------- */
+state.clips = {
+  inited: false,
+  files: [],
+  cfg: null,
+  skus: [],
+  sources: [],
+  currentId: null,
+  current: null,
+  filter: 'all',
+  selectedCid: null,
+  busy: null,
+  exportDir: null
+};
+
+const REASON_LABEL = {
+  sku: '命中商品',
+  price: '命中价格',
+  cta: '转化话术',
+  pos: '卖点词',
+  neg: '负向词',
+  filler: '口头禅多',
+  len: '时长不佳',
+  density: '语速异常'
+};
+function clipReasonLabel(code) { return T(REASON_LABEL[code] || code); }
+
+function clipTime(sec) {
+  sec = Math.max(0, Math.round(Number(sec) || 0));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const p = (x) => String(x).padStart(2, '0');
+  return h > 0 ? `${h}:${p(m)}:${p(s)}` : `${p(m)}:${p(s)}`;
+}
+
+function updateClipModelSelect() {
+  const sel = $('#clip-model');
+  if (!sel || !state.hub) return;
+  const cur = sel.value || (state.clips.cfg && state.clips.cfg.modelId) || 'whisper-base';
+  sel.innerHTML = state.hub.models.filter((m) => m.engine === 'whisper').map((m) =>
+    `<option value="${m.id}" ${m.id === cur ? 'selected' : ''}>${esc(m.name)}${m.installed ? ' · 已下载' : ' · 未下载'}</option>`
+  ).join('');
+  updateClipAnalyzeState();
+}
+
+function updateClipAnalyzeState() {
+  const btn = $('#clip-analyze');
+  const hint = $('#clip-hint');
+  if (!btn) return;
+  btn.disabled = !(state.clips.files.length && state.clips.busy !== 'analyze');
+  if (!state.hub) return;
+  const mid = $('#clip-model').value;
+  const m = state.hub.models.find((x) => x.id === mid);
+  const engine = state.hub.engines.find((x) => x.id === 'whisper');
+  const why = !state.clips.files.length ? T('请先添加素材文件')
+    : !(engine && engine.installed) ? T('未安装 Whisper.cpp 引擎')
+    : !(m && m.installed) ? T('模型未下载：{0}', m ? m.name : mid)
+    : T('{0} 个素材待分析', state.clips.files.length);
+  if (hint) hint.textContent = why;
+}
+
+function renderClipFiles() {
+  const wrap = $('#clip-files');
+  if (!state.clips.files.length) {
+    wrap.innerHTML = `<div class="clip-empty"><span>${ic('inbox', 20)}</span><span>${T('还没有素材：点右上角选择视频文件，或直接选择整个素材文件夹（自动递归扫描）。')}</span></div>`;
+  } else {
+    wrap.innerHTML = state.clips.files.map((f, i) => `
+      <div class="clip-file-row">
+        <span class="clip-file-ic">${ic('film', 15)}</span>
+        <span class="clip-file-name" title="${esc(f.path)}">${esc(f.name)}</span>
+        <span class="muted mono">${fmtBytes(f.size)}</span>
+        <button class="btn tiny" data-act="remove-file" data-i="${i}">${ic('x', 13)}</button>
+      </div>`).join('');
+  }
+  updateClipAnalyzeState();
+}
+
+function collectClipCfg() {
+  const num = (id, dft) => {
+    const v = Number($(id).value);
+    return Number.isFinite(v) ? v : dft;
+  };
+  return {
+    modelId: $('#clip-model').value,
+    language: $('#clip-lang').value,
+    minDuration: num('#clip-min', 12),
+    maxDuration: num('#clip-max', 90),
+    targetDuration: num('#clip-target', 35),
+    maxCandidates: num('#clip-maxc', 20),
+    minScore: num('#clip-minscore', 45),
+    autoApprove: num('#clip-auto', 0),
+    leadPad: num('#clip-lead', 0.3),
+    trailPad: num('#clip-trail', 0.5),
+    requireSku: $('#clip-require-sku').checked,
+    positiveWords: $('#clip-words-pos').value,
+    ctaWords: $('#clip-words-cta').value,
+    negativeWords: $('#clip-words-neg').value,
+    burnSubtitles: $('#clip-burn-out').checked,
+    fontSize: num('#clip-fontsize', 18),
+    marginV: num('#clip-marginv', 64)
+  };
+}
+
+function fillClipCfgForm(cfg) {
+  const set = (id, v) => { if ($(id) && v !== undefined) $(id).value = v; };
+  set('#clip-lang', cfg.language);
+  set('#clip-min', cfg.minDuration);
+  set('#clip-max', cfg.maxDuration);
+  set('#clip-target', cfg.targetDuration);
+  set('#clip-maxc', cfg.maxCandidates);
+  set('#clip-minscore', cfg.minScore);
+  set('#clip-auto', cfg.autoApprove);
+  set('#clip-lead', cfg.leadPad);
+  set('#clip-trail', cfg.trailPad);
+  $('#clip-require-sku').checked = !!cfg.requireSku;
+  set('#clip-words-pos', cfg.positiveWords);
+  set('#clip-words-cta', cfg.ctaWords);
+  set('#clip-words-neg', cfg.negativeWords);
+  $('#clip-burn-out').checked = cfg.burnSubtitles !== false;
+  set('#clip-fontsize', cfg.fontSize);
+  set('#clip-marginv', cfg.marginV);
+}
+
+async function clipAddFiles(list) {
+  list.forEach((f) => {
+    if (f && f.path && !state.clips.files.some((x) => x.path === f.path)) state.clips.files.push(f);
+  });
+  renderClipFiles();
+}
+
+/* ---------------- 商品库 ---------------- */
+function renderSkus() {
+  const wrap = $('#clip-sku-list');
+  const rows = state.clips.skus;
+  $('#clip-sku-count').textContent = T('{0} 个商品', rows.length);
+  if (!rows.length) {
+    wrap.innerHTML = `<div class="clip-empty" style="padding:14px"><span>${ic('tags', 18)}</span><span>${T('商品库为空：点「添加商品」或导入 CSV，识别到商品名/别名时会自动关联片段。')}</span></div>`;
+    return;
+  }
+  wrap.innerHTML = `<div class="clip-sku-row clip-sku-head"><span>${T('商品名称')}</span><span>${T('价格')}</span><span>${T('别名（; 分隔）')}</span><span></span></div>` +
+    rows.map((s, i) => `
+      <div class="clip-sku-row" data-i="${i}">
+        <input type="text" data-field="name" value="${esc(s.name)}" placeholder="${T('商品名称')}" />
+        <input type="text" data-field="price" value="${esc(s.price)}" placeholder="29.9" />
+        <input type="text" data-field="aliases" value="${esc((s.aliases || []).join(';'))}" placeholder="${T('剪刀;不锈钢剪')}" />
+        <button class="btn tiny" data-act="sku-del">${ic('x', 13)}</button>
+      </div>`).join('');
+}
+
+async function persistSkusFromTable() {
+  const rows = $$('#clip-sku-list .clip-sku-row[data-i]').map((row) => ({
+    id: (state.clips.skus[Number(row.dataset.i)] || {}).id,
+    name: row.querySelector('[data-field="name"]').value.trim(),
+    price: row.querySelector('[data-field="price"]').value.trim(),
+    aliases: row.querySelector('[data-field="aliases"]').value
+  }));
+  state.clips.skus = await api.clips.saveSkus(rows);
+  renderSkus();
+}
+
+/* ---------------- 素材库 / 候选审核 ---------------- */
+async function loadClipSources(preselect) {
+  state.clips.sources = await api.clips.list();
+  const sel = $('#clip-source-select');
+  if (!state.clips.sources.length) {
+    sel.innerHTML = `<option value="">${T('暂无已分析素材')}</option>`;
+    state.clips.current = null;
+    state.clips.currentId = null;
+    renderCandidates();
+  } else {
+    sel.innerHTML = state.clips.sources.map((s) =>
+      `<option value="${s.id}" ${s.id === state.clips.currentId ? 'selected' : ''}>${esc(s.name)} · ${s.total} ${T('候选')} · ${s.approved}✓</option>`
+    ).join('');
+    const want = preselect || (state.clips.currentId && state.clips.sources.some((s) => s.id === state.clips.currentId) ? state.clips.currentId : state.clips.sources[0].id);
+    state.clips.currentId = want;
+    sel.value = want;
+    await loadClipSource(want);
+  }
+  updateClipApprovedCount();
+  updateClipAnalyzeState();
+}
+
+async function loadClipSource(id) {
+  if (!id) { state.clips.current = null; renderCandidates(); return; }
+  state.clips.current = await api.clips.get(id);
+  state.clips.currentId = id;
+  renderCandidates();
+}
+
+function updateClipApprovedCount() {
+  const n = state.clips.sources.reduce((a, s) => a + (s.approved || 0), 0);
+  $('#clip-approved-count').textContent = T('已通过 {0} 条', n);
+  const btn = $('#clip-export');
+  if (btn) btn.disabled = state.clips.busy === 'render' || n === 0;
+}
+
+function statusLabel(st) {
+  return st === 'approved' ? T('已通过') : st === 'rejected' ? T('已淘汰') : T('待审');
+}
+
+function renderCandidates() {
+  const wrap = $('#clip-candidates');
+  const rec = state.clips.current;
+  if (!rec || !rec.candidates || !rec.candidates.length) {
+    wrap.innerHTML = `<div class="clip-empty"><span>${ic('inbox', 20)}</span><span>${T('该素材还没有候选片段：先批量分析，或调低「最低入选分」后按新规则重算。')}</span></div>`;
+    return;
+  }
+  const list = rec.candidates
+    .filter((c) => state.clips.filter === 'all' || c.status === state.clips.filter)
+    .slice()
+    .sort((a, b) => b.score - a.score);
+  if (!list.length) {
+    wrap.innerHTML = `<div class="clip-empty"><span>${ic('inbox', 20)}</span><span>${T('当前筛选下没有片段。')}</span></div>`;
+    return;
+  }
+  const scoreCls = (n) => (n >= 75 ? 's-hi' : n >= 55 ? 's-md' : 's-lo');
+  wrap.innerHTML = list.map((c) => {
+    const tags = [];
+    (c.reasons || []).forEach((r) => {
+      const cls = r.c === 'neg' || r.c === 'filler' || r.c === 'len' || r.c === 'density' ? 'tag-warn'
+        : r.c === 'sku' ? 'tag-sku' : 'tag-hit';
+      const txt = r.v ? `${clipReasonLabel(r.c)}·${r.v}` : clipReasonLabel(r.c);
+      tags.push(`<span class="clip-tag ${cls}">${esc(txt)}</span>`);
+    });
+    return `
+    <div class="clip-cand st-${c.status} ${state.clips.selectedCid === c.id ? 'sel' : ''}" data-cid="${c.id}">
+      <div class="clip-cand-top">
+        <span class="clip-score ${scoreCls(c.score)}">${c.score}</span>
+        <span class="clip-status st-${c.status}">${statusLabel(c.status)}</span>
+        <span class="clip-tr mono">${clipTime(c.start)} – ${clipTime(c.end)} · ${(c.end - c.start).toFixed(1)}s</span>
+        <span class="clip-tr-edit mono">
+          <input type="number" step="0.1" class="clip-tin" data-field="start" value="${c.start}" aria-label="start" />
+          <i>–</i>
+          <input type="number" step="0.1" class="clip-tin" data-field="end" value="${c.end}" aria-label="end" />
+        </span>
+        <span class="clip-cand-btns">
+          <button class="btn tiny" data-act="preview" title="${T('预览 (I)')}">${ic('play', 13)}</button>
+          <button class="btn tiny cyan" data-act="approve" title="J">${ic('check', 13)} ${T('通过')}</button>
+          <button class="btn tiny danger" data-act="reject" title="K">${ic('x', 13)} ${T('淘汰')}</button>
+        </span>
+      </div>
+      ${tags.length ? `<div class="clip-tags">${tags.join('')}</div>` : ''}
+      <p class="clip-cand-text">${esc(c.text || '')}</p>
+    </div>`;
+  }).join('');
+}
+
+function filteredCandidates() {
+  const rec = state.clips.current;
+  if (!rec) return [];
+  return rec.candidates
+    .filter((c) => state.clips.filter === 'all' || c.status === state.clips.filter)
+    .sort((a, b) => b.score - a.score);
+}
+
+async function previewCandidate(cid, autoplay = true) {
+  const rec = state.clips.current;
+  const c = rec && rec.candidates.find((x) => x.id === cid);
+  if (!c) return;
+  state.clips.selectedCid = cid;
+  const v = $('#clip-video');
+  const url = toFileUrl(rec.source.path);
+  if (v.dataset.src !== url) { v.src = url; v.dataset.src = url; }
+  v.currentTime = c.start;
+  v.dataset.loopEnd = c.end;
+  try { await v.play(); } catch (_) { /* 自动播放被拦时点 I 或卡片 */ }
+  renderCandidates();
+}
+
+async function setCandidateStatus(cid, status) {
+  const rec = state.clips.current;
+  if (!rec) return;
+  await api.clips.candidate(rec.id, cid, { status });
+  const c = rec.candidates.find((x) => x.id === cid);
+  if (c) c.status = status;
+  // 同步素材库汇总
+  const sum = state.clips.sources.find((s) => s.id === rec.id);
+  if (sum) {
+    sum.approved = rec.candidates.filter((x) => x.status === 'approved').length;
+    sum.rejected = rec.candidates.filter((x) => x.status === 'rejected').length;
+  }
+  updateClipApprovedCount();
+  renderCandidates();
+}
+
+function advanceSelection(step = 1) {
+  const list = filteredCandidates();
+  if (!list.length) return null;
+  let idx = list.findIndex((c) => c.id === state.clips.selectedCid);
+  if (idx < 0) idx = step > 0 ? -1 : list.length;
+  idx += step;
+  if (idx < 0 || idx >= list.length) return null;
+  return list[idx];
+}
+
+async function clipTriage(statusOrNext) {
+  if (state.currentView !== 'clips' || state.clips.busy) return;
+  if (!state.clips.selectedCid) {
+    const first = filteredCandidates()[0];
+    if (first) previewCandidate(first.id);
+    return;
+  }
+  if (statusOrNext === 'next') {
+    const n = advanceSelection(1);
+    if (n) previewCandidate(n.id);
+    return;
+  }
+  await setCandidateStatus(state.clips.selectedCid, statusOrNext);
+  // 优先跳到下一条待审
+  const rec = state.clips.current;
+  const rest = rec.candidates
+    .filter((c) => c.status === 'candidate')
+    .sort((a, b) => b.score - a.score);
+  const next = rest[0] || advanceSelection(1);
+  if (next) previewCandidate(next.id);
+}
+
+/* ---------------- 分析 / 导出 ---------------- */
+async function clipAnalyze(rerunCurrent) {
+  let files;
+  if (rerunCurrent) {
+    if (!state.clips.current) return;
+    files = [{ path: state.clips.current.source.path, name: state.clips.current.source.name, size: state.clips.current.source.size }];
+  } else {
+    files = state.clips.files.slice();
+    if (!files.length) { toast(T('请先添加素材文件'), 'err'); return; }
+  }
+  const opts = collectClipCfg();
+  if (rerunCurrent) opts.rerunRules = true;
+  state.clips.cfg = await api.clips.saveConfig(opts);
+  state.clips.busy = 'analyze';
+  $('#clip-analyze').disabled = true;
+  $('#clip-cancel-analyze').classList.remove('hidden');
+  $('#clip-progress').classList.remove('hidden');
+  $('#clip-progress-bar').style.width = '0%';
+  try {
+    await api.clips.analyze(files, opts);
+    if (rerunCurrent) await loadClipSource(state.clips.currentId);
+    else {
+      state.clips.files = [];
+      renderClipFiles();
+      await loadClipSources();
+    }
+    toast(rerunCurrent ? T('已按新规则重算') : T('批量分析完成'), 'ok');
+  } catch (e) {
+    const msg = cleanIpcError(e);
+    if (msg === '已取消') toast(T('任务已取消'), 'info');
+    else toast(T('分析失败：{0}', msg), 'err');
+  } finally {
+    state.clips.busy = null;
+    $('#clip-cancel-analyze').classList.add('hidden');
+    $('#clip-progress-label').textContent = '';
+    updateClipAnalyzeState();
+  }
+}
+
+async function clipExport() {
+  const opts = collectClipCfg();
+  opts.batchName = $('#clip-batch-name').value.trim();
+  state.clips.busy = 'render';
+  $('#clip-export').disabled = true;
+  $('#clip-export-cancel').classList.remove('hidden');
+  $('#clip-export-progress').classList.remove('hidden');
+  $('#clip-export-bar').style.width = '0%';
+  try {
+    const res = await api.clips.render(opts);
+    state.clips.exportDir = res.dir;
+    $('#clip-reveal-dir').disabled = false;
+    await loadClipSources();
+    toast(T('已导出 {0} 条片段', res.count), 'ok');
+    api.fs.reveal(res.dir);
+  } catch (e) {
+    const msg = cleanIpcError(e);
+    if (msg === '已取消') toast(T('任务已取消'), 'info');
+    else toast(T('导出失败：{0}', msg), 'err');
+  } finally {
+    state.clips.busy = null;
+    $('#clip-export-cancel').classList.add('hidden');
+    updateClipApprovedCount();
+  }
+}
+
+async function initClips() {
+  if (state.clips.inited) return;
+  state.clips.inited = true;
+  const [cfg, skus] = await Promise.all([api.clips.getConfig(), api.clips.getSkus()]);
+  state.clips.cfg = cfg;
+  state.clips.skus = skus;
+  fillClipCfgForm(cfg);
+  renderSkus();
+  renderClipFiles();
+  await loadClipSources();
+}
+
+function bindClips() {
+  api.clips.onProgress((p) => {
+    const pct = Math.round(p.percent || 0) + '%';
+    if (state.clips.busy === 'analyze') {
+      $('#clip-progress-label').textContent = `${p.name ? p.name + ' · ' : ''}${p.stage || ''}${p.total ? `（${p.index}/${p.total}）` : ''}`;
+      $('#clip-progress-pct').textContent = pct;
+      $('#clip-progress-bar').style.width = pct;
+    } else if (state.clips.busy === 'render') {
+      $('#clip-export-label').textContent = `${p.name || ''} ${p.stage || ''}`;
+      $('#clip-export-pct').textContent = pct;
+      $('#clip-export-bar').style.width = pct;
+    }
+  });
+
+  $('#clip-pick').onclick = async () => clipAddFiles(await api.clips.pickFiles());
+  $('#clip-scan').onclick = async () => {
+    const list = await api.clips.scanDir();
+    await clipAddFiles(list);
+    if (list.length) toast(T('已扫描到 {0} 个视频', list.length), 'ok');
+  };
+  $('#clip-goto-engine').onclick = () => switchView('engine');
+  $('#clip-clear').onclick = () => { state.clips.files = []; renderClipFiles(); };
+  $('#clip-model').onchange = updateClipAnalyzeState;
+  $('#clip-analyze').onclick = () => clipAnalyze(false);
+  $('#clip-cancel-analyze').onclick = () => api.clips.cancel();
+
+  $('#clip-files').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'remove-file') {
+      state.clips.files.splice(Number(b.dataset.i), 1);
+      renderClipFiles();
+    }
+  });
+
+  $('#clip-save-rules').onclick = async () => {
+    state.clips.cfg = await api.clips.saveConfig(collectClipCfg());
+    toast(T('规则已保存'), 'ok');
+  };
+
+  $('#clip-sku-add').onclick = async () => {
+    state.clips.skus.push({ id: '', name: '', price: '', aliases: [] });
+    renderSkus();
+    const rows = $$('#clip-sku-list .clip-sku-row[data-i]');
+    if (rows.length) rows[rows.length - 1].querySelector('[data-field="name"]').focus();
+  };
+  $('#clip-sku-list').addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'sku-del') {
+      const row = b.closest('.clip-sku-row[data-i]');
+      state.clips.skus.splice(Number(row.dataset.i), 1);
+      state.clips.skus = await api.clips.saveSkus(state.clips.skus);
+      renderSkus();
+    }
+  });
+  $('#clip-sku-list').addEventListener('change', persistSkusFromTable);
+  $('#clip-sku-csv').onclick = async () => {
+    const r = await api.clips.importCsv();
+    if (r) { state.clips.skus = await api.clips.getSkus(); renderSkus(); toast(T('已导入 {0} 个，共 {1} 个商品', r.added, r.total), 'ok'); }
+  };
+  $('#clip-sku-export').onclick = async () => {
+    const p = await api.clips.exportCsv();
+    if (p) toast(T('CSV 已导出'), 'ok');
+  };
+
+  $('#clip-source-select').onchange = (e) => loadClipSource(e.target.value);
+  $('#clip-filter').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    $$('#clip-filter button').forEach((x) => x.classList.toggle('on', x === b));
+    state.clips.filter = b.dataset.filter;
+    renderCandidates();
+  });
+  $('#clip-rerun').onclick = () => clipAnalyze(true);
+  $('#clip-remove-source').onclick = async () => {
+    if (!state.clips.currentId) return;
+    if (!window.confirm(T('删除该素材的片段库？原始视频不会被删除，可重新分析。'))) return;
+    await api.clips.remove(state.clips.currentId);
+    state.clips.currentId = null;
+    await loadClipSources();
+  };
+
+  $('#clip-candidates').addEventListener('click', async (e) => {
+    const card = e.target.closest('.clip-cand');
+    if (!card) return;
+    const cid = card.dataset.cid;
+    const b = e.target.closest('button[data-act]');
+    if (b) {
+      if (b.dataset.act === 'preview') previewCandidate(cid);
+      if (b.dataset.act === 'approve') await clipTriageFromCard(cid, 'approved');
+      if (b.dataset.act === 'reject') await clipTriageFromCard(cid, 'rejected');
+      return;
+    }
+    previewCandidate(cid);
+  });
+  $('#clip-candidates').addEventListener('change', async (e) => {
+    const inp = e.target.closest('input.clip-tin');
+    if (!inp) return;
+    const card = inp.closest('.clip-cand');
+    const rec = state.clips.current;
+    const c = rec.candidates.find((x) => x.id === card.dataset.cid);
+    const patch = {};
+    patch[inp.dataset.field] = Number(inp.value);
+    await api.clips.candidate(rec.id, c.id, patch);
+    Object.assign(c, (await api.clips.get(rec.id)).candidates.find((x) => x.id === c.id));
+    renderCandidates();
+  });
+
+  const vid = $('#clip-video');
+  vid.addEventListener('timeupdate', () => {
+    if (vid.dataset.loopEnd && vid.currentTime >= Number(vid.dataset.loopEnd)) vid.pause();
+  });
+  vid.addEventListener('loadedmetadata', () => {
+    if (state.clips.selectedCid && state.clips.current) {
+      const c = state.clips.current.candidates.find((x) => x.id === state.clips.selectedCid);
+      if (c) { vid.currentTime = c.start; vid.dataset.loopEnd = c.end; }
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (state.currentView !== 'clips') return;
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (['input', 'textarea', 'select'].includes(tag)) return;
+    if (state.clips.busy) return;
+    const key = e.key.toLowerCase();
+    if (key === 'j') { e.preventDefault(); clipTriage('approved'); }
+    else if (key === 'k') { e.preventDefault(); clipTriage('rejected'); }
+    else if (key === 'enter') { e.preventDefault(); clipTriage('next'); }
+    else if (key === 'i') {
+      e.preventDefault();
+      const cid = state.clips.selectedCid;
+      if (!cid) { const first = filteredCandidates()[0]; if (first) previewCandidate(first.id); return; }
+      if (vid.paused) previewCandidate(cid);
+      else vid.pause();
+    }
+  });
+
+  $('#clip-export').onclick = clipExport;
+  $('#clip-export-cancel').onclick = () => api.clips.cancel();
+  $('#clip-reveal-dir').onclick = () => state.clips.exportDir && api.fs.reveal(state.clips.exportDir);
+}
+
+/** 卡片按钮审核后自动跳到下一条待审 */
+async function clipTriageFromCard(cid, status) {
+  await setCandidateStatus(cid, status);
+  const pending = state.clips.current.candidates
+    .filter((c) => c.status === 'candidate')
+    .sort((a, b) => b.score - a.score);
+  if (pending[0]) previewCandidate(pending[0].id);
+}
+
 /* AI 任务进度统一分发 */
 function bindAiProgress() {
   api.ai.onProgress((p) => {
@@ -1135,6 +1687,11 @@ function wireUi() {
     renderFfmpegLabels();
     renderQueue();
     if (state.libraryFiles) renderLibrary();
+    if (state.clips && state.clips.inited) {
+      renderSkus();
+      renderClipFiles();
+      loadClipSources();
+    }
   });
 
   // window controls
@@ -1343,6 +1900,7 @@ function wireUi() {
   bindHub();
   bindSubtitle();
   bindEnhance();
+  bindClips();
   bindAiProgress();
   setEnhEngine('realsr');
   setLabMode('crop');

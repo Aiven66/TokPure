@@ -177,6 +177,16 @@ const MODELS = [
     rel: path.join('whisper', 'ggml-small.bin'),
     urls: mirrors(HF_WHISPER + 'ggml-small.bin'),
     note: '466MB · 准确率更高，耗时约 Base 的 3 倍'
+  },
+  {
+    id: 'whisper-turbo',
+    engine: 'whisper',
+    name: 'Whisper Turbo（粤语/中英带货推荐）',
+    lang: '中文 / 粤语 / English',
+    size: 575 * 1024 * 1024,
+    rel: path.join('whisper', 'ggml-large-v3-turbo-q5_0.bin'),
+    urls: mirrors(HF_WHISPER + 'ggml-large-v3-turbo-q5_0.bin'),
+    note: '575MB · large-v3-turbo 量化版，普通话/粤语/英语识别明显更准，M 芯片速度接近 small'
   }
 ];
 
