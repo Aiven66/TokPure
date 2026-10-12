@@ -494,5 +494,8 @@
 "已按新规则重算": "Recalculado com as novas regras",
 "分析失败：{0}": "Falha na análise: {0}",
 "已导出 {0} 条片段": "{0} clipes exportados",
-"NEW": "NOVO"
+"NEW": "NOVO",
+  "已用 {0}": "Tempo decorrido {0}",
+  "已用 {0} · 预计剩余 {1}": "Decorrido {0} · restante aprox. {1}",
+  "长视频首次本地识别需要数分钟，请耐心等待；完成后再次分析将直接命中缓存。": "Vídeos longos demoram vários minutos na primeira transcrição local. Deixe rodando; as análises seguintes usam o cache.",
 });

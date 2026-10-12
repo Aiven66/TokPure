@@ -66,15 +66,40 @@ const DEFAULT_CFG = {
   burnSubtitles: true,       // 导出时烧录字幕
   fontSize: 18,
   marginV: 64,
-  positiveWords: '好用 划算 便宜 超值 加厚 实用 性价比 爆款 热卖 好评 回购 正品 质量好 显瘦 百搭 亲肤 透气 买一送一 福利 优惠 立减 返场 闭眼入 不踩雷 great deal worth value must-have best seller good quality',
-  ctaWords: '上车 落单 下单 拍一发 点击 链接 小黄车 购物车 马上下单 赶紧拍 去抢 库存 只剩 包邮 限时 秒杀 抢购 直播间 评论区 拍1号 1号链接 买它 即刻 buy now order now link below add to cart shopping cart limited offer limited time offer free shipping click the link grab yours',
-  negativeWords: '别买 翻车 不好用 踩雷 智商税 退款 退货 差评 质量差 骗人 假货 亏了 don\'t buy waste of money scam bad quality'
+  positiveWords: '好用 划算 便宜 超值 加厚 实用 性价比 爆款 热卖 好评 回购 正品 质量好 显瘦 百搭 亲肤 透气 买一送一 福利 优惠 立减 返场 闭眼入 不踩雷 好味 美味 新鲜 干净 好料 足料 真材实料 厚肉 厚身 陈年 正宗 地道 干货 饱满 推荐 放心 有保证 值得 好正 抵买 抵食 平靓正 放心买 great deal worth value must-have best seller good quality tasty delicious fresh authentic genuine premium recommended juicy high quality great value well worth it',
+  ctaWords: '上车 落单 下单 拍一发 点击 链接 小黄车 购物车 马上下单 赶紧拍 去抢 库存 只剩 包邮 限时 秒杀 抢购 直播间 评论区 拍1号 1号链接 买它 即刻 上架 拍下 带走 带回家 送礼 礼盒 免费送 再送 送给你 特价 优惠价 福利价 折扣 半价 入手 试一试 试下 心动 手慢无 截单 出货 现货 拍低 带走啦 帮衬 钟意 buy now order now link below add to cart shopping cart limited offer limited time offer free shipping click the link grab yours shop now free gift on sale while stocks last check it out',
+  negativeWords: '别买 翻车 不好用 踩雷 智商税 退款 退货 差评 质量差 骗人 假货 亏了 呃人 垃圾 过期 变质 不值 中伏 不要买 唔好买 别乱买 don\'t buy waste of money scam bad quality not worth stay away from',
+  _vocabVersion: 2
 };
+
+/**
+ * 老用户 store 里存的是旧词库，把新版本新增词条非破坏性合并进去（幂等、去重）。
+ * 注意：必须用“存储值自带的版本号”判断——merge 默认值后的 cfg 永远带最新版本号，
+ * 不能用合并结果里的 _vocabVersion 做守卫，否则迁移永远被跳过。
+ */
+function migrateVocab(stored) {
+  const base = { ...DEFAULT_CFG, ...(stored || {}) };
+  const storedV = Number((stored && stored._vocabVersion) || 0);
+  if (storedV >= DEFAULT_CFG._vocabVersion) return base;
+  const merge = (curStr, defStr) => {
+    const curWords = String(curStr || '').split(/\s+/).filter(Boolean);
+    const have = new Set(curWords.map((w) => w.toLowerCase()));
+    const add = String(defStr || '').split(/\s+/).filter((w) => !have.has(w.toLowerCase()));
+    return [...curWords, ...add].join(' ');
+  };
+  return {
+    ...base,
+    positiveWords: merge(base.positiveWords, DEFAULT_CFG.positiveWords),
+    ctaWords: merge(base.ctaWords, DEFAULT_CFG.ctaWords),
+    negativeWords: merge(base.negativeWords, DEFAULT_CFG.negativeWords),
+    _vocabVersion: DEFAULT_CFG._vocabVersion
+  };
+}
 
 function getConfig() {
   ensureDirs();
-  const cfg = readJsonSafe(path.join(rootDir(), 'config.json'), null);
-  return { ...DEFAULT_CFG, ...(cfg || {}) };
+  const stored = readJsonSafe(path.join(rootDir(), 'config.json'), null);
+  return migrateVocab(stored);
 }
 function saveConfig(patch) {
   const next = { ...getConfig(), ...(patch || {}) };
@@ -316,7 +341,8 @@ async function runWhisper(wav, model, modelId, language, jobDir, onLine, skus) {
     '-m', model, '-f', wav,
     '-l', decodeLang,
     '-oj', '-of', outBase,
-    '-t', String(Math.max(2, Math.min(8, (os.cpus() || []).length - 2 || 4)))
+    '-t', String(Math.max(2, Math.min(8, (os.cpus() || []).length - 2 || 4))),
+    '-pp' // 必须显式开启，否则 1.9.x 全程不打印 progress（长视频看起来像卡在识别阶段）
   ];
   if (modelSupportsYue(modelId, model)) {
     // 大模型：更大 beam 提准确率；-sow 按词切句避免 turbo 加提示词后段落整段合并
@@ -364,7 +390,13 @@ const T2S_MAP = {
   冇: '没', 喺: '在', 啲: '些', 亂: '乱', 買: '买', 雜: '杂', 閉: '闭',
   會: '会', 圓: '圆', 幣: '币', 號: '号', 鏈: '链', 欄: '栏', 銀: '银',
   碼: '码', 現: '现', 發: '发', 熱: '热', 銷: '销', 評: '评', 論: '论',
-  區: '区', 間: '间'
+  區: '区', 間: '间',
+  // 真实粤语直播语料补充（v2.6.2）
+  陳: '陈', 鹽: '盐', 鮮: '鲜', 乾: '干', 淨: '净', 禮: '礼', 試: '试',
+  場: '场', 鍾: '钟', 鐘: '钟', 動: '动', 夠: '够', 嚟: '来', 哋: '们',
+  櫃: '柜', 飯: '饭', 曬: '晒', 產: '产',
+  養: '养', 臘: '腊', 腸: '肠', 網: '网', 紅: '红', 標: '标', 準: '准',
+  過: '过', 還: '还', 這: '这', 講: '讲', 幫: '帮', 襯: '衬'
 };
 function t2s(s) {
   return String(s || '').replace(/[^\x00-\x7F]/g, (ch) => T2S_MAP[ch] || ch);
@@ -372,6 +404,14 @@ function t2s(s) {
 function normText(s) {
   return t2s(String(s || '')).toLowerCase();
 }
+
+/* 对比语境抑制：「其他直播间买的」「别的评论区看到的」里的直播间/评论区不是自家 CTA，
+   真实直播大量用这种对比句，会造成假锚点。仅在统计 CTA 命中时摘除。 */
+const CMP_CTX_RE = /(其他|其它|别的|人家|人们|外面|人地|第二|出边|出面)[^，。,.！!？?；;]{0,8}(直播间|评论区|小黄车|购物车)/g;
+function ctaText(low) {
+  return String(low || '').replace(CMP_CTX_RE, ' ');
+}
+const CMP_PENALTY_RE = /(做对比|做對比|对比一下|對比一下|来对比|來對比|做比较|做比較|其他(直播间|直播間|人买|人買|店|家)|别的(直播间|人买|店|家))/;
 
 /* 中文数字价格：二十九块九 / 一百九十九蚊 / 二十九個九 → 29.9 / 199 / 29.9 */
 const ZH_DIGIT = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
@@ -453,9 +493,9 @@ function matchPrices(text) {
 /* 英文多词短语必须整体匹配（否则 buy/quality 等单词会在无关句子里误命中）。
    短语命中后从文本中摘除，再统计中文词 / 英文单词。 */
 const PHRASE_BOOK = {
-  cta: ['limited time offer', 'click the link', 'add to cart', 'shopping cart', 'order now', 'free shipping', 'buy now', 'link below', 'grab yours', 'limited offer'],
-  pos: ['great deal', 'best seller', 'good quality', 'must have', 'must-have'],
-  neg: ["don't buy", 'do not buy', 'waste of money', 'bad quality']
+  cta: ['limited time offer', 'click the link', 'add to cart', 'shopping cart', 'order now', 'free shipping', 'buy now', 'link below', 'grab yours', 'limited offer', 'shop now', 'free gift', 'on sale', 'while stocks last', 'check it out'],
+  pos: ['great deal', 'best seller', 'good quality', 'must have', 'must-have', 'high quality', 'great value', 'worth every penny', 'well worth it'],
+  neg: ["don't buy", 'do not buy', 'waste of money', 'bad quality', 'not worth', 'stay away from']
 };
 const vocabCache = new Map();
 function buildVocab(cfgStr, phrases) {
@@ -499,7 +539,7 @@ function scoreWindow(segs, winStart, winEnd, cfg, skus) {
 
   const skuHits = matchSkus(low, skus);
   const prices = matchPrices(low);
-  const cta = countTerms(low, buildVocab(cfg.ctaWords, PHRASE_BOOK.cta));
+  const cta = countTerms(ctaText(low), buildVocab(cfg.ctaWords, PHRASE_BOOK.cta));
   const pos = countTerms(low, buildVocab(cfg.positiveWords, PHRASE_BOOK.pos));
   const neg = countTerms(low, buildVocab(cfg.negativeWords, PHRASE_BOOK.neg));
   const fillers = (low.match(FILLER_RE) || []).length;
@@ -528,6 +568,12 @@ function scoreWindow(segs, winStart, winEnd, cfg, skus) {
   if (fillers) {
     score -= Math.min(8, fillers);
     reasons.push({ c: 'filler' });
+  }
+  // 纯对比展示（“拿剪刀做对比/其他直播间买的”）没有报价，不成片；
+  // 有价格对比（“别家399我们199”）的窗口不受影响。
+  if (!prices.length && CMP_PENALTY_RE.test(low)) {
+    score -= 14;
+    reasons.push({ c: 'cmp' });
   }
 
   const dur = winEnd - winStart;
@@ -576,7 +622,7 @@ function buildCandidates(segments, silences, probe, cfg, skus) {
     const low = normText(s.text);
     const skuHits = matchSkus(low, skus);
     const prices = matchPrices(low);
-    const cta = countTerms(low, ctaVocab);
+    const cta = countTerms(ctaText(low), ctaVocab);
     const neg = countTerms(low, negVocab).n;
     return { hasAnchor: skuHits.length > 0 || prices.length > 0 || cta.n > 0, hits: skuHits.length + prices.length + cta.n, neg };
   });
@@ -587,30 +633,64 @@ function buildCandidates(segments, silences, probe, cfg, skus) {
     if (!segFeat[i].hasAnchor) return;
     let l = i;
     let r = i;
-    let padL = 0;
-    let padR = 0;
+    let gapL = 0;     // 本侧距上一个命中句连续跨越的无命中时长（秒）
+    let gapR = 0;
+    let padSecs = 0;  // 窗口内无命中内容总时长（防闲聊稀释）
     const durOf = () => segments[r].end - segments[l].start;
     const fits = (nl, nr) => segments[nr].end - segments[nl].start <= cfg.maxDuration;
-    // 扩张原则：
+    // 扩张原则（按“时间”而非句数：turbo 切出的句子常只有 0.8-2s）：
     // 1) 优先并入有命中的相邻句（把同一段话术吃完整）；
-    // 2) 中间允许跨越至多 2 个无命中句去接续后面的命中句（短停顿不断簇）；
-    // 3) 时长不足最短值时再用无命中句做缓冲，避免把大段闲聊卷进成片。
+    // 2) 两个命中簇之间允许跨越无命中内容去接续（每句≤6s、累计≤10s、无负向词），
+    //    连续直播几乎没有静音停顿，软销话术（送礼/试吃）常夹在报价句之间；
+    // 3) 时长不足最短值时再用无命中句做缓冲（每句≤8s、缓冲总时长≤20s），
+    //    17s 长闲聊句因超时长永远不会被并入，最终还有最低分过滤兜底。
+    const BRIDGE_SECS = 10;
+    const PAD_SECS_MAX = 20;
+    const hitWithin = (j, dir) => {
+      let k = j;
+      let cum = 0;
+      while (cum < BRIDGE_SECS) {
+        if (k < 0 || k >= segments.length) return false;
+        const d = segments[k].end - segments[k].start;
+        if (segFeat[k].neg > 0 || d > 6) return false;
+        if (segFeat[k].hits > 0) return true;
+        cum += d;
+        k += dir;
+      }
+      return false;
+    };
     while (durOf() < cfg.maxDuration && (l > 0 || r < segments.length - 1)) {
       const canL = l > 0 && fits(l - 1, r);
       const canR = r < segments.length - 1 && fits(l, r + 1);
-      const hL = canL ? segFeat[l - 1].hits : -1;
-      const hR = canR ? segFeat[r + 1].hits : -1;
-      const shortGapL = canL && (segments[l - 1].end - segments[l - 1].start) <= 6;
-      const shortGapR = canR && (segments[r + 1].end - segments[r + 1].start) <= 6;
-      const bridgeL = canL && hL === 0 && shortGapL && (l - 2 >= 0 && segFeat[l - 2].hits > 0);
-      const bridgeR = canR && hR === 0 && shortGapR && (r + 2 <= segments.length - 1 && segFeat[r + 2].hits > 0);
-      // 含负向词的句子不并入相邻窗口（避免带货段吃到“别买/假货/翻车”）；
-      // 不足最短时长时每侧最多补 1 句无命中内容做缓冲。
-      const okL = canL && segFeat[l - 1].neg === 0 && (hL > 0 || bridgeL || (durOf() < cfg.minDuration && padL < 1));
-      const okR = canR && segFeat[r + 1].neg === 0 && (hR > 0 || bridgeR || (durOf() < cfg.minDuration && padR < 1));
+      const jL = l - 1;
+      const jR = r + 1;
+      const hL = canL ? segFeat[jL].hits : -1;
+      const hR = canR ? segFeat[jR].hits : -1;
+      const dL = canL ? segments[jL].end - segments[jL].start : 0;
+      const dR = canR ? segments[jR].end - segments[jR].start : 0;
+      // 含负向词的句子不并入相邻窗口（避免带货段吃到“别买/假货/翻车”）。
+      const mergeL = canL && segFeat[jL].neg === 0 && hL > 0;
+      const mergeR = canR && segFeat[jR].neg === 0 && hR > 0;
+      const bridgeL = canL && !mergeL && segFeat[jL].neg === 0 && dL <= 6 &&
+        gapL + dL <= BRIDGE_SECS && hitWithin(jL, -1);
+      const bridgeR = canR && !mergeR && segFeat[jR].neg === 0 && dR <= 6 &&
+        gapR + dR <= BRIDGE_SECS && hitWithin(jR, 1);
+      const padL = canL && !mergeL && !bridgeL && segFeat[jL].neg === 0 && dL <= 8 &&
+        durOf() < cfg.minDuration && padSecs + dL <= PAD_SECS_MAX;
+      const padR = canR && !mergeR && !bridgeR && segFeat[jR].neg === 0 && dR <= 8 &&
+        durOf() < cfg.minDuration && padSecs + dR <= PAD_SECS_MAX;
+      const okL = mergeL || bridgeL || padL;
+      const okR = mergeR || bridgeR || padR;
       if (!okL && !okR) break;
-      if (okL && (!okR || hL >= hR)) { l -= 1; padL = hL > 0 ? 0 : padL + 1; }
-      else { r += 1; padR = hR > 0 ? 0 : padR + 1; }
+      if (okL && (!okR || hL >= hR)) {
+        l -= 1;
+        if (hL > 0) gapL = 0;
+        else { gapL += dL; padSecs += dL; }
+      } else {
+        r += 1;
+        if (hR > 0) gapR = 0;
+        else { gapR += dR; padSecs += dR; }
+      }
     }
     const winSegs = segments.slice(l, r + 1);
     const rawStart = Math.max(0, winSegs[0].start - Number(cfg.leadPad || 0));
@@ -637,6 +717,9 @@ function buildCandidates(segments, silences, probe, cfg, skus) {
   kept.sort((a, b) => a.start - b.start);
   return kept
     .filter((w) => w.score >= cfg.minScore)
+    // 成片必须有转化钩子（报价或 CTA）；只有商品名的讲解/故事段不切片，
+    // 除非分极高（≥60，即多商品+多正向词的强种草段）。
+    .filter((w) => w.prices.length || w.reasons.some((r) => r.c === 'cta') || w.score >= 60)
     .filter((w) => !(cfg.requireSku && !w.skuIds.length))
     .filter((w) => !(w.negCount > 0 && !w.skuIds.length))
     .slice(0, cfg.maxCandidates)
@@ -713,14 +796,36 @@ async function analyze(files, opts = {}, onProgress) {
 
       const model = hub.modelPath(cfg.modelId || 'whisper-base');
       let whisperPct = 8;
-      onProgress({ stage: cfg.language === 'yue' ? '语音识别中（粤语）' : '语音识别中', percent: span(whisperPct), index: i + 1, total: files.length, name: meta.name });
-      const { segments, languageUsed } = await runWhisper(wav, model, cfg.modelId || 'whisper-base', cfg.language || 'auto', jobDir, (line) => {
-        const m = line.match(/progress\s*=\s*(\d+)/i);
-        if (m) {
-          whisperPct = 8 + Math.min(78, Number(m[1]) * 0.7);
-          onProgress({ stage: cfg.language === 'yue' ? '语音识别中（粤语）' : '语音识别中', percent: span(whisperPct), index: i + 1, total: files.length, name: meta.name });
-        }
-      }, skus);
+      let asrProgress = 0; // whisper 自报的 0-100（长视频首个窗口前可能长时间为 0）
+      const asrStart = Date.now();
+      const asrStage = cfg.language === 'yue' ? '语音识别中（粤语）' : '语音识别中';
+      // Turbo 实测约 0.4 倍实时：超过 5 分钟的素材给明确等待提示，避免误判“卡死”
+      const longHint = probe.duration > 300 ? 'longAsr' : '';
+      const emitAsr = () => {
+        const elapsed = Math.round((Date.now() - asrStart) / 1000);
+        let eta = 0;
+        if (asrProgress >= 3) eta = Math.max(0, Math.round(elapsed * (100 / asrProgress - 1)));
+        onProgress({
+          stage: asrStage, percent: span(whisperPct), index: i + 1, total: files.length, name: meta.name,
+          asrElapsed: elapsed, asrEta: eta, hint: longHint
+        });
+      };
+      emitAsr();
+      // 心跳：模型加载 + 首个 30s 窗口约 20-60s 没有 progress 行，也要让用户看到时间在走
+      const heartbeat = setInterval(emitAsr, 3000);
+      let segments, languageUsed;
+      try {
+        ({ segments, languageUsed } = await runWhisper(wav, model, cfg.modelId || 'whisper-base', cfg.language || 'auto', jobDir, (line) => {
+          const m = line.match(/progress\s*=\s*(\d+)/i);
+          if (m) {
+            asrProgress = Number(m[1]);
+            whisperPct = 8 + Math.min(78, asrProgress * 0.7);
+            emitAsr();
+          }
+        }, skus));
+      } finally {
+        clearInterval(heartbeat);
+      }
       checkCanceled();
 
       onProgress({ stage: '检测停顿', percent: span(88), index: i + 1, total: files.length, name: meta.name });

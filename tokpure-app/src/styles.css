@@ -1426,6 +1426,19 @@ label.lbl {
   overflow: hidden;
 }
 .meter > i { display: block; height: 100%; border-radius: 9999px; transition: width 0.3s; }
+#clip-progress-bar { position: relative; background: linear-gradient(90deg, var(--primary), var(--secondary)); }
+#clip-progress-bar.meter-pulse::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 100%);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: meter-sweep 1.4s linear infinite;
+}
+@keyframes meter-sweep {
+  0% { background-position: -40% 0; }
+  100% { background-position: 140% 0; }
+}
 
 .ua-option {
   display: flex;

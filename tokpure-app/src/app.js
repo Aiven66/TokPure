@@ -1403,6 +1403,9 @@ async function clipAnalyze(rerunCurrent) {
     state.clips.busy = null;
     $('#clip-cancel-analyze').classList.add('hidden');
     $('#clip-progress-label').textContent = '';
+    $('#clip-progress-time').textContent = '';
+    $('#clip-progress-hint').textContent = '';
+    $('#clip-progress-bar').classList.remove('meter-pulse');
     updateClipAnalyzeState();
   }
 }
@@ -1451,7 +1454,22 @@ function bindClips() {
     if (state.clips.busy === 'analyze') {
       $('#clip-progress-label').textContent = `${p.name ? p.name + ' · ' : ''}${p.stage || ''}${p.total ? `（${p.index}/${p.total}）` : ''}`;
       $('#clip-progress-pct').textContent = pct;
-      $('#clip-progress-bar').style.width = pct;
+      const bar = $('#clip-progress-bar');
+      bar.style.width = pct;
+      // ASR 阶段（8%-86%）进度可能长时间不动（30s 一个识别窗口）：显示耗时/预计剩余并加脉冲动画
+      const inAsr = /语音识别/.test(p.stage || '');
+      bar.classList.toggle('meter-pulse', inAsr);
+      const timeEl = $('#clip-progress-time');
+      if (inAsr && Number.isFinite(p.asrElapsed)) {
+        const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+        timeEl.textContent = p.asrEta > 0
+          ? T('已用 {0} · 预计剩余 {1}', fmt(p.asrElapsed), fmt(p.asrEta))
+          : T('已用 {0}', fmt(p.asrElapsed));
+      } else if (!inAsr) {
+        timeEl.textContent = '';
+      }
+      $('#clip-progress-hint').textContent = inAsr && p.hint === 'longAsr'
+        ? T('长视频首次本地识别需要数分钟，请耐心等待；完成后再次分析将直接命中缓存。') : '';
     } else if (state.clips.busy === 'render') {
       $('#clip-export-label').textContent = `${p.name || ''} ${p.stage || ''}`;
       $('#clip-export-pct').textContent = pct;

@@ -494,5 +494,8 @@
 "已按新规则重算": "Re-run with new rules completed",
 "分析失败：{0}": "Analysis failed: {0}",
 "已导出 {0} 条片段": "Exported {0} clips",
-"NEW": "NEW"
+"NEW": "NEW",
+  "已用 {0}": "Elapsed {0}",
+  "已用 {0} · 预计剩余 {1}": "Elapsed {0} · about {1} left",
+  "长视频首次本地识别需要数分钟，请耐心等待；完成后再次分析将直接命中缓存。": "Long videos take several minutes for the first local transcription. Keep it running; later analyses reuse the cache.",
 });
