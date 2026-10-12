@@ -272,21 +272,60 @@ async function detectSilence(input, noiseDb, minDur) {
   return list.sort((a, b) => a.start - b.start);
 }
 
-/* ---------------- Whisper 识别（结果解析复用 aijobs 的逻辑） ---------------- */
-async function runWhisper(wav, model, language, jobDir, onLine) {
+/* ---------------- Whisper 识别 ---------------- */
+/* 实测（77s 粤语带货素材，CER 对比）：
+   tiny/base/small 传 -l yue 会输出乱码 → 退回 zh 解码（CER≈38.8%）；
+   medium 以上（含 large-v3-turbo）支持 yue，配合粤语 initial prompt，
+   CER 降到 24.9%（繁體粵語：嘅/唔/唔好/即刻 等口语字可保留）。
+   zh/en 同样加带货场景提示词，商品名同音错字明显减少。 */
+function modelSupportsYue(modelId, modelPath) {
+  const s = `${modelId || ''} ${path.basename(modelPath || '')}`.toLowerCase();
+  return /turbo|large|medium/.test(s);
+}
+function buildWhisperPrompt(language, skus) {
+  const base = {
+    zh: '以下是直播带货口播，包含商品名称、原价、到手价、包邮、点击链接、马上下单、限时优惠、库存不多、买它等话术。',
+    yue: '以下係粵語直播帶貨口播，包含商品名稱、原價、到手價、包郵、一號連結、即刻落單、限時優惠、貨源唔多、快啲搶、買佢等講法。',
+    en: 'The following is a live shopping stream pitch with product names, original price, deal price, free shipping, click the link, order now, limited time offer, limited stock.'
+  };
+  let p = base[language] || base.zh + ' ' + base.en;
+  // 把商品库名称/别名注入提示词，引导专有名词识别（厨房剪/藍牙耳機/品牌名）
+  const terms = [];
+  (skus || []).forEach((sku) => {
+    [sku.name, ...(sku.aliases || [])].forEach((n) => {
+      const t = String(n || '').trim();
+      if (t && t.length >= 2 && !terms.includes(t)) terms.push(t);
+    });
+  });
+  if (terms.length) {
+    p += language === 'en' ? ' Products: ' + terms.slice(0, 16).join(', ') + '.'
+      : ' 商品：' + terms.slice(0, 16).join('、') + '。';
+  }
+  return p.slice(0, 600);
+}
+async function runWhisper(wav, model, modelId, language, jobDir, onLine, skus) {
   const bin = hub.engineBin('whisper');
   if (!bin) throw new Error('未安装 Whisper.cpp 引擎，请先到「桌面引擎」下载');
   if (!model) throw new Error('未安装识别模型，请先到「桌面引擎」下载模型（粤语建议 Turbo）');
   const outBase = path.join(jobDir, 'result');
-  // Whisper 多语模型没有独立的粤语解码端：实测 -l yue 会输出乱码，
-  // 粤语统一以 zh 提示解码（输出繁体中文字幕，规则匹配做简繁归一）。
-  const decodeLang = language === 'yue' ? 'zh' : (language && language !== 'auto' ? language : 'auto');
+  const useYue = language === 'yue' && modelSupportsYue(modelId, model);
+  // 小模型无粤语解码端：yue 退回 zh（输出繁体，规则侧做简繁归一）
+  const decodeLang = language === 'yue' ? (useYue ? 'yue' : 'zh')
+    : (language && language !== 'auto' ? language : 'auto');
   const args = [
     '-m', model, '-f', wav,
     '-l', decodeLang,
     '-oj', '-of', outBase,
     '-t', String(Math.max(2, Math.min(8, (os.cpus() || []).length - 2 || 4)))
   ];
+  if (modelSupportsYue(modelId, model)) {
+    // 大模型：更大 beam 提准确率；-sow 按词切句避免 turbo 加提示词后段落整段合并
+    args.push('-bs', '8', '-sow');
+  }
+  // 场景 initial prompt（粤语增益最大，zh/en 同音错字也明显减少）
+  if (decodeLang !== 'auto') {
+    args.push('--prompt', buildWhisperPrompt(language === 'yue' ? (useYue ? 'yue' : 'zh') : decodeLang, skus));
+  }
   await runCmd(bin, args, { onLine });
   const data = JSON.parse(fs.readFileSync(outBase + '.json', 'utf8'));
   const rows = Array.isArray(data.transcription) ? data.transcription : [];
@@ -300,7 +339,8 @@ async function runWhisper(wav, model, language, jobDir, onLine) {
     end: toSec(r.timestamps && r.timestamps.to),
     text: String(r.text || '').trim()
   })).filter((s) => s.text && s.end > s.start);
-  return { segments, languageUsed: language === 'yue' ? 'yue→zh' : decodeLang };
+  const languageUsed = language === 'yue' ? (useYue ? 'yue' : 'yue→zh') : decodeLang;
+  return { segments, languageUsed };
 }
 
 /* ---------------- 规则引擎 ---------------- */
@@ -642,7 +682,10 @@ async function analyze(files, opts = {}, onProgress) {
 
       if (!opts.force && fs.existsSync(cachePath)) {
         const cached = readJsonSafe(cachePath, null);
-        if (cached && Array.isArray(cached.candidates) && fs.existsSync(meta.path)) {
+        // 模型或识别语言变化（如 tiny 换 Turbo、普通话改粤语）时缓存作废，重新 ASR
+        const asrStale = cached && cached.asr
+          && (cached.asr.modelId !== (cfg.modelId || 'whisper-base') || cached.asr.language !== (cfg.language || 'auto'));
+        if (cached && Array.isArray(cached.candidates) && fs.existsSync(meta.path) && !asrStale) {
           // 规则/商品库变化时可直接重算候选（不重新 ASR）
           if (opts.rerunRules) {
             cached.candidates = buildCandidates(cached.asr.segments, cached.silences, cached.probe, cfg, skus);
@@ -671,13 +714,13 @@ async function analyze(files, opts = {}, onProgress) {
       const model = hub.modelPath(cfg.modelId || 'whisper-base');
       let whisperPct = 8;
       onProgress({ stage: cfg.language === 'yue' ? '语音识别中（粤语）' : '语音识别中', percent: span(whisperPct), index: i + 1, total: files.length, name: meta.name });
-      const { segments, languageUsed } = await runWhisper(wav, model, cfg.language || 'auto', jobDir, (line) => {
+      const { segments, languageUsed } = await runWhisper(wav, model, cfg.modelId || 'whisper-base', cfg.language || 'auto', jobDir, (line) => {
         const m = line.match(/progress\s*=\s*(\d+)/i);
         if (m) {
           whisperPct = 8 + Math.min(78, Number(m[1]) * 0.7);
-          onProgress({ stage: '语音识别中', percent: span(whisperPct), index: i + 1, total: files.length, name: meta.name });
+          onProgress({ stage: cfg.language === 'yue' ? '语音识别中（粤语）' : '语音识别中', percent: span(whisperPct), index: i + 1, total: files.length, name: meta.name });
         }
-      });
+      }, skus);
       checkCanceled();
 
       onProgress({ stage: '检测停顿', percent: span(88), index: i + 1, total: files.length, name: meta.name });
