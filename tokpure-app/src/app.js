@@ -1057,35 +1057,9 @@ state.clips = {
   cfg: null,
   skus: [],
   sources: [],
-  currentId: null,
-  current: null,
-  filter: 'all',
-  selectedCid: null,
   busy: null,
   exportDir: null
 };
-
-const REASON_LABEL = {
-  sku: '命中商品',
-  price: '命中价格',
-  cta: '转化话术',
-  pos: '卖点词',
-  neg: '负向词',
-  filler: '口头禅多',
-  len: '时长不佳',
-  density: '语速异常',
-  visual: '画面无效'
-};
-function clipReasonLabel(code) { return T(REASON_LABEL[code] || code); }
-
-function clipTime(sec) {
-  sec = Math.max(0, Math.round(Number(sec) || 0));
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  const p = (x) => String(x).padStart(2, '0');
-  return h > 0 ? `${h}:${p(m)}:${p(s)}` : `${p(m)}:${p(s)}`;
-}
 
 function updateClipModelSelect() {
   const sel = $('#clip-model');
@@ -1101,27 +1075,28 @@ function updateClipAnalyzeState() {
   const btn = $('#clip-analyze');
   const hint = $('#clip-hint');
   if (!btn) return;
-  btn.disabled = !(state.clips.files.length && state.clips.busy !== 'analyze');
+  const hasWork = state.clips.files.length || state.clips.sources.length;
+  btn.disabled = !(hasWork && state.clips.busy !== 'analyze');
   if (!state.hub) return;
   const mid = $('#clip-model').value;
   const m = state.hub.models.find((x) => x.id === mid);
   const engine = state.hub.engines.find((x) => x.id === 'whisper');
-  const why = !state.clips.files.length ? T('请先添加素材文件')
+  const why = !hasWork ? T('请先添加素材文件')
     : !(engine && engine.installed) ? T('未安装 Whisper.cpp 引擎')
     : !(m && m.installed) ? T('模型未下载：{0}', m ? m.name : mid)
-    : T('{0} 个素材待分析', state.clips.files.length);
+    : state.clips.files.length ? T('{0} 个素材待分析', state.clips.files.length)
+    : T('重新分析已导入素材');
   if (hint) hint.textContent = why;
 }
 
 const ROLE_BADGE = { hook: '钩子库', intro: '介绍库', price: '价格库' };
-const HOOK_BADGE = { funny: '金句钩子', question: '提问钩子', price: '价格钩子', sellingPoint: '卖点开头', soft: '软性带货' };
 
 function renderClipFiles() {
   const wrap = $('#clip-files');
-  if (!state.clips.files.length) {
+  if (!state.clips.files.length && !state.clips.sources.length) {
     wrap.innerHTML = `<div class="clip-empty"><span>${ic('inbox', 20)}</span><span>${T('还没有素材：点右上角选择视频文件，或直接选择整个素材文件夹（自动递归扫描）。')}</span></div>`;
   } else {
-    wrap.innerHTML = state.clips.files.map((f, i) => `
+    const staged = state.clips.files.map((f, i) => `
       <div class="clip-file-row">
         <span class="clip-file-ic">${ic('film', 15)}</span>
         <span class="clip-file-name" title="${esc(f.path)}">${esc(f.name)}</span>
@@ -1129,6 +1104,15 @@ function renderClipFiles() {
         <span class="muted mono">${fmtBytes(f.size)}</span>
         <button class="btn tiny" data-act="remove-file" data-i="${i}">${ic('x', 13)}</button>
       </div>`).join('');
+    const analyzed = state.clips.sources.map((s) => `
+      <div class="clip-file-row">
+        <span class="clip-file-ic">${ic('checkCircle', 15)}</span>
+        <span class="clip-file-name" title="${esc(s.path)}">${esc(s.name)}</span>
+        ${s.structureRole ? `<span class="clip-tag tag-hit">${esc(T(ROLE_BADGE[s.structureRole] || s.structureRole))}</span>` : ''}
+        <span class="muted">${T('已分析')} · ${s.total} ${T('候选')}</span>
+        <button class="btn tiny" data-act="remove-source" data-id="${s.id}" title="${T('删除素材库')}">${ic('x', 13)}</button>
+      </div>`).join('');
+    wrap.innerHTML = staged + analyzed;
   }
   updateClipAnalyzeState();
 }
@@ -1275,183 +1259,21 @@ async function persistSkusFromTable() {
   renderSkus();
 }
 
-/* ---------------- 素材库 / 候选审核 ---------------- */
-async function loadClipSources(preselect) {
+/* ---------------- 素材库 ---------------- */
+async function loadClipSources() {
   state.clips.sources = await api.clips.list();
-  const sel = $('#clip-source-select');
-  if (!state.clips.sources.length) {
-    sel.innerHTML = `<option value="">${T('暂无已分析素材')}</option>`;
-    state.clips.current = null;
-    state.clips.currentId = null;
-    renderCandidates();
-  } else {
-    sel.innerHTML = state.clips.sources.map((s) =>
-      `<option value="${s.id}" ${s.id === state.clips.currentId ? 'selected' : ''}>${esc(s.name)}${s.structureRole ? ' · ' + T(ROLE_BADGE[s.structureRole] || s.structureRole) : ''} · ${s.total} ${T('候选')} · ${s.approved}✓</option>`
-    ).join('');
-    const want = preselect || (state.clips.currentId && state.clips.sources.some((s) => s.id === state.clips.currentId) ? state.clips.currentId : state.clips.sources[0].id);
-    state.clips.currentId = want;
-    sel.value = want;
-    await loadClipSource(want);
-  }
-  updateClipApprovedCount();
+  renderClipFiles();
   updateClipAnalyzeState();
 }
 
-async function loadClipSource(id) {
-  if (!id) { state.clips.current = null; renderCandidates(); return; }
-  state.clips.current = await api.clips.get(id);
-  state.clips.currentId = id;
-  const roleSel = $('#clip-role-select');
-  if (roleSel) roleSel.value = state.clips.current.structureRole || '';
-  renderCandidates();
-}
-
-function updateClipApprovedCount() {
-  const n = state.clips.sources.reduce((a, s) => a + (s.approved || 0), 0);
-  $('#clip-approved-count').textContent = T('已通过 {0} 条', n);
-  const btn = $('#clip-export');
-  if (btn) btn.disabled = state.clips.busy === 'render' || n === 0;
-}
-
-function statusLabel(st) {
-  return st === 'approved' ? T('已通过') : st === 'rejected' ? T('已淘汰') : T('待审');
-}
-
-function renderCandidates() {
-  const wrap = $('#clip-candidates');
-  const rec = state.clips.current;
-  if (!rec || !rec.candidates || !rec.candidates.length) {
-    wrap.innerHTML = `<div class="clip-empty"><span>${ic('inbox', 20)}</span><span>${T('该素材还没有候选片段：先批量分析，或调低「最低入选分」后按新规则重算。')}</span></div>`;
-    return;
-  }
-  const list = rec.candidates
-    .filter((c) => state.clips.filter === 'all' || c.status === state.clips.filter)
-    .slice()
-    .sort((a, b) => b.score - a.score);
-  if (!list.length) {
-    wrap.innerHTML = `<div class="clip-empty"><span>${ic('inbox', 20)}</span><span>${T('当前筛选下没有片段。')}</span></div>`;
-    return;
-  }
-  const scoreCls = (n) => (n >= 75 ? 's-hi' : n >= 55 ? 's-md' : 's-lo');
-  wrap.innerHTML = list.map((c) => {
-    const tags = [];
-    (c.reasons || []).forEach((r) => {
-      const cls = r.c === 'neg' || r.c === 'filler' || r.c === 'len' || r.c === 'density' ? 'tag-warn'
-        : r.c === 'sku' ? 'tag-sku' : 'tag-hit';
-      const txt = r.v ? `${clipReasonLabel(r.c)}·${r.v}` : clipReasonLabel(r.c);
-      tags.push(`<span class="clip-tag ${cls}">${esc(txt)}</span>`);
-    });
-    if (c.visual && c.visual.valid === false) {
-      tags.push(`<span class="clip-tag tag-warn">${esc(T('画面无效'))}·${esc(T('黑屏/纯色/静止'))}</span>`);
-    }
-    if (c.hookType && c.hookType !== 'normal') {
-      tags.push(`<span class="clip-tag tag-sku">${esc(T(HOOK_BADGE[c.hookType] || c.hookType))}${c.hookHit ? '·' + esc(c.hookHit) : ''}</span>`);
-    }
-    return `
-    <div class="clip-cand st-${c.status} ${state.clips.selectedCid === c.id ? 'sel' : ''}" data-cid="${c.id}">
-      <div class="clip-cand-top">
-        <span class="clip-score ${scoreCls(c.score)}">${c.score}</span>
-        <span class="clip-status st-${c.status}">${statusLabel(c.status)}</span>
-        <span class="clip-tr mono">${clipTime(c.start)} – ${clipTime(c.end)} · ${(c.end - c.start).toFixed(1)}s</span>
-        <span class="clip-tr-edit mono">
-          <input type="number" step="0.1" class="clip-tin" data-field="start" value="${c.start}" aria-label="start" />
-          <i>–</i>
-          <input type="number" step="0.1" class="clip-tin" data-field="end" value="${c.end}" aria-label="end" />
-        </span>
-        <span class="clip-cand-btns">
-          <button class="btn tiny" data-act="preview" title="${T('预览 (I)')}">${ic('play', 13)}</button>
-          <button class="btn tiny cyan" data-act="approve" title="J">${ic('check', 13)} ${T('通过')}</button>
-          <button class="btn tiny danger" data-act="reject" title="K">${ic('x', 13)} ${T('淘汰')}</button>
-        </span>
-      </div>
-      ${tags.length ? `<div class="clip-tags">${tags.join('')}</div>` : ''}
-      <p class="clip-cand-text">${esc(c.text || '')}</p>
-    </div>`;
-  }).join('');
-}
-
-function filteredCandidates() {
-  const rec = state.clips.current;
-  if (!rec) return [];
-  return rec.candidates
-    .filter((c) => state.clips.filter === 'all' || c.status === state.clips.filter)
-    .sort((a, b) => b.score - a.score);
-}
-
-async function previewCandidate(cid, autoplay = true) {
-  const rec = state.clips.current;
-  const c = rec && rec.candidates.find((x) => x.id === cid);
-  if (!c) return;
-  state.clips.selectedCid = cid;
-  const v = $('#clip-video');
-  const url = toFileUrl(rec.source.path);
-  if (v.dataset.src !== url) { v.src = url; v.dataset.src = url; }
-  v.currentTime = c.start;
-  v.dataset.loopEnd = c.end;
-  try { await v.play(); } catch (_) { /* 自动播放被拦时点 I 或卡片 */ }
-  renderCandidates();
-}
-
-async function setCandidateStatus(cid, status) {
-  const rec = state.clips.current;
-  if (!rec) return;
-  await api.clips.candidate(rec.id, cid, { status });
-  const c = rec.candidates.find((x) => x.id === cid);
-  if (c) c.status = status;
-  // 同步素材库汇总
-  const sum = state.clips.sources.find((s) => s.id === rec.id);
-  if (sum) {
-    sum.approved = rec.candidates.filter((x) => x.status === 'approved').length;
-    sum.rejected = rec.candidates.filter((x) => x.status === 'rejected').length;
-  }
-  updateClipApprovedCount();
-  renderCandidates();
-}
-
-function advanceSelection(step = 1) {
-  const list = filteredCandidates();
-  if (!list.length) return null;
-  let idx = list.findIndex((c) => c.id === state.clips.selectedCid);
-  if (idx < 0) idx = step > 0 ? -1 : list.length;
-  idx += step;
-  if (idx < 0 || idx >= list.length) return null;
-  return list[idx];
-}
-
-async function clipTriage(statusOrNext) {
-  if (state.currentView !== 'clips' || state.clips.busy) return;
-  if (!state.clips.selectedCid) {
-    const first = filteredCandidates()[0];
-    if (first) previewCandidate(first.id);
-    return;
-  }
-  if (statusOrNext === 'next') {
-    const n = advanceSelection(1);
-    if (n) previewCandidate(n.id);
-    return;
-  }
-  await setCandidateStatus(state.clips.selectedCid, statusOrNext);
-  // 优先跳到下一条待审
-  const rec = state.clips.current;
-  const rest = rec.candidates
-    .filter((c) => c.status === 'candidate')
-    .sort((a, b) => b.score - a.score);
-  const next = rest[0] || advanceSelection(1);
-  if (next) previewCandidate(next.id);
-}
-
 /* ---------------- 分析 / 导出 ---------------- */
-async function clipAnalyze(rerunCurrent) {
-  let files;
-  if (rerunCurrent) {
-    if (!state.clips.current) return;
-    files = [{ path: state.clips.current.source.path, name: state.clips.current.source.name, size: state.clips.current.source.size }];
-  } else {
-    files = state.clips.files.slice();
-    if (!files.length) { toast(T('请先添加素材文件'), 'err'); return; }
+async function clipAnalyze() {
+  let files = state.clips.files.slice();
+  if (!files.length && state.clips.sources.length) {
+    files = state.clips.sources.map((s) => ({ path: s.path, name: s.name, size: s.size }));
   }
+  if (!files.length) { toast(T('请先添加素材文件'), 'err'); return; }
   const opts = collectClipCfg();
-  if (rerunCurrent) opts.rerunRules = true;
   state.clips.cfg = await api.clips.saveConfig(opts);
   state.clips.busy = 'analyze';
   $('#clip-analyze').disabled = true;
@@ -1460,13 +1282,10 @@ async function clipAnalyze(rerunCurrent) {
   $('#clip-progress-bar').style.width = '0%';
   try {
     await api.clips.analyze(files, opts);
-    if (rerunCurrent) await loadClipSource(state.clips.currentId);
-    else {
-      state.clips.files = [];
-      renderClipFiles();
-      await loadClipSources();
-    }
-    toast(rerunCurrent ? T('已按新规则重算') : T('批量分析完成'), 'ok');
+    state.clips.files = [];
+    renderClipFiles();
+    await loadClipSources();
+    toast(T('批量分析完成'), 'ok');
   } catch (e) {
     const msg = cleanIpcError(e);
     if (msg === '已取消') toast(T('任务已取消'), 'info');
@@ -1508,7 +1327,7 @@ async function clipExport(composeMode = false) {
     state.clips.busy = null;
     $('#clip-export-cancel').classList.add('hidden');
     if (composeBtn) composeBtn.disabled = false;
-    updateClipApprovedCount();
+    $('#clip-export').disabled = false;
   }
 }
 
@@ -1577,15 +1396,20 @@ function bindClips() {
   $('#clip-goto-engine').onclick = () => switchView('engine');
   $('#clip-clear').onclick = () => { state.clips.files = []; renderClipFiles(); };
   $('#clip-model').onchange = updateClipAnalyzeState;
-  $('#clip-analyze').onclick = () => clipAnalyze(false);
+  $('#clip-analyze').onclick = () => clipAnalyze();
   $('#clip-cancel-analyze').onclick = () => api.clips.cancel();
 
-  $('#clip-files').addEventListener('click', (e) => {
+  $('#clip-files').addEventListener('click', async (e) => {
     const b = e.target.closest('button[data-act]');
     if (!b) return;
     if (b.dataset.act === 'remove-file') {
       state.clips.files.splice(Number(b.dataset.i), 1);
       renderClipFiles();
+    }
+    if (b.dataset.act === 'remove-source') {
+      await api.clips.remove(b.dataset.id);
+      await loadClipSources();
+      toast(T('素材库已删除'), 'ok');
     }
   });
 
@@ -1620,84 +1444,6 @@ function bindClips() {
     if (p) toast(T('CSV 已导出'), 'ok');
   };
 
-  $('#clip-source-select').onchange = (e) => loadClipSource(e.target.value);
-  $('#clip-role-select').onchange = async (e) => {
-    if (!state.clips.currentId) return;
-    await api.clips.setSourceRole(state.clips.currentId, e.target.value);
-    await loadClipSources(state.clips.currentId);
-    toast(T('素材分类已更新，候选已按新角色重算'), 'ok');
-  };
-  $('#clip-filter').addEventListener('click', (e) => {
-    const b = e.target.closest('button');
-    if (!b) return;
-    $$('#clip-filter button').forEach((x) => x.classList.toggle('on', x === b));
-    state.clips.filter = b.dataset.filter;
-    renderCandidates();
-  });
-  $('#clip-rerun').onclick = () => clipAnalyze(true);
-  $('#clip-remove-source').onclick = async () => {
-    if (!state.clips.currentId) return;
-    if (!window.confirm(T('删除该素材的片段库？原始视频不会被删除，可重新分析。'))) return;
-    await api.clips.remove(state.clips.currentId);
-    state.clips.currentId = null;
-    await loadClipSources();
-  };
-
-  $('#clip-candidates').addEventListener('click', async (e) => {
-    const card = e.target.closest('.clip-cand');
-    if (!card) return;
-    const cid = card.dataset.cid;
-    const b = e.target.closest('button[data-act]');
-    if (b) {
-      if (b.dataset.act === 'preview') previewCandidate(cid);
-      if (b.dataset.act === 'approve') await clipTriageFromCard(cid, 'approved');
-      if (b.dataset.act === 'reject') await clipTriageFromCard(cid, 'rejected');
-      return;
-    }
-    previewCandidate(cid);
-  });
-  $('#clip-candidates').addEventListener('change', async (e) => {
-    const inp = e.target.closest('input.clip-tin');
-    if (!inp) return;
-    const card = inp.closest('.clip-cand');
-    const rec = state.clips.current;
-    const c = rec.candidates.find((x) => x.id === card.dataset.cid);
-    const patch = {};
-    patch[inp.dataset.field] = Number(inp.value);
-    await api.clips.candidate(rec.id, c.id, patch);
-    Object.assign(c, (await api.clips.get(rec.id)).candidates.find((x) => x.id === c.id));
-    renderCandidates();
-  });
-
-  const vid = $('#clip-video');
-  vid.addEventListener('timeupdate', () => {
-    if (vid.dataset.loopEnd && vid.currentTime >= Number(vid.dataset.loopEnd)) vid.pause();
-  });
-  vid.addEventListener('loadedmetadata', () => {
-    if (state.clips.selectedCid && state.clips.current) {
-      const c = state.clips.current.candidates.find((x) => x.id === state.clips.selectedCid);
-      if (c) { vid.currentTime = c.start; vid.dataset.loopEnd = c.end; }
-    }
-  });
-
-  document.addEventListener('keydown', (e) => {
-    if (state.currentView !== 'clips') return;
-    const tag = (e.target.tagName || '').toLowerCase();
-    if (['input', 'textarea', 'select'].includes(tag)) return;
-    if (state.clips.busy) return;
-    const key = e.key.toLowerCase();
-    if (key === 'j') { e.preventDefault(); clipTriage('approved'); }
-    else if (key === 'k') { e.preventDefault(); clipTriage('rejected'); }
-    else if (key === 'enter') { e.preventDefault(); clipTriage('next'); }
-    else if (key === 'i') {
-      e.preventDefault();
-      const cid = state.clips.selectedCid;
-      if (!cid) { const first = filteredCandidates()[0]; if (first) previewCandidate(first.id); return; }
-      if (vid.paused) previewCandidate(cid);
-      else vid.pause();
-    }
-  });
-
   $('#clip-subcolor').addEventListener('click', (e) => {
     const b = e.target.closest('.clip-swatch');
     if (!b) return;
@@ -1722,15 +1468,6 @@ function bindClips() {
   };
   $('#clip-export-cancel').onclick = () => api.clips.cancel();
   $('#clip-reveal-dir').onclick = () => state.clips.exportDir && api.fs.reveal(state.clips.exportDir);
-}
-
-/** 卡片按钮审核后自动跳到下一条待审 */
-async function clipTriageFromCard(cid, status) {
-  await setCandidateStatus(cid, status);
-  const pending = state.clips.current.candidates
-    .filter((c) => c.status === 'candidate')
-    .sort((a, b) => b.score - a.score);
-  if (pending[0]) previewCandidate(pending[0].id);
 }
 
 /* AI 任务进度统一分发 */

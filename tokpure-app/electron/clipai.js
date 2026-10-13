@@ -68,7 +68,7 @@ const DEFAULT_CFG = {
   burnSubtitles: true,       // 导出时烧录字幕
   fontSize: 20,              // 与默认风格模版「活力带货」对齐
   marginV: 84,
-  subtitleColor: 'yellow',   // 字幕颜色预设：white|yellow|green|cyan|pink
+  subtitleColor: 'white',    // 字幕颜色预设：white|yellow|green|cyan|pink
   polishStyle: true,         // 成片增强：BGM 垫底 + whoosh/pop 音效 + 花字弹出
   bgmVolume: 0.5,            // BGM 原始音量（人声侧链闪避后仍可清晰听到垫底）
   styleTemplate: 'vital-sale', // 爆款风格模版：字幕/剪辑/贴片/BGM 成套生效
@@ -1253,19 +1253,7 @@ function removeSource(id) {
 }
 
 /* ---------------- 阶段3：批量导出 ---------------- */
-function srtTime(sec) {
-  if (!isFinite(sec) || sec < 0) sec = 0;
-  const ms = Math.round(sec * 1000);
-  const p = (x, l = 2) => String(x).padStart(l, '0');
-  return `${p(ms / 3600000 | 0)}:${p((ms % 3600000) / 60000 | 0)}:${p((ms % 60000) / 1000 | 0)},${p(ms % 1000, 3)}`;
-}
-/* 字幕按显示宽度折行（中文/全角记 2，西文记 1）。
-   libass 实际字宽约为 Fontsize 的 2.65px，按视频宽度与字号反推每行容量。 */
-function subtitleMaxWidth(fontSize, videoWidth) {
-  const w = videoWidth || 720;
-  const fs = Number(fontSize) || 18;
-  return Math.max(14, Math.floor((w * 0.86) / (fs * 1.325)));
-}
+/* 字幕按显示宽度折行（中文/全角记 2，西文记 1）。 */
 function wrapSubtitle(text, maxWidth = 23) {
   const str = String(text).replace(/\s+/g, ' ').trim();
   // 中文/全角记 2，数字与大写字母实测接近全角也记 2，其余西文记 1
@@ -1286,19 +1274,6 @@ function wrapSubtitle(text, maxWidth = 23) {
   if (line) out.push(line);
   return out.join('\n');
 }
-function buildClipSrt(segments, start, end, maxWidth) {
-  const lines = [];
-  let idx = 1;
-  segments.forEach((s) => {
-    const a = Math.max(s.start, start);
-    const b = Math.min(s.end, end);
-    if (b - a < 0.12) return;
-    lines.push(`${idx}\n${srtTime(a - start)} --> ${srtTime(b - start)}\n${wrapSubtitle(s.text.trim(), maxWidth)}\n`);
-    idx += 1;
-  });
-  return lines.join('\n');
-}
-
 /* ---------------- 字幕颜色预设（描边固定黑，保证任何底色下可读） ---------------- */
 const SUBTITLE_COLORS = {
   white: '#FFFFFF',
@@ -1317,6 +1292,95 @@ function assColor(hex) {
   const b = parseInt(v.slice(4, 6), 16);
   const p = (x) => x.toString(16).toUpperCase().padStart(2, '0');
   return `&H00${p(b)}${p(g)}${p(r)}`;
+}
+
+/* ---------------- 开拍式深度字幕：逐句大字 + 关键词双色强调 + 弹入动效（ASS） ---------------- */
+// 强调命中：价格/数字/CTA 词/高转化短语 → 自动换模版强调色
+function emphRegex(cfg) {
+  const words = [...new Set(String(cfg.ctaWords || '').split(/\s+/).filter((w) => w.length >= 2))]
+    .slice(0, 60)
+    .concat(FX_PHRASES)
+    .map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const parts = [
+    '[¥$]\\s?\\d+(?:\\.\\d+)?',
+    '\\d+(?:\\.\\d+)?\\s?(?:元|块|折|蚊|瓶|罐|包|盒|件|个|只|片|份)',
+    '\\d{2,}'
+  ];
+  return new RegExp('(' + parts.concat(words).join('|') + ')', 'g');
+}
+
+const ASS_ANIM = {
+  pop: '{\\fad(60,80)\\t(0,100,\\fscx112\\fscy112)\\t(100,200,\\fscx100\\fscy100)}',
+  popBig: '{\\fad(40,80)\\t(0,90,\\fscx120\\fscy120)\\t(90,210,\\fscx100\\fscy100)}',
+  fade: '{\\fad(160,120)}',
+  fadeSlow: '{\\fad(320,260)}'
+};
+
+function assTime(sec) {
+  const t = Math.max(0, Number(sec) || 0);
+  const h = Math.floor(t / 3600);
+  const m = Math.floor(t / 60) % 60;
+  const s = Math.floor(t % 60);
+  const cs = Math.min(99, Math.round((t - Math.floor(t)) * 100));
+  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
+}
+
+/** 长句拆成 ≤2 行的逐句卡拉OK事件（时长按字数比例细分），短段保持原时间 */
+function karaokeEvents(segments, start, end, maxChars) {
+  const evs = [];
+  (segments || []).forEach((s) => {
+    const a = Math.max(s.start, start);
+    const b = Math.min(s.end, end);
+    if (b - a < 0.12) return;
+    const text = String(s.text || '').trim().replace(/\{/g, '｛').replace(/\}/g, '｝');
+    if (!text) return;
+    const lines = wrapSubtitle(text, maxChars).split('\n').filter(Boolean);
+    if (lines.length <= 2) { evs.push({ a, b, text: lines.join('\\N') }); return; }
+    const groups = [];
+    for (let i = 0; i < lines.length; i += 2) groups.push(lines.slice(i, i + 2).join('\\N'));
+    const lens = groups.map((g) => g.replace(/\\N/g, '').length);
+    const total = lens.reduce((x, y) => x + y, 0) || 1;
+    let t = a;
+    groups.forEach((g, k) => {
+      const d = (b - a) * lens[k] / total;
+      evs.push({ a: t, b: t + d, text: g });
+      t += d;
+    });
+  });
+  return evs;
+}
+
+function buildClipAss(segments, start, end, opts) {
+  const { baseHex, emphHex, font, fontsize, outline, marginV, bold, anim, maxChars, cfg } = opts;
+  const base = assColor(baseHex);
+  const emph = assColor(emphHex);
+  const re = emphRegex(cfg);
+  const events = karaokeEvents(segments, start, end, maxChars);
+  if (!events.length) return '';
+  const lines = events.map((e) => {
+    let text = e.text;
+    if (emphHex && String(emphHex).toUpperCase() !== String(baseHex).toUpperCase()) {
+      text = text.replace(re, (m0) => `{\\c${emph}}${m0}{\\c${base}}`);
+    }
+    const pre = ASS_ANIM[anim] || ASS_ANIM.fade;
+    return `Dialogue: 0,${assTime(e.a - start)},${assTime(e.b - start)},Default,,0,0,0,,${pre}${text}`;
+  });
+  return [
+    '[Script Info]',
+    'ScriptType: v4.00+',
+    'PlayResX: 720',
+    'PlayResY: 1280',
+    'ScaledBorderAndShadow: yes',
+    'WrapStyle: 2',
+    '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    `Style: Default,${font},${fontsize},${base},&H000000FF,&H00000000,&HA0000000,${bold ? 1 : 0},0,0,0,100,100,0,0,1,${outline},2,2,40,40,${marginV},1`,
+    '',
+    '[Events]',
+    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+    ...lines
+  ].join('\n');
 }
 
 /* ---------------- 成片风格化：行楷花字贴片（黄字红边，弹入） ---------------- */
@@ -1600,7 +1664,7 @@ function listShotPool(dir) {
       if (e.name.startsWith('.')) return;
       const fp = path.join(d, e.name);
       if (e.isDirectory()) walk(fp, depth + 1);
-      else { const m = fileMeta(fp); if (m) out.push(m); }
+      else { const m = fileMeta(fp); if (m && m.size >= 20480) out.push(m); } // 过滤损坏/测试用超小文件
     });
   };
   walk(dir, 0);
@@ -1641,7 +1705,7 @@ function buildComposeJobs(cfg) {
     const rec = readJsonSafe(sourcePath(sum.id), null);
     if (!rec) return;
     (rec.candidates || []).forEach((c) => {
-      if (c.status === 'approved' && !(c.visual && c.visual.valid === false)) byRole[sum.structureRole].push({ rec, c });
+      if (c.status !== 'rejected' && !(c.visual && c.visual.valid === false)) byRole[sum.structureRole].push({ rec, c });
     });
   });
   const key = (x) => `${x.rec.id}:${x.c.id}`;
@@ -1715,7 +1779,7 @@ async function render(options = {}, onProgress) {
     const built = buildComposeJobs(cfg);
     combos = built.combos;
     jobs.push(...built.jobs);
-    if (!combos.length) throw new Error('组片失败：需要「钩子库」「产品介绍库」「价格库」三类已分析素材，且各类中至少通过一个片段（素材卡上可设置分类）');
+    if (!combos.length) throw new Error('组片失败：需要「钩子库」「产品介绍库」「价格库」三类已分析素材，且各类至少有一个有效片段（素材卡上可设置分类）');
   } else {
     listSources().forEach((sum) => {
       if (options.sourceIds && options.sourceIds.length && !options.sourceIds.includes(sum.id)) return;
@@ -1723,11 +1787,11 @@ async function render(options = {}, onProgress) {
       const rec = readJsonSafe(sourcePath(sum.id), null);
       if (!rec) return;
       (rec.candidates || []).forEach((c) => {
-        if (c.status === 'approved') jobs.push({ rec, c });
+        if (c.status !== 'rejected') jobs.push({ rec, c });
       });
     });
   }
-  if (!jobs.length) throw new Error('没有已通过的候选片段，请先在审核区通过至少一个片段');
+  if (!jobs.length) throw new Error('没有可导出的候选片段，请先完成批量分析');
 
   const batchName = options.batchName ? safeName(options.batchName) : `clips-${tsName()}`;
   const outDir = path.join(store.get().downloadDir || app.getPath('downloads'), 'TokPure-Clips', batchName);
@@ -1781,11 +1845,25 @@ async function render(options = {}, onProgress) {
         }
       }
 
-      const maxWidth = subtitleMaxWidth(cfg.fontSize, compose ? 720 : (rec.probe && rec.probe.width));
       const fixedSegs = (rec.asr.segments || []).map((s) => ({ ...s, text: applySubtitleFixes(s.text, cfg) }));
-      const srt = buildClipSrt(fixedSegs, c.start, c.end, maxWidth);
-      const useSub = cfg.burnSubtitles && srt.trim();
-      if (useSub) fs.writeFileSync(path.join(workDir, 'sub.srt'), '﻿' + srt, 'utf8');
+      // 开拍式深度字幕（ASS）：逐句大字 + 关键词双色强调 + 弹入动效。
+      // 用户在色板手动改色（与模版底色名不一致）时优先用户色，否则用模版成套底色
+      const sSub = style.subtitle || {};
+      const userPick = SUBTITLE_COLORS[cfg.subtitleColor] ? cfg.subtitleColor : null;
+      let baseHex = (userPick && userPick !== sSub.color) ? SUBTITLE_COLORS[userPick] : (sSub.baseHex || '#FFFFFF');
+      const emphHex = sSub.emphColor || '#FFDE33';
+      if (String(baseHex).toUpperCase() === String(emphHex).toUpperCase()) baseHex = sSub.baseHex || '#FFFFFF';
+      const assFontsize = Math.round((Number(cfg.fontSize) || sSub.fontSize || 18) * 4.44 * (sSub.sizeScale || 1));
+      const assOutline = Math.round((Number(sSub.outline) || 3) * 2.2);
+      const assMarginV = Math.round((Number(cfg.marginV) || sSub.marginV || 64) * 4.44);
+      const assMaxChars = Math.max(6, Math.floor(720 * 0.84 / assFontsize));
+      const ass = buildClipAss(fixedSegs, c.start, c.end, {
+        baseHex, emphHex, font: sSub.font || 'PingFang SC', fontsize: assFontsize,
+        outline: assOutline, marginV: assMarginV, bold: sSub.bold ? 1 : 0,
+        anim: sSub.anim || 'pop', maxChars: assMaxChars, cfg
+      });
+      const useSub = cfg.burnSubtitles && !!ass.trim();
+      if (useSub) fs.writeFileSync(path.join(workDir, 'sub.ass'), ass, 'utf8');
 
       onProgress({ stage: `导出 ${i + 1}/${jobs.length}`, percent: span(0), index: i + 1, total: jobs.length, name: path.basename(outFile) });
 
@@ -1797,10 +1875,7 @@ async function render(options = {}, onProgress) {
       const polish = !!cfg.polishStyle;
       // 爆款风格模版：字幕（字号/颜色/描边）走 cfg（模版切换时会写入表单），
       // 贴片形状/动画/密度、滤镜、转场、BGM 闪避参数由模版直接决定（sStk 已在循环外解析）
-      const sSub = style.subtitle || {};
       const hasAudio = probe.hasAudio !== false;
-      const subColor = SUBTITLE_COLORS[cfg.subtitleColor] ? cfg.subtitleColor : (sSub.color || 'white');
-      const forceStyle = `Fontsize=${Number(cfg.fontSize) || sSub.fontSize || 18},PrimaryColour=${assColor(SUBTITLE_COLORS[subColor])},OutlineColour=&H00000000,BorderStyle=1,Outline=${Number(sSub.outline) || 3},Shadow=0,MarginV=${Number(cfg.marginV) || sSub.marginV || 64}`;
 
       // 花字贴片：先生成 PNG（失败/无字则跳过，绝不阻断导出）；时间点同时供封面复用
       const moments = pickStickerMoments(fixedSegs, c.start, c.end, DUR, { spacing: sStk.spacing, minGap: sStk.minGap });
@@ -1875,7 +1950,7 @@ async function render(options = {}, onProgress) {
           const zn = Math.max(2, Math.round(fps * 0.5));
           vchain.push(`zoompan=z='1+0.07*(1-min(1\\,on/${zn}))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${fps},setsar=1`);
         }
-        if (useSub) vchain.push(`subtitles=sub.srt:force_style='${forceStyle}'`);
+        if (useSub) vchain.push('ass=sub.ass');
         // 转场：组片中间段按模版加一个短闪（flash=白闪 / black=黑场缓切），
         // 与下段开头 whoosh 音效呼应；末段由 tailFade 收尾，不加片头闪
         if (compose && !lastPart && style.transition && style.transition.type && style.transition.type !== 'none') {
@@ -1964,7 +2039,7 @@ async function render(options = {}, onProgress) {
         needCwd = true;
       } else {
         const tailFade = `fade=t=out:st=${Math.max(0, DUR - 0.45).toFixed(2)}:d=0.45`;
-        if (useSub) ffArgs.push('-vf', `subtitles=sub.srt:force_style='${forceStyle}',${tailFade}`);
+        if (useSub) ffArgs.push('-vf', `ass=sub.ass,${tailFade}`);
         else ffArgs.push('-vf', tailFade);
         if (hasAudio) ffArgs.push('-af', `afade=t=out:st=${Math.max(0, DUR - 0.55).toFixed(2)}:d=0.55`);
         ffArgs.push('-t', DUR.toFixed(3), '-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', outFile);

@@ -1582,6 +1582,27 @@ textarea.ta:focus { border-color: rgba(37, 244, 238, 0.5); }
 /* ============================================================
    v2.6 AI 批量切片
    ============================================================ */
+/* 高级设置折叠块 */
+details.adv { border: 0; }
+details.adv > summary {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; list-style: none; user-select: none;
+  font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
+  color: var(--on-surface);
+}
+details.adv > summary::-webkit-details-marker { display: none; }
+details.adv > summary:hover { color: var(--secondary); }
+details.adv > summary i.adv-chev {
+  margin-left: auto; flex: none;
+  width: 7px; height: 7px;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg);
+  transition: transform .18s ease;
+}
+details.adv[open] > summary i.adv-chev { transform: rotate(-135deg); }
+details.adv[open] > summary { margin-bottom: 10px; }
+
 .clip-files {
   margin-top: 12px;
   border: 1px solid var(--hairline);

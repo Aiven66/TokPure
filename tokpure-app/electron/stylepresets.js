@@ -1,9 +1,15 @@
 'use strict';
 
 /* ============================================================
-   爆款短视频风格模版（参考美图「开拍」的成套风格）。
-   一套模版 = 字幕风格 + 剪辑风格（滤镜/转场）+ 贴片风格 + BGM 闪避参数。
+   爆款短视频风格模版（对标美图「开拍」的成套深度风格）。
+   一套模版 = 逐句大字双色字幕（ASS 弹入动效）+ 剪辑风格（滤镜/转场）
+             + 贴片风格 + BGM 闪避参数。
    clipai.js 渲染时读取本表，把每一项落到 ffmpeg 滤镜链上。
+   subtitle 字段说明：
+     baseHex/emphColor 字幕底色/强调色（价格、数字、CTA 词自动换强调色）
+     font   libass 字体名（macOS 内置：PingFang SC / Heiti SC / STKaiti）
+     anim   逐句入场动效：pop 弹入 / popBig 强弹入 / fade 淡入 / fadeSlow 慢淡
+     sizeScale 字幕放大倍率（相对表单字号，开拍式大字 ≈1.1-1.2）
    ============================================================ */
 
 /* 贴片形状：burst=外发光粗描边（最抓眼）；band=实心色带；box=浅底彩字 */
@@ -11,9 +17,13 @@ const STYLE_TEMPLATES = [
   {
     id: 'vital-sale',
     name: '活力带货',
-    desc: '黄底红边大字 + 密集弹入贴片 + 暖调高饱和 + 白闪转场',
+    desc: '逐句弹入大字（白字黄强调）+ 密集弹入贴片 + 暖调高饱和 + 白闪转场',
     accent: '#FFE33A',
-    subtitle: { color: 'yellow', fontSize: 20, marginV: 84, outline: 4 },
+    subtitle: {
+      color: 'white', baseHex: '#FFFFFF', emphColor: '#FFDE33',
+      fontSize: 20, marginV: 84, outline: 4,
+      font: 'Heiti SC', bold: 1, anim: 'pop', sizeScale: 1.15
+    },
     sticker: {
       shape: 'burst',
       fill: '0xFFE33A', border: '0xB00000', glow: '0xFFC800', text: '0xFFE33A',
@@ -31,9 +41,13 @@ const STYLE_TEMPLATES = [
   {
     id: 'funny-show',
     name: '搞笑综艺',
-    desc: '白字黑边大字幕 + 黄底黑字色带贴片 + 高反差 + 黑场切',
+    desc: '逐句强弹入大字（白字黄强调）+ 黄底黑字色带贴片 + 高反差 + 黑场切',
     accent: '#FFD400',
-    subtitle: { color: 'white', fontSize: 22, marginV: 96, outline: 5 },
+    subtitle: {
+      color: 'white', baseHex: '#FFFFFF', emphColor: '#FFD400',
+      fontSize: 22, marginV: 96, outline: 5,
+      font: 'PingFang SC', bold: 1, anim: 'popBig', sizeScale: 1.2
+    },
     sticker: {
       shape: 'band',
       fill: '0xFFD400', border: '0x1A1A1A', text: '0x1A1A1A',
@@ -51,9 +65,13 @@ const STYLE_TEMPLATES = [
   {
     id: 'simple-premium',
     name: '简约质感',
-    desc: '白字细边小字幕 + 稀疏浅底贴片 + 低饱和中性调 + 无转场',
+    desc: '逐句淡入字幕（白字蓝强调·开拍同款）+ 稀疏浅底贴片 + 低饱和中性调',
     accent: '#F2F2F2',
-    subtitle: { color: 'white', fontSize: 16, marginV: 62, outline: 2 },
+    subtitle: {
+      color: 'white', baseHex: '#FFFFFF', emphColor: '#6E9BFF',
+      fontSize: 16, marginV: 62, outline: 2,
+      font: 'PingFang SC', bold: 0, anim: 'fade', sizeScale: 0.95
+    },
     sticker: {
       shape: 'band',
       fill: '0xF2F2F2', border: '0x2B2B2B', text: '0x2B2B2B',
@@ -71,9 +89,13 @@ const STYLE_TEMPLATES = [
   {
     id: 'chinese-classic',
     name: '国风文韵',
-    desc: '黄字秀楷字幕 + 酒红包金贴片 + 暖调低饱和 + 黑场缓切',
+    desc: '逐句慢淡楷体字幕（米字金强调）+ 酒红包金贴片 + 暖调低饱和 + 黑场缓切',
     accent: '#E8C87A',
-    subtitle: { color: 'yellow', fontSize: 18, marginV: 78, outline: 3 },
+    subtitle: {
+      color: 'yellow', baseHex: '#F7E7B0', emphColor: '#E8C87A',
+      fontSize: 18, marginV: 78, outline: 3,
+      font: 'STKaiti', bold: 0, anim: 'fadeSlow', sizeScale: 1.05
+    },
     sticker: {
       shape: 'band',
       fill: '0x8C1B1B', border: '0xE8C87A', text: '0xF7E7B0',

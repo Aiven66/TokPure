@@ -601,10 +601,17 @@
             </div>
           </div>
 
+          <!-- 爆款风格模版（独立卡片，分析区正下方） -->
+          <div class="card">
+            <span class="lbl">爆款风格模版（字幕 + 剪辑 + 贴片 + BGM 成套生效）</span>
+            <div class="style-tpl-row" id="clip-style-tpl"></div>
+          </div>
+
           <div class="two-col">
             <!-- 规则 -->
             <div class="card">
-              <div class="card-title" style="font-size:13px;margin-bottom:10px"><span data-ic="sliders" data-size="16" style="color:var(--secondary)"></span>切片规则</div>
+              <details class="adv">
+              <summary><span data-ic="sliders" data-size="16" style="color:var(--secondary)"></span>高级设置 · 切片规则<i class="adv-chev"></i></summary>
               <div class="grid-2">
                 <div><span class="lbl">最短时长(秒)</span><div class="field" style="padding:7px 10px"><input type="number" id="clip-min" min="5" max="300" /></div></div>
                 <div><span class="lbl">最长时长(秒)</span><div class="field" style="padding:7px 10px"><input type="number" id="clip-max" min="10" max="600" /></div></div>
@@ -637,17 +644,16 @@
               </div>
               <span class="lbl" style="margin-top:6px;display:block">插镜头关键字（空格分隔，命中即插入随机商品镜头）</span>
               <textarea id="clip-shotwords" class="clip-words" rows="2"></textarea>
-              <div class="notice" style="margin-top:10px"><span data-ic="info" data-size="15"></span><span>改完规则点「保存规则」；对已分析素材可在审核区「按新规则重算」，无需重新识别语音。</span></div>
+              <div class="notice" style="margin-top:10px"><span data-ic="info" data-size="15"></span><span>改完规则点「保存规则」；点击「开始批量分析」可对已导入素材按新规则重算，无需重新识别语音。</span></div>
               <button class="btn cyan small" id="clip-save-rules" style="margin-top:10px"><span data-ic="save" data-size="15"></span>保存规则</button>
+              </details>
             </div>
 
             <!-- 商品库 -->
             <div class="card">
-              <div class="card-head" style="margin-bottom:10px">
-                <div class="card-title" style="font-size:13px"><span data-ic="tags" data-size="16" style="color:var(--secondary)"></span>商品库（话术 / 商品 / 价格关联）</div>
-                <span class="pill square" id="clip-sku-count">0 个商品</span>
-              </div>
-              <div class="clip-sku-table" id="clip-sku-list"></div>
+              <details class="adv">
+              <summary><span data-ic="tags" data-size="16" style="color:var(--secondary)"></span>高级设置 · 商品库<span class="pill square" id="clip-sku-count">0 个商品</span><i class="adv-chev"></i></summary>
+              <div class="clip-sku-table" id="clip-sku-list" style="margin-top:10px"></div>
               <div class="bar" style="margin-top:10px">
                 <div class="left">
                   <button class="btn small" id="clip-sku-add"><span data-ic="plus" data-size="14"></span>添加商品</button>
@@ -656,40 +662,7 @@
                 </div>
               </div>
               <div class="notice" style="margin-top:10px"><span data-ic="info" data-size="15"></span><span>CSV 列：商品名称,价格,别名1;别名2;别名3。例如：厨房剪,29.9,剪刀;不锈钢剪。别名支持粤语口语（如「雪柜」「风筒」）。</span></div>
-            </div>
-          </div>
-
-          <!-- 审核 -->
-          <div class="card">
-            <div class="card-head">
-              <div class="card-title" style="font-size:13px"><span data-ic="checkCircle" data-size="16" style="color:var(--tertiary-bright)"></span>候选片段快审</div>
-              <div class="gap-row">
-                <select id="clip-source-select" class="clip-source-select" style="max-width:280px"></select>
-                <select id="clip-role-select" class="clip-source-select" style="max-width:130px">
-                  <option value="">未分类</option>
-                  <option value="hook">钩子库</option>
-                  <option value="intro">介绍库</option>
-                  <option value="price">价格库</option>
-                </select>
-                <div class="seg" id="clip-filter">
-                  <button class="on" data-filter="all">全部</button>
-                  <button data-filter="candidate">待审</button>
-                  <button data-filter="approved">已通过</button>
-                  <button data-filter="rejected">已淘汰</button>
-                </div>
-                <button class="btn small" id="clip-rerun"><span data-ic="refresh" data-size="14"></span>按新规则重算</button>
-                <button class="btn small" id="clip-remove-source"><span data-ic="trash2" data-size="14"></span>删除该素材库</button>
-              </div>
-            </div>
-
-            <div class="clip-review">
-              <div class="clip-preview">
-                <video id="clip-video" preload="metadata" playsinline></video>
-                <div class="notice" style="margin-top:8px"><span data-ic="keyboard" data-size="15"></span><span>键盘快审：J 通过 · K 淘汰 · Enter 下一条 · I 预览/暂停当前片段。点击候选卡片载入预览。</span></div>
-              </div>
-              <div class="clip-cands" id="clip-candidates">
-                <div class="clip-empty"><span data-ic="inbox" data-size="20"></span><span>分析完成后，候选片段会出现在这里，按分数从高到低排列，并标注命中商品、价格与入选原因。</span></div>
-              </div>
+              </details>
             </div>
           </div>
 
@@ -697,52 +670,44 @@
           <div class="card">
             <div class="card-head">
               <div>
-                <div class="gap-row">
-                  <span class="card-title" style="font-size:13px"><span data-ic="fileDownload" data-size="16" style="color:var(--secondary)"></span>批量导出</span>
-                  <span class="pill emerald square" id="clip-approved-count">已通过 0 条</span>
-                </div>
-                <p class="card-sub">仅导出「已通过」片段，自动切割并按素材命名，同时生成 manifest.csv（素材/时间码/商品/价格/文案）。</p>
+                <span class="card-title" style="font-size:13px"><span data-ic="fileDownload" data-size="16" style="color:var(--secondary)"></span>批量导出</span>
+                <p class="card-sub">自动按「钩子→介绍→价格」拼成带货短视频并导出到下载目录，同时生成 manifest.csv。</p>
               </div>
             </div>
             <div style="margin-top:12px">
-              <span class="lbl">爆款风格模版（字幕 + 剪辑 + 贴片 + BGM 成套生效）</span>
-              <div class="style-tpl-row" id="clip-style-tpl"></div>
-            </div>
-            <div class="grid-2">
-              <div>
-                <span class="lbl">批次名称（输出到下载目录/TokPure-Clips/批次名）</span>
-                <div class="field" style="padding:7px 10px"><input type="text" id="clip-batch-name" placeholder="留空自动按时间命名" /></div>
-              </div>
-              <div>
-                <span class="lbl">导出选项</span>
-                <div class="field" style="padding:9px 10px;gap:16px">
-                  <label class="clip-check"><input type="checkbox" id="clip-burn-out" checked /><span>烧录字幕</span></label>
-                  <label class="clip-check">字号<input type="number" id="clip-fontsize" value="18" min="10" max="40" style="width:56px;margin-left:6px" /></label>
-                  <label class="clip-check">底边距<input type="number" id="clip-marginv" value="64" min="0" max="200" style="width:56px;margin-left:6px" /></label>
-                  <label class="clip-check">字幕颜色
-                    <span class="clip-swatches" id="clip-subcolor" style="margin-left:6px">
-                      <button type="button" class="clip-swatch sel" data-color="white" style="background:#FFFFFF" title="白色"></button>
-                      <button type="button" class="clip-swatch" data-color="yellow" style="background:#FFDE33" title="黄色"></button>
-                      <button type="button" class="clip-swatch" data-color="green" style="background:#4DFF7C" title="绿色"></button>
-                      <button type="button" class="clip-swatch" data-color="cyan" style="background:#3AE5FF" title="青色"></button>
-                      <button type="button" class="clip-swatch" data-color="pink" style="background:#FF66A3" title="粉色"></button>
-                    </span>
-                  </label>
-                  <label class="clip-check"><input type="checkbox" id="clip-polish" checked /><span>成片增强（BGM + 音效 + 花字贴片）</span></label>
-                  <label class="clip-check">BGM音量<input type="number" id="clip-bgmvol" value="30" min="0" max="60" style="width:52px;margin-left:6px" />%</label>
-                  <label class="clip-check"><input type="checkbox" id="clip-visualcheck" checked /><span>画面检测（黑屏/纯色自动淘汰）</span></label>
-                  <label class="clip-check"><input type="checkbox" id="clip-coverart" checked /><span>生成封面并写入视频</span></label>
-                </div>
-              </div>
+              <span class="lbl">批次名称（输出到下载目录/TokPure-Clips/批次名）</span>
+              <div class="field" style="padding:7px 10px"><input type="text" id="clip-batch-name" placeholder="留空自动按时间命名" /></div>
             </div>
             <div class="bar" style="margin-top:12px">
               <div class="left">
-                <button class="btn primary" id="clip-export"><span data-ic="fileDownload" data-size="16"></span>导出全部已通过片段</button>
-                <button class="btn cyan" id="clip-compose"><span data-ic="queue" data-size="16"></span>结构化组片导出（钩子+介绍+价格）</button>
+                <button class="btn cyan" id="clip-compose"><span data-ic="queue" data-size="16"></span>一键生成爆款短视频（钩子+介绍+价格）</button>
                 <button class="btn ghost hidden" id="clip-export-cancel"><span data-ic="stop" data-size="15"></span>取消导出</button>
                 <button class="btn small" id="clip-reveal-dir" disabled><span data-ic="folderOpen" data-size="14"></span>打开导出目录</button>
               </div>
             </div>
+            <details class="adv" style="margin-top:12px">
+              <summary>导出高级选项<i class="adv-chev"></i></summary>
+              <span class="lbl" style="margin-top:10px;display:block">导出选项</span>
+              <div class="field" style="padding:9px 10px;gap:16px">
+                <label class="clip-check"><input type="checkbox" id="clip-burn-out" checked /><span>烧录字幕</span></label>
+                <label class="clip-check">字号<input type="number" id="clip-fontsize" value="18" min="10" max="40" style="width:56px;margin-left:6px" /></label>
+                <label class="clip-check">底边距<input type="number" id="clip-marginv" value="64" min="0" max="200" style="width:56px;margin-left:6px" /></label>
+                <label class="clip-check">字幕颜色
+                  <span class="clip-swatches" id="clip-subcolor" style="margin-left:6px">
+                    <button type="button" class="clip-swatch sel" data-color="white" style="background:#FFFFFF" title="白色"></button>
+                    <button type="button" class="clip-swatch" data-color="yellow" style="background:#FFDE33" title="黄色"></button>
+                    <button type="button" class="clip-swatch" data-color="green" style="background:#4DFF7C" title="绿色"></button>
+                    <button type="button" class="clip-swatch" data-color="cyan" style="background:#3AE5FF" title="青色"></button>
+                    <button type="button" class="clip-swatch" data-color="pink" style="background:#FF66A3" title="粉色"></button>
+                  </span>
+                </label>
+                <label class="clip-check"><input type="checkbox" id="clip-polish" checked /><span>成片增强（BGM + 音效 + 花字贴片）</span></label>
+                <label class="clip-check">BGM音量<input type="number" id="clip-bgmvol" value="30" min="0" max="60" style="width:52px;margin-left:6px" />%</label>
+                <label class="clip-check"><input type="checkbox" id="clip-visualcheck" checked /><span>画面检测（黑屏/纯色自动淘汰）</span></label>
+                <label class="clip-check"><input type="checkbox" id="clip-coverart" checked /><span>生成封面并写入视频</span></label>
+              </div>
+              <button class="btn primary" id="clip-export" style="margin-top:10px"><span data-ic="fileDownload" data-size="16"></span>导出全部已通过片段</button>
+            </details>
             <div id="clip-export-progress" class="hidden" style="margin-top:10px">
               <div class="gap-row" style="justify-content:space-between;margin-bottom:6px">
                 <span class="muted" id="clip-export-label" style="font-size:11px">导出中…</span>
