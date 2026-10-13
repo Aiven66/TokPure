@@ -9,23 +9,28 @@ import { StrictMode, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Locale } from '@pkg';
 
-/** 读取官网既有语言偏好（与 assets/js/i18n.js 使用同一套键）。 */
+/** 站点语言代码（assets/js/i18n.js 的 8 种）→ public-pkg 语言（3 种）映射。 */
+export function siteLangToPkg(code: string): Locale {
+  if (code === 'zh-CN') return 'zh';
+  if (code === 'zh-TW' || code === 'zh-Hant') return 'zh-Hant';
+  return 'en';
+}
+
+/**
+ * 读取官网当前语言。
+ *
+ * 唯一真源是 assets/js/i18n.js 写入的 localStorage `tokpure.lang`（站点切换器写的就是它）。
+ * 早期版本误读 `locale` 键（public-pkg 自己的存储），两套系统永远对不上，
+ * 导致站点切到 English 后 React 岛屿（登录按钮、登录页表单）仍渲染中文。
+ * 站点默认语言是英文（用户未手动切换过时 i18n.js 也按 en 渲染），这里保持一致。
+ */
 export function readSiteLocale(): Locale {
   try {
-    const fromCookie = document.cookie.match(/(?:^|;\s*)locale=([^;]+)/)?.[1];
-    const raw = (fromCookie || localStorage.getItem('locale') || '').trim();
-    if (raw) {
-      if (raw === 'zh' || raw === 'zh-CN') return 'zh';
-      if (raw === 'zh-TW' || raw === 'zh-Hant') return 'zh-Hant';
-      return 'en';
-    }
+    const site = (localStorage.getItem('tokpure.lang') || '').trim();
+    if (site) return siteLangToPkg(site);
   } catch {
-    /* 存储不可用时继续按 <html lang> 判断 */
+    /* 存储不可用时按站点默认（en）处理 */
   }
-  // 回落到页面语言（login.html 默认 lang="zh-CN"）
-  const htmlLang = typeof document !== 'undefined' ? document.documentElement.lang : '';
-  if (htmlLang.startsWith('zh-Hant') || htmlLang === 'zh-TW') return 'zh-Hant';
-  if (htmlLang.startsWith('zh')) return 'zh';
   return 'en';
 }
 

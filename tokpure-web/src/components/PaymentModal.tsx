@@ -232,7 +232,8 @@ export function PaymentModal() {
             </h2>
             <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">
               {item.kind === 'pack' ? '一次性付费，永久有效' : '按月订阅，可随时取消'}
-              {price ? ` · ${price}${item.kind === 'pack' ? '' : ' / 月'}` : ''}
+              {price ? ` · ${price}` : ''}
+              {price && item.kind !== 'pack' ? ' / 月' : ''}
             </p>
           </div>
           <button

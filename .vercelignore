@@ -1,0 +1,27 @@
+# web 构建无关的大体积素材与本地产物（tokpure-web 的 Vercel 构建只需源码 + public-pkg）
+*.mp4
+*.mov
+*.zip
+*.dmg
+*.blockmap
+__MACOSX/
+stitch_tiktok_watermark_remover_mac/
+stitch_tiktok_watermark_remover_mac 2/
+tokpure-app/
+.trae/
+
+# 依赖与构建产物（Vercel 端自行安装与构建）
+node_modules/
+dist/
+out/
+
+# 凭证与环境文件（线上以 Vercel 环境变量为准）
+.tokpure-secrets.env
+*.env
+*.env.*
+!.env.example
+
+# 杂项
+*.log
+npm-debug.log*
+.DS_Store
