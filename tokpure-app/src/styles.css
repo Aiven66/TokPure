@@ -1744,6 +1744,21 @@ textarea.ta:focus { border-color: rgba(37, 244, 238, 0.5); }
   box-shadow: 0 0 0 2px var(--surface-container-high), 0 0 0 3.5px var(--secondary);
 }
 
+/* 爆款风格模版选择器 */
+.style-tpl-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.style-chip {
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+  padding: 8px 11px; min-width: 138px;
+  background: var(--fill); border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md); cursor: pointer; text-align: left;
+  color: var(--on-surface); font: inherit; transition: .15s;
+}
+.style-chip:hover { background: var(--fill-hover); }
+.style-chip-name { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.style-chip-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(255,255,255,.28); flex: none; }
+.style-chip-desc { font-size: 10px; color: var(--text-muted); line-height: 1.35; }
+.style-chip.sel { border-color: var(--secondary); box-shadow: 0 0 0 1px var(--secondary) inset; }
+
 #view-clips .nav-badge, a.nav-item[data-view="clips"] .nav-badge {
   background: rgba(37,244,238,.16);
   color: var(--secondary);

@@ -535,4 +535,13 @@
   "已用 {0}": "Verstrichen {0}",
   "已用 {0} · 预计剩余 {1}": "Verstrichen {0} · geschätzte Restzeit {1}",
   "长视频首次本地识别需要数分钟，请耐心等待；完成后再次分析将直接命中缓存。": "Lange Videos brauchen bei der ersten lokalen Transkription mehrere Minuten. Bitte laufen lassen; spätere Analysen nutzen den Cache.",
+"爆款风格模版（字幕 + 剪辑 + 贴片 + BGM 成套生效）": "Viral-Stilvorlagen (Untertitel + Schnitt + Sticker + BGM als Set wirksam)",
+"活力带货": "Energiegeladener Verkauf",
+"黄底红边大字 + 密集弹入贴片 + 暖调高饱和 + 白闪转场": "Gelbe Schrift mit rotem Rand + dichte Pop-in-Sticker + warme hohe Sättigung + Weißblitz-Schnitt",
+"搞笑综艺": "Comedy-Show",
+"白字黑边大字幕 + 黄底黑字色带贴片 + 高反差 + 黑场切": "Große weiße Untertitel mit schwarzem Rand + gelbe Bänder mit schwarzer Schrift + hoher Kontrast + Schnitt auf Schwarz",
+"简约质感": "Minimal Premium",
+"白字细边小字幕 + 稀疏浅底贴片 + 低饱和中性调 + 无转场": "Kleine weiße Untertitel mit dünnem Rand + sparsame helle Sticker + neutrale geringe Sättigung + kein Übergang",
+"国风文韵": "Chinesischer Klassiker",
+"黄字秀楷字幕 + 酒红包金贴片 + 暖调低饱和 + 黑场缓切": "Gelbe Kalligrafie-Untertitel + weinrote und goldene Sticker + warme geringe Sättigung + langsame Schwarzblende",
 });

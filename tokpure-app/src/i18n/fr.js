@@ -535,4 +535,13 @@
   "已用 {0}": "Écoulé {0}",
   "已用 {0} · 预计剩余 {1}": "Écoulé {0} · temps restant estimé {1}",
   "长视频首次本地识别需要数分钟，请耐心等待；完成后再次分析将直接命中缓存。": "Les vidéos longues prennent plusieurs minutes pour la première transcription locale. Laissez tourner ; les analyses suivantes réutilisent le cache.",
+"爆款风格模版（字幕 + 剪辑 + 贴片 + BGM 成套生效）": "Modèles de style viral (sous-titres + montage + stickers + BGM appliqués en ensemble)",
+"活力带货": "Vente énergique",
+"黄底红边大字 + 密集弹入贴片 + 暖调高饱和 + 白闪转场": "Texte jaune contour rouge + stickers denses en rebond + saturation chaude + coupe flash blanc",
+"搞笑综艺": "Émission comique",
+"白字黑边大字幕 + 黄底黑字色带贴片 + 高反差 + 黑场切": "Grands sous-titres blancs contour noir + bandeaux jaunes texte noir + fort contraste + coupe au noir",
+"简约质感": "Premium minimal",
+"白字细边小字幕 + 稀疏浅底贴片 + 低饱和中性调 + 无转场": "Petits sous-titres blancs à contour fin + stickers clairs espacés + ton neutre peu saturé + sans transition",
+"国风文韵": "Classique chinois",
+"黄字秀楷字幕 + 酒红包金贴片 + 暖调低饱和 + 黑场缓切": "Sous-titres calligraphiés jaunes + stickers bordeaux et or + chaude peu saturée + fondu lent au noir",
 });

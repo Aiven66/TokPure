@@ -431,6 +431,7 @@ function registerIpc() {
     });
     return res.canceled || !res.filePaths.length ? null : res.filePaths[0];
   });
+  ipcMain.handle('clip:getStyleTemplates', () => clipai.getStyleTemplates());
   ipcMain.handle('clip:getConfig', () => clipai.getConfig());
   ipcMain.handle('clip:saveConfig', (_e, patch) => clipai.saveConfig(patch));
   ipcMain.handle('clip:getSkus', () => clipai.getSkus());

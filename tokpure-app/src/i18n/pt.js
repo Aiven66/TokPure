@@ -535,4 +535,13 @@
   "已用 {0}": "Tempo decorrido {0}",
   "已用 {0} · 预计剩余 {1}": "Decorrido {0} · restante aprox. {1}",
   "长视频首次本地识别需要数分钟，请耐心等待；完成后再次分析将直接命中缓存。": "Vídeos longos demoram vários minutos na primeira transcrição local. Deixe rodando; as análises seguintes usam o cache.",
+"爆款风格模版（字幕 + 剪辑 + 贴片 + BGM 成套生效）": "Modelos de estilo viral (legendas + edição + adesivos + BGM aplicados em conjunto)",
+"活力带货": "Vendas energéticas",
+"黄底红边大字 + 密集弹入贴片 + 暖调高饱和 + 白闪转场": "Texto amarelo com contorno vermelho + adesivos densos com efeito pop + saturação quente + corte com flash branco",
+"搞笑综艺": "Programa de comédia",
+"白字黑边大字幕 + 黄底黑字色带贴片 + 高反差 + 黑场切": "Legendas grandes brancas com contorno preto + faixas amarelas com texto preto + alto contraste + corte em preto",
+"简约质感": "Premium minimalista",
+"白字细边小字幕 + 稀疏浅底贴片 + 低饱和中性调 + 无转场": "Legendas brancas pequenas e finas + adesivos claros espaçados + tom neutro com baixa saturação + sem transição",
+"国风文韵": "Clássico chinês",
+"黄字秀楷字幕 + 酒红包金贴片 + 暖调低饱和 + 黑场缓切": "Legendas em caligrafia amarela + adesivos vinho e dourado + quente com baixa saturação + fusão lenta para preto",
 });

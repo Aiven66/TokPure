@@ -1158,7 +1158,8 @@ function collectClipCfg() {
     marginV: num('#clip-marginv', 64),
     subtitleColor: ($('#clip-subcolor .clip-swatch.sel') || {}).dataset?.color || 'white',
     polishStyle: $('#clip-polish').checked,
-    bgmVolume: Math.min(0.6, Math.max(0, num('#clip-bgmvol', 30) / 100)),
+    bgmVolume: Math.min(0.6, Math.max(0, num('#clip-bgmvol', 50) / 100)),
+    styleTemplate: ($('#clip-style-tpl .style-chip.sel') || {}).dataset?.id || state.clips.styleTemplate || 'vital-sale',
     visualCheck: $('#clip-visualcheck').checked,
     coverArt: $('#clip-coverart').checked,
     funnyQuotes: $('#clip-quotes').value,
@@ -1192,7 +1193,8 @@ function fillClipCfgForm(cfg) {
   const swColor = cfg.subtitleColor || 'white';
   $$('#clip-subcolor .clip-swatch').forEach((b) => b.classList.toggle('sel', b.dataset.color === swColor));
   $('#clip-polish').checked = cfg.polishStyle !== false;
-  set('#clip-bgmvol', Math.round((cfg.bgmVolume != null ? cfg.bgmVolume : 0.3) * 100));
+  set('#clip-bgmvol', Math.round((cfg.bgmVolume != null ? cfg.bgmVolume : 0.5) * 100));
+  renderStyleTemplates(state.clips.styleTemplates || [], cfg.styleTemplate || 'vital-sale');
   $('#clip-visualcheck').checked = cfg.visualCheck !== false;
   $('#clip-coverart').checked = cfg.coverArt !== false;
   set('#clip-quotes', cfg.funnyQuotes);
@@ -1203,6 +1205,32 @@ function fillClipCfgForm(cfg) {
   state.clips.shotsDir = cfg.shotsDir || '';
   updateShotsDirLabel();
   set('#clip-shotwords', cfg.shotKeywords);
+}
+
+/* 爆款风格模版：列表渲染 + 选中应用（点模版 = 一套字幕/贴片/滤镜/BGM 风格整体生效） */
+function renderStyleTemplates(list, selectedId) {
+  const host = $('#clip-style-tpl');
+  if (!host) return;
+  state.clips.styleTemplates = list || [];
+  host.innerHTML = (list || []).map((t) => (
+    `<button type="button" class="style-chip${t.id === selectedId ? ' sel' : ''}" data-id="${t.id}">` +
+    `<span class="style-chip-name"><i class="style-chip-dot" style="background:${t.accent || '#FFE33A'}"></i>${t.name}</span>` +
+    `<span class="style-chip-desc">${t.desc || ''}</span></button>`
+  )).join('');
+}
+
+function applyStyleTemplate(id) {
+  const t = (state.clips.styleTemplates || []).find((x) => x.id === id);
+  if (!t) return;
+  state.clips.styleTemplate = id;
+  $$('#clip-style-tpl .style-chip').forEach((b) => b.classList.toggle('sel', b.dataset.id === id));
+  const sub = t.subtitle || {};
+  if (sub.color) $$('#clip-subcolor .clip-swatch').forEach((b) => b.classList.toggle('sel', b.dataset.color === sub.color));
+  const set = (sid, v) => { if ($(sid) && v !== undefined && v !== null) $(sid).value = v; };
+  set('#clip-fontsize', sub.fontSize);
+  set('#clip-marginv', sub.marginV);
+  if (t.bgmVolume != null) set('#clip-bgmvol', Math.round(t.bgmVolume * 100));
+  $('#clip-polish').checked = true;
 }
 
 function updateShotsDirLabel() {
@@ -1487,9 +1515,12 @@ async function clipExport(composeMode = false) {
 async function initClips() {
   if (state.clips.inited) return;
   state.clips.inited = true;
-  const [cfg, skus] = await Promise.all([api.clips.getConfig(), api.clips.getSkus()]);
+  const [cfg, skus, tpls] = await Promise.all([
+    api.clips.getConfig(), api.clips.getSkus(), api.clips.getStyleTemplates()
+  ]);
   state.clips.cfg = cfg;
   state.clips.skus = skus;
+  state.clips.styleTemplates = tpls || [];
   fillClipCfgForm(cfg);
   renderSkus();
   renderClipFiles();
@@ -1671,6 +1702,12 @@ function bindClips() {
     const b = e.target.closest('.clip-swatch');
     if (!b) return;
     $$('#clip-subcolor .clip-swatch').forEach((x) => x.classList.toggle('sel', x === b));
+  });
+
+  $('#clip-style-tpl').addEventListener('click', (e) => {
+    const b = e.target.closest('.style-chip');
+    if (!b) return;
+    applyStyleTemplate(b.dataset.id);
   });
 
   $('#clip-export').onclick = () => clipExport(false);

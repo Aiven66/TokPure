@@ -535,4 +535,13 @@
   "已用 {0}": "Elapsed {0}",
   "已用 {0} · 预计剩余 {1}": "Elapsed {0} · about {1} left",
   "长视频首次本地识别需要数分钟，请耐心等待；完成后再次分析将直接命中缓存。": "Long videos take several minutes for the first local transcription. Keep it running; later analyses reuse the cache.",
+"爆款风格模版（字幕 + 剪辑 + 贴片 + BGM 成套生效）": "Hit style templates (subtitles + editing + stickers + BGM applied as a set)",
+"活力带货": "Energetic Sales",
+"黄底红边大字 + 密集弹入贴片 + 暖调高饱和 + 白闪转场": "Yellow text with red outline + dense pop-in stickers + warm high saturation + white flash cut",
+"搞笑综艺": "Comedy Show",
+"白字黑边大字幕 + 黄底黑字色带贴片 + 高反差 + 黑场切": "Large white subtitles with black outline + yellow band stickers with black text + high contrast + black cut",
+"简约质感": "Minimal Premium",
+"白字细边小字幕 + 稀疏浅底贴片 + 低饱和中性调 + 无转场": "Small white subtitles with thin outline + sparse light stickers + low-saturation neutral grade + no transition",
+"国风文韵": "Chinese Classic",
+"黄字秀楷字幕 + 酒红包金贴片 + 暖调低饱和 + 黑场缓切": "Yellow script subtitles + wine-red and gold stickers + warm low saturation + slow black fade",
 });

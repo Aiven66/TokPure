@@ -92,6 +92,7 @@ contextBridge.exposeInMainWorld('tokpure', {
     pickStructureFolder: (role) => invoke('clip:pickStructureFolder', role),
     setSourceRole: (id, role) => invoke('clip:setSourceRole', id, role),
     pickShotsDir: () => invoke('clip:pickShotsDir'),
+    getStyleTemplates: () => invoke('clip:getStyleTemplates'),
     getConfig: () => invoke('clip:getConfig'),
     saveConfig: (patch) => invoke('clip:saveConfig', patch),
     getSkus: () => invoke('clip:getSkus'),

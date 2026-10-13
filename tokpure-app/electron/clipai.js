@@ -24,6 +24,7 @@ const hub = require('./enginehub');
 const aijobs = require('./aijobs');
 const store = require('./store');
 const audiofx = require('./audiofx');
+const { resolveStyle, styleList, DEFAULT_STYLE_ID } = require('./stylepresets');
 
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.m4v', '.webm', '.mkv']);
 
@@ -65,11 +66,12 @@ const DEFAULT_CFG = {
   autoApprove: 0,            // ≥ 该分自动通过（0 = 关闭，全部人工审）
   requireSku: false,         // 仅保留命中商品库的片段
   burnSubtitles: true,       // 导出时烧录字幕
-  fontSize: 18,
-  marginV: 64,
-  subtitleColor: 'white',    // 字幕颜色预设：white|yellow|green|cyan|pink
+  fontSize: 20,              // 与默认风格模版「活力带货」对齐
+  marginV: 84,
+  subtitleColor: 'yellow',   // 字幕颜色预设：white|yellow|green|cyan|pink
   polishStyle: true,         // 成片增强：BGM 垫底 + whoosh/pop 音效 + 花字弹出
-  bgmVolume: 0.3,            // BGM 原始音量（人声侧链闪避后约 -24LU，不压话）
+  bgmVolume: 0.5,            // BGM 原始音量（人声侧链闪避后仍可清晰听到垫底）
+  styleTemplate: 'vital-sale', // 爆款风格模版：字幕/剪辑/贴片/BGM 成套生效
   hookZoom: true,            // 片头 0.5s 轻微推近
   visualCheck: true,         // 画面有效性检测：黑屏/纯色/静止画面的候选自动淘汰（不合规成片拦截）
   coverArt: true,            // 导出时自动生成短视频封面（最佳帧+标题花字）并写入 mp4
@@ -1318,27 +1320,69 @@ function assColor(hex) {
 }
 
 /* ---------------- 成片风格化：行楷花字贴片（黄字红边，弹入） ---------------- */
-// 只打两类点：① 报价（¥199 / 一百九十九蚊）② 高转化短语。每片最多 2 条，宁少勿多。
-const FX_PHRASES = ['买一送一', '免费送', '送一包', '再送', '秒杀', '手慢无', '包邮', '上架', '福利价', '特价', '到手价', '试一试', '最后', '库存', '买它'];
-let _fxFont = null;
-function fxFontFile() {
-  if (_fxFont !== null) return _fxFont || null;
+// 花字锚点：① 报价（¥199 / 一百九十九蚊）② 高转化短语；密度由风格模版控制。
+const FX_PHRASES = ['买一送一', '免费送', '送一包', '再送', '秒杀', '手慢无', '包邮', '上架',
+  '福利价', '特价', '到手价', '试一试', '最后', '库存', '买它', '仅此一批', '限时', '抢购',
+  '现货', '包退', '送运费险', '不满意退款', '拍一送一', '两件更划算', '今晚特价', '直播价',
+  '批发价', '出厂价', '成本价', '亏本冲量', '最后一批', '清仓', '抢空', '手快有', '别犹豫'];
+
+/* 趣味贴片：内容反应式（命中内容→对应趣味文案）+ 通用补位池（同片内不重复）。
+   「趣味性贴片」既要有梗、又不能偏离带货语境，故只做轻量感叹/提醒，不写无意义 emoji。 */
+const FUN_RULES = [
+  [/划算|便宜|抵买|平靓正|超值|性价比|优惠|特价|福利|减|折/, ['这价真香', '闭眼入', '抵到烂', '太划算啦']],
+  [/好吃|好味|美味|好食|鲜|香|甜|正|清甜|弹牙/, ['馋哭了', '这口绝了', '吃货快冲', '香迷糊了']],
+  [/送|免费|礼盒|赠|包邮|附赠/, ['有东西送', '手快有', '赚到了']],
+  [/最后|只剩|库存|限量|抢|清仓|截单/, ['手慢无', '冲就完了', '最后一波']],
+  [/功效|效果|坚持|改善|管用|有用|调理|养生|滋补/, ['效果看这', '亲测有用', '真的有感']],
+  [/推荐|放心|保证|正品|靠谱|正宗/, ['放心冲', '可以信', '不踩雷']],
+  [/孩子|宝宝|大人|老人|全家|家里|一家人/, ['全家都爱', '老少都有份']]
+];
+const FUN_FILLER = ['划重点', '看这里', '注意了', '重点来了', '记好了', '别划走', '这波稳了', '真香', '就它了'];
+function pickFunText(segText, used) {
+  const t = String(segText || '');
+  const pool = [];
+  for (const [re, arr] of FUN_RULES) if (re.test(t)) pool.push(...arr);
+  const src = pool.length ? pool : FUN_FILLER;
+  const free = src.filter((x) => !used.has(x));
+  const list = free.length ? free : src;
+  return list.length ? list[Math.floor(Math.random() * list.length)] : null;
+}
+
+/* 花字字体偏好（不同风格模版用不同字型；缺字型自动回退到系统中文字体） */
+const FONT_PREFS = {
+  xingkai: ['Xingkai.ttc', 'WawaSC-Regular.otf'],
+  wawa: ['WawaSC-Regular.otf', 'Xingkai.ttc'],
+  heiti: ['STHeiti Medium.ttc', 'PingFang.ttc'],
+  pingfang: ['PingFang.ttc', 'STHeiti Medium.ttc']
+};
+const _fxFontCache = {};
+function fxFontFile(pref) {
+  const key = pref || 'xingkai';
+  if (_fxFontCache[key] !== undefined) return _fxFontCache[key] || null;
   const cands = [];
   try {
     const root = '/System/Library/AssetsV2/com_apple_MobileAsset_Font8';
     if (fs.existsSync(root)) {
-      fs.readdirSync(root).forEach((d) => {
+      const dirs = fs.readdirSync(root);
+      (FONT_PREFS[key] || FONT_PREFS.xingkai).forEach((want) => {
+        dirs.forEach((d) => {
+          const p = path.join(root, d, 'AssetData', want);
+          if (fs.existsSync(p)) cands.push(p);
+        });
+      });
+      dirs.forEach((d) => {
         const p = path.join(root, d, 'AssetData');
-        const xk = path.join(p, 'Xingkai.ttc');
-        if (fs.existsSync(xk)) cands.push(xk);
-        const ww = path.join(p, 'WawaSC-Regular.otf');
-        if (fs.existsSync(ww)) cands.push(ww);
+        ['Xingkai.ttc', 'WawaSC-Regular.otf'].forEach((f) => {
+          const fp = path.join(p, f);
+          if (fs.existsSync(fp)) cands.push(fp);
+        });
       });
     }
   } catch (_) {}
   cands.push('/System/Library/Fonts/STHeiti Medium.ttc', '/System/Library/Fonts/PingFang.ttc');
-  _fxFont = cands.find((p) => { try { return fs.existsSync(p); } catch (_) { return false; } }) || '';
-  return _fxFont || null;
+  const hit = cands.find((p) => { try { return fs.existsSync(p); } catch (_) { return false; } }) || '';
+  _fxFontCache[key] = hit;
+  return hit || null;
 }
 
 // 从一句识别文本中提取花字文案（报价优先）；无则返回 null。小面额（<10）信息量低，不上花字
@@ -1355,48 +1399,105 @@ function fxTextFromSeg(segText) {
   return null;
 }
 
-/* 选择本片段的花字时间点：[{t:相对秒, text}]；只看片段内开始的句子 */
-function pickStickerMoments(segments, start, end, duration) {
-  if (duration < 3.6) return [];
-  const maxN = duration < 6.5 ? 1 : 2;
-  const minGap = 2.4;
+/* 选择本片段的花字/趣味贴片时间点：[{t:相对秒, text, fun}]。
+   密度（spacing）与最小间隔（minGap）由风格模版决定：
+   ① 先取内容锚点（报价 / 高转化短语）；② 不足时用趣味贴片补位（内容反应式→通用池）。 */
+function pickStickerMoments(segments, start, end, duration, opts) {
+  const o = opts || {};
+  if (duration < 3.2) return [];
+  const spacing = Math.max(3, Number(o.spacing) || 7);
+  const minGap = Math.max(1.2, Number(o.minGap) || 2.0);
+  const maxN = Math.max(1, Math.min(12, Math.floor(duration / spacing) + 1));
+  const segs = (segments || []).filter((s) => s.start >= start - 0.05 && s.start < end - 0.2);
+  const relOf = (s) => Math.max(0.85, Number((s.start - start + 0.12).toFixed(2)));
+  const fits = (rel) => rel + 1.9 <= duration - 0.15; // 贴片尾部留余量
   const picked = [];
-  (segments || []).forEach((s) => {
+  // ① 内容锚点（报价优先）
+  segs.forEach((s) => {
     if (picked.length >= maxN) return;
-    if (s.start < start - 0.05 || s.start >= end - 0.2) return;
     const text = fxTextFromSeg(s.text);
     if (!text) return;
-    const isPrice = text.startsWith('¥');
-    const rel = Math.max(0.85, Number((s.start - start + 0.12).toFixed(2)));
-    if (rel + 1.8 > duration - 0.15) return; // 贴片尾部留余量
+    const rel = relOf(s);
+    if (!fits(rel)) return;
     if (picked.some((e) => Math.abs(e.t - rel) < minGap)) return;
-    picked.push({ t: rel, text, price: isPrice });
+    picked.push({ t: rel, text, price: text.startsWith('¥') });
   });
   picked.sort((a, b) => (a.price === b.price ? a.t - b.t : a.price ? -1 : 1));
-  return picked.slice(0, maxN).map(({ t, text }) => ({ t, text }));
+  const out = picked.slice(0, maxN);
+  // ② 趣味贴片补位（与已选点保持更大间隔，避免贴片糊在一起）
+  const used = new Set(out.map((p) => p.text));
+  for (const s of segs) {
+    if (out.length >= maxN) break;
+    const rel = relOf(s);
+    if (!fits(rel)) continue;
+    if (out.some((e) => Math.abs(e.t - rel) < minGap * 1.25)) continue;
+    const fun = pickFunText(s.text, used);
+    if (!fun) continue;
+    out.push({ t: rel, text: fun, fun: true });
+    used.add(fun);
+  }
+  out.sort((a, b) => a.t - b.t);
+  return out.map(({ t, text, fun }) => ({ t, text, fun: !!fun }));
 }
 
-/* 花字画布尺寸（与 makeStickerPng 保持一致），用于叠加时的缩放基准 */
-function stickerSize(text) {
+/* 花字画布尺寸（与 makeStickerPng 保持一致），用于叠加时的缩放基准；色带类形状留更宽内边距 */
+function stickerSize(text, shape) {
   const fsPx = 96;
   let w = 30;
   for (const ch of text) w += /[\x20-\x7e]/.test(ch) ? fsPx * 0.62 : fsPx * 1.06;
-  return { cw: Math.ceil(w + 56), chH: Math.ceil(fsPx * 1.72 + 48) };
+  const band = shape === 'band' || shape === 'box';
+  return {
+    cw: Math.ceil(w + (band ? 92 : 56)),
+    chH: Math.ceil(fsPx * (band ? 2.0 : 1.72) + (band ? 80 : 48))
+  };
 }
 
-/* 用 ffmpeg 生成透明底花字 PNG：黄色外发光 + 深红描边 + 明黄填充 */
-async function makeStickerPng(text, outPath) {
-  const font = fxFontFile();
+/* 贴片弹入动画（由风格模版选择）：pop=过冲回弹；zoom=从小放大；slide=自上滑入 */
+function stickerAnim(anim, Ts) {
+  const dt = `(t-${Ts})`;
+  if (anim === 'zoom') return { sc: `min(1\\,0.30+0.70*${dt}/0.22)`, y: null };
+  if (anim === 'slide') return { sc: '1.0', y: `if(lt(${dt}\\,0.26)\\,-0.14*H*(1-${dt}/0.26)\\,0)` };
+  return {
+    sc: `if(lt(${dt}\\,0.14)\\,0.55+0.60*${dt}/0.14\\,if(lt(${dt}\\,0.3)\\,1.15-0.15*(${dt}-0.14)/0.16\\,1))`,
+    y: null
+  };
+}
+
+/* 用 ffmpeg 生成透明底花字 PNG。形状由风格模版决定：
+   burst = 外发光 + 粗描边（最抓眼）；band = 实心色带；box = 浅色底 + 彩字 */
+async function makeStickerPng(text, outPath, style) {
+  const st = style || {};
+  const shape = st.shape || 'burst';
+  const font = fxFontFile(st.font || 'xingkai');
   if (!font) return null;
-  const { cw, chH } = stickerSize(text);
+  const fill = st.fill || '0xFFE33A';
+  const border = st.border || '0xB00000';
+  const glow = st.glow || '0xFFC800';
+  const textColor = st.text || (shape === 'burst' ? '0xFFE33A' : fill);
+  const { cw, chH } = stickerSize(text, shape);
   const fsPx = 96;
   const pos = `x=(w-tw)/2:y=(h-th)/2`;
   const common = `fontfile='${font}':textfile=fx.txt:fontsize=${fsPx}:${pos}`;
-  const vf = [
-    `format=rgba,colorchannelmixer=aa=0,drawtext=${common}:fontcolor=yellow@0.0:borderw=22:bordercolor=0xFFC800@0.5,boxblur=8:1`,
-    `drawtext=${common}:fontcolor=yellow@0.0:borderw=12:bordercolor=0xB00000:shadowcolor=black@0.55:shadowx=3:shadowy=4`,
-    `drawtext=${common}:fontcolor=0xFFE33A:borderw=0`
-  ].join(',');
+  let vf;
+  if (shape === 'band') {
+    vf = [
+      `format=rgba,colorchannelmixer=aa=0,drawtext=${common}:fontcolor=${border}@0.0:box=1:boxcolor=${border}:boxborderw=34`,
+      `drawtext=${common}:fontcolor=${fill}@0.0:box=1:boxcolor=${fill}:boxborderw=26`,
+      `drawtext=${common}:fontcolor=${textColor}:borderw=0:shadowcolor=black@0.35:shadowx=3:shadowy=4`
+    ].join(',');
+  } else if (shape === 'box') {
+    vf = [
+      `format=rgba,colorchannelmixer=aa=0,drawtext=${common}:fontcolor=${border}@0.0:box=1:boxcolor=${border}:boxborderw=36`,
+      `drawtext=${common}:fontcolor=${fill}@0.0:box=1:boxcolor=${fill}:boxborderw=28`,
+      `drawtext=${common}:fontcolor=${textColor}:borderw=0`
+    ].join(',');
+  } else {
+    vf = [
+      `format=rgba,colorchannelmixer=aa=0,drawtext=${common}:fontcolor=${fill}@0.0:borderw=22:bordercolor=${glow}@0.5,boxblur=8:1`,
+      `drawtext=${common}:fontcolor=${fill}@0.0:borderw=12:bordercolor=${border}:shadowcolor=black@0.55:shadowx=3:shadowy=4`,
+      `drawtext=${common}:fontcolor=${textColor}:borderw=0`
+    ].join(',');
+  }
   fs.writeFileSync(path.join(path.dirname(outPath), 'fx.txt'), text, 'utf8');
   try {
     await runFf(['-v', 'error', '-f', 'lavfi', '-i', `color=black:s=${cw}x${chH}:d=1`,
@@ -1417,7 +1518,7 @@ function coverTitleText(c, moments) {
   return null;
 }
 
-async function makeCover(input, clipStart, clipDur, titleText, workDir, outPath, W, H) {
+async function makeCover(input, clipStart, clipDur, titleText, workDir, outPath, W, H, style) {
   try {
     // 1) 扫前 70% 片段（避开片头弹入与结尾淡出）选最佳帧：细节 × 亮度加权
     const scanDur = Math.min(Math.max(2, clipDur * 0.7), 24);
@@ -1443,8 +1544,8 @@ async function makeCover(input, clipStart, clipDur, titleText, workDir, outPath,
     }
 
     // 3) 叠标题花字（上方居中，比成片贴片更大）
-    const { cw } = stickerSize(titleText);
-    const dim = await makeStickerPng(titleText, path.join(workDir, 'cover-fx.png'));
+    const { cw } = stickerSize(titleText, style && style.shape);
+    const dim = await makeStickerPng(titleText, path.join(workDir, 'cover-fx.png'), style);
     if (!dim) { fs.copyFileSync(frameJpg, outPath); return outPath; }
     const bs = (W * 0.88 / cw).toFixed(4);
     const yPx = Math.round(H * 0.13);
@@ -1643,6 +1744,10 @@ async function render(options = {}, onProgress) {
     // 组片统一走 polish 管线（跨素材拼接需要统一分辨率与滤镜链）
     cfg.polishStyle = true;
   }
+  // 风格模版只在整批导出前解析一次（贴片形状/滤镜/转场/BGM 闪避全批一致；
+  // combo 封面在循环外生成，也依赖这里的 sStk）
+  const style = resolveStyle(cfg.styleTemplate);
+  const sStk = style.sticker || {};
 
   batch = { kind: 'render', canceled: false, child: null };
   const manifest = [];
@@ -1690,12 +1795,15 @@ async function render(options = {}, onProgress) {
       const W = compose ? 720 : (probe.width || 720) - ((probe.width || 720) % 2);
       const H = compose ? 1280 : (probe.height || 1280) - ((probe.height || 1280) % 2);
       const polish = !!cfg.polishStyle;
+      // 爆款风格模版：字幕（字号/颜色/描边）走 cfg（模版切换时会写入表单），
+      // 贴片形状/动画/密度、滤镜、转场、BGM 闪避参数由模版直接决定（sStk 已在循环外解析）
+      const sSub = style.subtitle || {};
       const hasAudio = probe.hasAudio !== false;
-      const subColor = SUBTITLE_COLORS[cfg.subtitleColor] ? cfg.subtitleColor : 'white';
-      const forceStyle = `Fontsize=${Number(cfg.fontSize) || 18},PrimaryColour=${assColor(SUBTITLE_COLORS[subColor])},OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=0,MarginV=${Number(cfg.marginV) || 64}`;
+      const subColor = SUBTITLE_COLORS[cfg.subtitleColor] ? cfg.subtitleColor : (sSub.color || 'white');
+      const forceStyle = `Fontsize=${Number(cfg.fontSize) || sSub.fontSize || 18},PrimaryColour=${assColor(SUBTITLE_COLORS[subColor])},OutlineColour=&H00000000,BorderStyle=1,Outline=${Number(sSub.outline) || 3},Shadow=0,MarginV=${Number(cfg.marginV) || sSub.marginV || 64}`;
 
       // 花字贴片：先生成 PNG（失败/无字则跳过，绝不阻断导出）；时间点同时供封面复用
-      const moments = pickStickerMoments(fixedSegs, c.start, c.end, DUR);
+      const moments = pickStickerMoments(fixedSegs, c.start, c.end, DUR, { spacing: sStk.spacing, minGap: sStk.minGap });
       // 钩子开场包装：组片钩子段按 hookType 叠开场大字（提问「见过这个没有？」等），
       // 位置偏上更醒目；与普通花字过密时丢弃近的普通花字
       if (composeRole === 'hook' && c.hookType && c.hookType !== 'normal') {
@@ -1713,7 +1821,7 @@ async function render(options = {}, onProgress) {
       let stickers = [];
       if (polish && fxFontFile()) {
         for (let k = 0; k < moments.length; k += 1) {
-          const dim = await makeStickerPng(moments[k].text, path.join(workDir, `fx${k}.png`));
+          const dim = await makeStickerPng(moments[k].text, path.join(workDir, `fx${k}.png`), sStk);
           if (dim) stickers.push({ ...moments[k], ...dim });
         }
       }
@@ -1758,7 +1866,9 @@ async function render(options = {}, onProgress) {
           const zexpr = zin ? `${z0.toFixed(3)}+${dz.toFixed(3)}*on/${frames}` : `${(z0 + dz).toFixed(3)}-${dz.toFixed(3)}*on/${frames}`;
           if (Math.random() < 0.35) vchain.push('hflip');
           vchain.push(`zoompan=z='${zexpr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=30,setsar=1`);
-          vchain.push(DEDUPE_EQ[Math.floor(Math.random() * DEDUPE_EQ.length)]);
+          // 色调走风格模版的同族滤镜轮换（既保风格、又让同素材多条成片互不撞车）
+          const grades = (style.grades && style.grades.length) ? style.grades : DEDUPE_EQ;
+          vchain.push(grades[Math.floor(Math.random() * grades.length)]);
         } else if (cfg.hookZoom !== false) {
           // 片头 0.5s 轻微推近（约 7%，呼应目标片的开场节奏）；zoompan 逐帧求值，crop 的 w/h 不支持
           const fps = Math.max(1, Number(probe.fps) || 30);
@@ -1766,17 +1876,23 @@ async function render(options = {}, onProgress) {
           vchain.push(`zoompan=z='1+0.07*(1-min(1\\,on/${zn}))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${fps},setsar=1`);
         }
         if (useSub) vchain.push(`subtitles=sub.srt:force_style='${forceStyle}'`);
+        // 转场：组片中间段按模版加一个短闪（flash=白闪 / black=黑场缓切），
+        // 与下段开头 whoosh 音效呼应；末段由 tailFade 收尾，不加片头闪
+        if (compose && !lastPart && style.transition && style.transition.type && style.transition.type !== 'none') {
+          const td = Number(style.transition.duration) || 0.14;
+          const tc = style.transition.color ? `:color=${style.transition.color}` : '';
+          vchain.push(`fade=t=in:st=0:d=${td}${tc}`);
+        }
 
-        // 弹入：0→0.14s 从 0.55 放大到 1.15（过冲），0.14→0.30s 回落到 1.0；末段 0.22s 淡出
-        const LIFE = 1.9;
+        // 贴片弹入动画与停留时长由风格模版决定
+        const LIFE = Number(sStk.life) || 1.9;
         stickers.forEach((s, k) => {
           const inIdx = 1 + (useBgm ? 1 : 0) + k;
           const Ts = Number(s.t.toFixed(2));
           const Te = Number((Ts + LIFE).toFixed(2));
           const bs = (W * 0.72 / s.cw).toFixed(4);
-          const dt = `(t-${Ts})`;
-          const pop = `if(lt(${dt}\\,0.14)\\,0.55+0.60*${dt}/0.14\\,if(lt(${dt}\\,0.3)\\,1.15-0.15*(${dt}-0.14)/0.16\\,1))`;
-          fc.push(`[${inIdx}:v]format=rgba,fade=t=in:st=${Ts}:d=0.1:alpha=1,fade=t=out:st=${(Te - 0.22).toFixed(2)}:d=0.22:alpha=1,scale=w='trunc(iw*${bs}*${pop}/2)*2':h=-2:eval=frame:flags=lanczos[s${k}]`);
+          const an = stickerAnim(sStk.anim, Ts);
+          fc.push(`[${inIdx}:v]format=rgba,fade=t=in:st=${Ts}:d=0.1:alpha=1,fade=t=out:st=${(Te - 0.22).toFixed(2)}:d=0.22:alpha=1,scale=w='trunc(iw*${bs}*${an.sc}/2)*2':h=-2:eval=frame:flags=lanczos[s${k}]`);
         });
         // 画中画商品镜头：右上角小窗展示 1.4s（不动时间轴，enable 窗口控制）；
         // overlay 按时间戳同步副输入，pip 帧必须 setpts 平移到事件时刻 Ts，
@@ -1801,7 +1917,10 @@ async function render(options = {}, onProgress) {
           stickers.forEach((s, k) => {
             const Ts = Number(s.t.toFixed(2));
             const Te = Number((s.t + LIFE).toFixed(2));
-            const yExpr = s.hook ? "(H-h)*0.18" : "(H-h)*0.40"; // 钩子开场大字偏上，更醒目
+            // 位置由模版决定：钩子开场大字偏上更醒目；slide 动画再叠一段纵向滑入位移
+            const baseY = s.hook ? `(H-h)*${Number(sStk.hookPos) || 0.18}` : `(H-h)*${Number(sStk.pos) || 0.4}`;
+            const an = stickerAnim(sStk.anim, Ts);
+            const yExpr = an.y ? `${baseY}+${an.y}` : baseY;
             fc.push(`[${cur}][s${k}]overlay=x=(W-w)/2:y='${yExpr}':enable='between(t\\,${Ts}\\,${Te})':eof_action=pass[vx${k}]`);
             cur = `vx${k}`;
           });
@@ -1814,18 +1933,23 @@ async function render(options = {}, onProgress) {
           fc.push(`[${cur}]${tailFade || 'null'}[vout]`);
         }
 
-        const vol = Math.min(0.6, Math.max(0, Number(cfg.bgmVolume) || 0.3));
+        // BGM 音量：用户滑块为准（模版只负责切换模版时写入滑块初值）
+        const vol = Math.min(0.85, Math.max(0, Number(cfg.bgmVolume) || 0.5));
+        // 人声闪避参数由风格模版决定（旧默认 threshold=0.025/ratio=8 会全程把 BGM 压没）
+        const bk = style.bgm || {};
+        const duck = `sidechaincompress=threshold=${Number(bk.threshold) || 0.06}:ratio=${Number(bk.ratio) || 4}:attack=${Number(bk.attack) || 15}:release=${Number(bk.release) || 380}:makeup=1`;
         const fo = Math.max(0.2, DUR - 0.8).toFixed(2);
         const ao = Math.max(0, DUR - 0.55).toFixed(2);
         // 结尾音频淡出只落在组片的最后一段；中段音频随画面 hard cut，由下段 whoosh 掩护
         const master = `alimiter=limit=0.95,loudnorm=I=-16:TP=-1.2:LRA=11,aresample=44100${lastPart ? `,afade=t=out:st=${ao}:d=0.55` : ''}`;
         const bgmOut = lastPart ? `,afade=t=out:st=${fo}:d=0.8` : '';
         if (useBgm && hasAudio) {
+          // 垫底 BGM 先抬到模版音量（BGM 素材本身已归一，无需再乘增益），再做侧链闪避
           fc.push(`[${bgmIdx}:a]atrim=0:${DUR.toFixed(3)},asetpts=PTS-STARTPTS,volume=${vol},afade=t=in:st=0:d=0.4${bgmOut}[bg]`);
-          fc.push('[bg][0:a]sidechaincompress=threshold=0.025:ratio=8:attack=20:release=350:makeup=1[duck]');
+          fc.push(`[bg][0:a]${duck}[duck]`);
           fc.push(`[0:a][duck][${sfxIdx}:a]amix=inputs=3:duration=first:weights=1 0.9 0.85:normalize=0,${master}[aout]`);
         } else if (useBgm) {
-          fc.push(`[${bgmIdx}:a]atrim=0:${DUR.toFixed(3)},asetpts=PTS-STARTPTS,volume=${(vol * 1.7).toFixed(2)},afade=t=in:st=0:d=0.4${bgmOut}[bg]`);
+          fc.push(`[${bgmIdx}:a]atrim=0:${DUR.toFixed(3)},asetpts=PTS-STARTPTS,volume=${Math.min(1, vol * 1.6).toFixed(2)},afade=t=in:st=0:d=0.4${bgmOut}[bg]`);
           fc.push(`[bg][${sfxIdx}:a]amix=inputs=2:duration=first:weights=1 0.9:normalize=0,${master}[aout]`);
         } else if (hasAudio) {
           fc.push(`[0:a][${sfxIdx}:a]amix=inputs=2:duration=first:weights=1 0.85:normalize=0,${master}[aout]`);
@@ -1861,7 +1985,7 @@ async function render(options = {}, onProgress) {
       if (cfg.coverArt && !compose) {
         onProgress({ stage: `生成封面 ${i + 1}/${jobs.length}`, percent: span(0.985), index: i + 1, total: jobs.length, name: path.basename(outFile) });
         const coverPath = path.join(outDir, `cover-${String(i + 1).padStart(2, '0')}.jpg`);
-        const made = await makeCover(input, c.start, DUR, coverTitleText(c, moments), workDir, coverPath, W, H);
+        const made = await makeCover(input, c.start, DUR, coverTitleText(c, moments), workDir, coverPath, W, H, sStk);
         if (made) {
           coverFile = path.basename(made);
           try { await attachCover(outFile, made); } catch (_) { /* cover art 写入失败不影响成片 */ }
@@ -1913,10 +2037,10 @@ async function render(options = {}, onProgress) {
           onProgress({ stage: `生成封面 ${ci + 1}/${comboIdxs.length}`, percent: ((ci + 0.7) / comboIdxs.length) * 100, index: ci + 1, total: comboIdxs.length, name: path.basename(outFile) });
           const pc = parts[parts.length - 1].c;
           const priceSegs = parts[parts.length - 1].rec.asr.segments || [];
-          const cMoments = pickStickerMoments(priceSegs.map((s) => ({ ...s, text: applySubtitleFixes(s.text, cfg) })), pc.start, pc.end, pc.end - pc.start);
+          const cMoments = pickStickerMoments(priceSegs.map((s) => ({ ...s, text: applySubtitleFixes(s.text, cfg) })), pc.start, pc.end, pc.end - pc.start, { spacing: sStk.spacing, minGap: sStk.minGap });
           const title = coverTitleText(pc, cMoments) || (parts[0].c.skuNames || [])[0] || null;
           const coverPath = path.join(outDir, `cover-${String(comboNo).padStart(2, '0')}.jpg`);
-          const made = await makeCover(outFile, 0, totalDur, title, workDir, coverPath, 720, 1280);
+          const made = await makeCover(outFile, 0, totalDur, title, workDir, coverPath, 720, 1280, sStk);
           if (made) {
             coverFile = path.basename(made);
             try { await attachCover(outFile, made); } catch (_) {}
@@ -1959,9 +2083,14 @@ async function render(options = {}, onProgress) {
   }
 }
 
+function getStyleTemplates() {
+  return styleList();
+}
+
 module.exports = {
   pickFiles,
   scanDir,
+  getStyleTemplates,
   getConfig,
   saveConfig,
   getSkus,
