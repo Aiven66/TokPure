@@ -414,10 +414,10 @@ function setSourceRole(id, role) {
 /* ---------------- 钩子分类器（纯规则，无需云端模型） ----------------
    五类钩子：question 提问钩子 / price 价格钩子 / sellingPoint 卖点开头 /
    funny 金句笑点（语录库命中）/ soft 软性带货（探店玩乐植入） */
-const HOOK_Q = /见过|有没有|听过|听说过|知道吗|你们猜|猜猜|是什么|什么是|居然|竟然|谁懂|有人认识|认识这个|见过没|没见过|看过没|你敢信|难以置信|猜不到|why|guess what|have you seen|ever seen|did you know|can you believe/i;
-const HOOK_PRICE = /破价|市面|专柜|只要|低至|机制|买一送|拍一发|补贴|清仓|特价|白送|免费送|送一包|再送|工厂价|源头|批发|亏本|亏钱|放血|地板价|全网最低|never this cheap|best price/i;
-const HOOK_SP = /吃了|用了|喝了|功效|效果|改善|帮助|含有|富含|古法|百年|秘方|调理|养生|上火|祛湿|化痰|润肺|养胃|补气|补血|健脾|失眠|手脚冰|体质|适合哪|什么人|建议|坚持|customary|benefit|good for/i;
-const HOOK_SOFT = /今天带大家|探店|打卡|去玩|逛一逛|游玩|旅行|日常|跟着我|带你们|周末|好去处|vlog|come with me|day out/i;
+const HOOK_Q = /见过|有没有|听过|听说过|知道吗|你们猜|猜猜|是什么|什么是|居然|竟然|谁懂|有人认识|认识这个|见过没|没见过|看过没|你敢信|难以置信|猜不到|看看这个|你见过|信不信|离谱|逆天|什么东西|why|guess what|have you seen|ever seen|did you know|can you believe/i;
+const HOOK_PRICE = /破价|市面|专柜|只要|低至|机制|买一送|拍一发|补贴|清仓|特价|白送|免费送|送一包|再送|送东西|送你|有送|工厂价|源头|批发|亏本|亏钱|放血|地板价|全网最低|跳楼价|清货|打骨折|骨折价|破盘价|never this cheap|best price/i;
+const HOOK_SP = /吃了|用了|喝了|吃下去|喝下去|连续吃|见效|有效果|功效|效果|改善|帮助|含有|富含|古法|百年|秘方|调理|养生|上火|祛湿|化痰|润肺|养胃|补气|补血|健脾|失眠|手脚冰|体质|适合哪|什么人|建议|坚持|customary|benefit|good for/i;
+const HOOK_SOFT = /今天带大家|今天去|探店|打卡|去玩|逛一逛|逛逛|游玩|旅行|日常|跟着我|带你们|周末|好去处|一日游|探秘|揭秘|产地|vlog|come with me|day out/i;
 
 /** 对候选开头 6 秒内的文本判钩子类型；返回 {type, hit} */
 function classifyHook(text6, cfg) {
@@ -446,9 +446,59 @@ const HOOK_LABEL = {
   normal: '常规'
 };
 
-/* ---------------- 字幕热词纠错（ASR 错别字修正，字幕/花字/封面统一应用） ---------------- */
+/* 钩子开场包装：按钩子类型在片头叠开场大字花字（老粉一眼识别 IP/钩子类型）。
+   模板为通用包装语（不硬编码具体商品），随机选取避开与开头话术重复。 */
+const HOOK_STICKERS = {
+  funny: ['铭哥名场面', '经典语录', '名场面来了', '老粉都懂'],
+  question: ['见过这个没有？', '你们见过没？', '认识这个吗？', '猜猜这是什么'],
+  price: ['今天破价了', '机制来了', '手慢无', '只有这个价'],
+  sellingPoint: ['吃过的都说好', '效果看这里', '这么吃才对', '坚持吃的变化'],
+  soft: ['今天带大家', '跟我逛一天', '日常探店', '好去处分享']
+};
+function pickHookStickerText(type, firstSegText) {
+  const pool = HOOK_STICKERS[type];
+  if (!pool) return '';
+  const t = String(firstSegText || '');
+  const cands = pool.filter((x) => !t.includes(x.replace(/[？?！!]/g, '')));
+  const src = cands.length ? cands : pool;
+  return src[Math.floor(Math.random() * src.length)];
+}
+
+/* ---------------- 字幕热词纠错（ASR 错别字修正，字幕/花字/封面统一应用） ----------------
+   三层：手动纠错表最优先 → 内置带货高频错字词典 → 商品库同音错字模糊匹配。
+   模糊匹配只接受「等长且恰好一个字不同」的窗口（中文 ASR 同音/近音错字的
+   绝对主流形态），其余形态误伤率高一律不动。 */
+const BUILTIN_FIXES = [
+  ['沉皮', '陈皮'], ['成皮', '陈皮'], ['臣皮', '陈皮'], ['尘皮', '陈皮'], ['橙皮', '陈皮'],
+  ['新汇', '新会'], ['新晖', '新会'], ['薪会', '新会'],
+  ['三煲扎', '三宝扎'], ['三保扎', '三宝扎'], ['三宝渣', '三宝扎'],
+  ['金保保', '金宝宝'], ['金抱抱', '金宝宝'], ['今宝宝', '金宝宝'],
+  ['鹿飞丸', '鹿肺丸'], ['鹿费丸', '鹿肺丸'], ['露肺丸', '鹿肺丸'],
+  ['牡利素', '牡蛎素'], ['牡砺素', '牡蛎素'], ['暮蛎素', '牡蛎素'],
+  ['冲屎茶', '虫屎茶'], ['重屎茶', '虫屎茶'], ['虫使茶', '虫屎茶'],
+  ['保邮', '包邮'], ['包由', '包邮'], ['葆邮', '包邮'],
+  ['离盒', '礼盒'], ['理盒', '礼盒'], ['礼合', '礼盒']
+];
+const AUTO_FIX_CACHE = { sig: '', lex: [] };
+function autoFixLexicon(cfg) {
+  const sig = `${(cfg && cfg.subtitleFixes) || ''}|${JSON.stringify(getSkus().map((s) => [s.name, s.aliases || []]))}`;
+  if (AUTO_FIX_CACHE.sig === sig) return AUTO_FIX_CACHE.lex;
+  const lex = new Set();
+  BUILTIN_FIXES.forEach(([, good]) => lex.add(good));
+  getSkus().forEach((sku) => {
+    [sku.name, ...(sku.aliases || [])].forEach((n) => {
+      const t = String(n || '').trim();
+      if (t.length >= 2 && !/[a-zA-Z0-9]/.test(t)) lex.add(t); // 纯中文词才做同音字模糊匹配
+    });
+  });
+  const out = [...lex].sort((a, b) => b.length - a.length); // 长词优先，避免短词破坏长词窗口
+  AUTO_FIX_CACHE.sig = sig;
+  AUTO_FIX_CACHE.lex = out;
+  return out;
+}
 function applySubtitleFixes(t, cfg) {
   let out = String(t || '');
+  // 1) 手动纠错表（用户声明，直接替换）
   String((cfg && cfg.subtitleFixes) || '').split(/[;;\n]/).forEach((pair) => {
     const i = pair.indexOf('=');
     if (i <= 0) return;
@@ -456,6 +506,24 @@ function applySubtitleFixes(t, cfg) {
     const b = pair.slice(i + 1).trim();
     if (a) out = out.split(a).join(b);
   });
+  // 2) 内置词典
+  BUILTIN_FIXES.forEach(([bad, good]) => { out = out.split(bad).join(good); });
+  // 3) 商品库同音错字：仅 ≥3 字词参与（2 字词单字差误伤面大，走内置词典/手动表）；
+  //    等长窗口恰好一个字不同 → 替换为词库词（同音/近音错字的绝对主流形态）
+  const lex = autoFixLexicon(cfg);
+  const isWordChar = (ch) => ch && /[\u4e00-\u9fff0-9a-zA-Z]/.test(ch);
+  for (const w of lex) {
+    const n = w.length;
+    if (n < 3) continue;
+    for (let i = 0; i + n <= out.length; i += 1) {
+      let diff = 0;
+      for (let j = 0; j < n; j += 1) if (out[i + j] !== w[j]) { diff += 1; if (diff > 1) break; }
+      if (diff !== 1) continue;
+      if (isWordChar(out[i - 1]) || isWordChar(out[i + n])) continue; // 不拆更长词
+      out = out.slice(0, i) + w + out.slice(i + n);
+      i += n - 1;
+    }
+  }
   return out;
 }
 
@@ -496,20 +564,27 @@ function modelSupportsYue(modelId, modelPath) {
   const s = `${modelId || ''} ${path.basename(modelPath || '')}`.toLowerCase();
   return /turbo|large|medium/.test(s);
 }
-function buildWhisperPrompt(language, skus) {
+function buildWhisperPrompt(language, skus, cfg) {
   const base = {
     zh: '以下是直播带货口播，包含商品名称、原价、到手价、包邮、点击链接、马上下单、限时优惠、库存不多、买它等话术。',
     yue: '以下係粵語直播帶貨口播，包含商品名稱、原價、到手價、包郵、一號連結、即刻落單、限時優惠、貨源唔多、快啲搶、買佢等講法。',
     en: 'The following is a live shopping stream pitch with product names, original price, deal price, free shipping, click the link, order now, limited time offer, limited stock.'
   };
   let p = base[language] || base.zh + ' ' + base.en;
-  // 把商品库名称/别名注入提示词，引导专有名词识别（厨房剪/藍牙耳機/品牌名）
+  // 把商品库名称/别名注入提示词，引导专有名词识别（厨房剪/藍牙耳機/品牌名）；
+  // 纠错词典的正词一并注入——识别端倾向输出正词，防错优于事后纠错
   const terms = [];
   (skus || []).forEach((sku) => {
     [sku.name, ...(sku.aliases || [])].forEach((n) => {
       const t = String(n || '').trim();
       if (t && t.length >= 2 && !terms.includes(t)) terms.push(t);
     });
+  });
+  BUILTIN_FIXES.forEach(([, good]) => { if (!terms.includes(good)) terms.push(good); });
+  String((cfg && cfg.subtitleFixes) || '').split(/[;;\n]/).forEach((pair) => {
+    const i = pair.indexOf('=');
+    const b = i > 0 ? pair.slice(i + 1).trim() : '';
+    if (b && b.length >= 2 && !terms.includes(b)) terms.push(b);
   });
   if (terms.length) {
     p += language === 'en' ? ' Products: ' + terms.slice(0, 16).join(', ') + '.'
@@ -539,7 +614,7 @@ async function runWhisper(wav, model, modelId, language, jobDir, onLine, skus) {
   }
   // 场景 initial prompt（粤语增益最大，zh/en 同音错字也明显减少）
   if (decodeLang !== 'auto') {
-    args.push('--prompt', buildWhisperPrompt(language === 'yue' ? (useYue ? 'yue' : 'zh') : decodeLang, skus));
+    args.push('--prompt', buildWhisperPrompt(language === 'yue' ? (useYue ? 'yue' : 'zh') : decodeLang, skus, getConfig()));
   }
   await runCmd(bin, args, { onLine });
   const data = JSON.parse(fs.readFileSync(outBase + '.json', 'utf8'));
@@ -1479,10 +1554,13 @@ function buildComposeJobs(cfg) {
   const usedHook = new Set();
   const usedIntro = new Set();
   const usedPrice = new Set();
+  const usedHookTypes = new Set(); // 钩子类型多样化：同批成片优先不重复钩子类型（提问/价格/金句…）
   const combos = [];
   const maxCombos = Math.min(byRole.hook.length, byRole.price.length, Math.max(1, Math.floor(byRole.intro.length / 2)));
   for (let n = 0; n < maxCombos; n += 1) {
-    const hook = byRole.hook.find((x) => !usedHook.has(key(x)) && dur(x) >= 3.5);
+    const avail = (x) => !usedHook.has(key(x)) && dur(x) >= 3.5;
+    const hook = byRole.hook.find((x) => avail(x) && !usedHookTypes.has(x.c.hookType || 'normal'))
+      || byRole.hook.find(avail);
     const price = byRole.price.find((x) => !usedPrice.has(key(x)));
     if (!hook || !price) break;
     const hookDur = Math.min(dur(hook), 9);           // 开场 4-9s
@@ -1504,6 +1582,7 @@ function buildComposeJobs(cfg) {
     if (!picks.length) break;
     picks.forEach((x) => usedIntro.add(key(x)));
     usedHook.add(key(hook));
+    usedHookTypes.add(hook.c.hookType || 'normal');
     usedPrice.add(key(price));
     combos.push({ hook, price, intros: picks, hookDur, priceDur, introDur: acc });
   }
@@ -1617,6 +1696,18 @@ async function render(options = {}, onProgress) {
 
       // 花字贴片：先生成 PNG（失败/无字则跳过，绝不阻断导出）；时间点同时供封面复用
       const moments = pickStickerMoments(fixedSegs, c.start, c.end, DUR);
+      // 钩子开场包装：组片钩子段按 hookType 叠开场大字（提问「见过这个没有？」等），
+      // 位置偏上更醒目；与普通花字过密时丢弃近的普通花字
+      if (composeRole === 'hook' && c.hookType && c.hookType !== 'normal') {
+        const firstSeg = fixedSegs.find((s) => s.end > c.start && s.start < c.end);
+        const hookText = pickHookStickerText(c.hookType, firstSeg && firstSeg.text);
+        if (hookText) {
+          moments.unshift({ t: 0.15, text: hookText, hook: true });
+          for (let k = moments.length - 1; k >= 1; k -= 1) {
+            if (moments[k].t < 2.5) moments.splice(k, 1); // 开场大字下方留出阅读空间
+          }
+        }
+      }
       // 画中画插镜头：ASR 文本命中关键字 → 右上角随机商品镜头 1.4s
       const shots = (cfg.insertShots && shotPool.length) ? buildShotEvents(fixedSegs, c, cfg, shotPool, 3) : [];
       let stickers = [];
@@ -1710,7 +1801,8 @@ async function render(options = {}, onProgress) {
           stickers.forEach((s, k) => {
             const Ts = Number(s.t.toFixed(2));
             const Te = Number((s.t + LIFE).toFixed(2));
-            fc.push(`[${cur}][s${k}]overlay=x=(W-w)/2:y='(H-h)*0.40':enable='between(t\\,${Ts}\\,${Te})':eof_action=pass[vx${k}]`);
+            const yExpr = s.hook ? "(H-h)*0.18" : "(H-h)*0.40"; // 钩子开场大字偏上，更醒目
+            fc.push(`[${cur}][s${k}]overlay=x=(W-w)/2:y='${yExpr}':enable='between(t\\,${Ts}\\,${Te})':eof_action=pass[vx${k}]`);
             cur = `vx${k}`;
           });
           shots.forEach((ev, k) => {
@@ -1794,7 +1886,7 @@ async function render(options = {}, onProgress) {
           skus: c.skuNames || [],
           prices: c.priceMatches || [],
           cover: coverFile,
-          text: c.text
+          text: applySubtitleFixes(c.text || '', cfg)
         });
       }
       onProgress({ stage: `导出 ${i + 1}/${jobs.length}`, percent: span(1), index: i + 1, total: jobs.length, name: path.basename(outFile) });
@@ -1835,6 +1927,7 @@ async function render(options = {}, onProgress) {
           file: path.basename(outFile),
           source: parts.map((p) => p.rec.source.name).join(' + '),
           structure: parts.map((p) => `${ROLES[p.role] ? ROLES[p.role].label : p.role} ${Number(p.duration.toFixed(1))}s`).join(' + '),
+          hookType: parts[0].c.hookType || 'normal',
           sourcePath: parts.map((p) => p.rec.source.path).join(' + '),
           start: parts[0].c.start,
           end: parts[parts.length - 1].c.end,
@@ -1843,16 +1936,17 @@ async function render(options = {}, onProgress) {
           skus: [...new Set(parts.flatMap((p) => p.c.skuNames || []))],
           prices: parts.flatMap((p) => p.priceFixes || p.c.priceMatches || []),
           cover: coverFile,
-          text: parts.map((p) => p.c.text).filter(Boolean).join(' ')
+          text: parts.map((p) => applySubtitleFixes(p.c.text || '', cfg)).filter(Boolean).join(' ')
         });
       }
     }
 
     writeJson(path.join(outDir, 'manifest.json'), { batch: batchName, createdAt: new Date().toISOString(), count: manifest.length, clips: manifest });
     const escCsv = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-    const csv = [['文件', '封面', '来源素材', '开始', '结束', '时长', '分数', '商品', '价格', '文案'].join(',')];
+    const csv = [['文件', '封面', '来源素材', '开始', '结束', '时长', '分数', '钩子类型', '商品', '价格', '文案'].join(',')];
     manifest.forEach((m) => csv.push([
       escCsv(m.file), escCsv(m.cover || ''), escCsv(m.source), m.start, m.end, m.duration, m.score,
+      escCsv(HOOK_LABEL[m.hookType] || (m.hookType || '')),
       escCsv(m.skus.join(';')), escCsv(m.prices.join(';')), escCsv(m.text)
     ].join(',')));
     fs.writeFileSync(path.join(outDir, 'manifest.csv'), '﻿' + csv.join('\n'), 'utf8');
