@@ -67,9 +67,12 @@ const DEFAULT_CFG = {
   burnSubtitles: true,       // 导出时烧录字幕
   fontSize: 18,
   marginV: 64,
+  subtitleColor: 'white',    // 字幕颜色预设：white|yellow|green|cyan|pink
   polishStyle: true,         // 成片增强：BGM 垫底 + whoosh/pop 音效 + 花字弹出
   bgmVolume: 0.3,            // BGM 原始音量（人声侧链闪避后约 -24LU，不压话）
   hookZoom: true,            // 片头 0.5s 轻微推近
+  visualCheck: true,         // 画面有效性检测：黑屏/纯色/静止画面的候选自动淘汰（不合规成片拦截）
+  coverArt: true,            // 导出时自动生成短视频封面（最佳帧+标题花字）并写入 mp4
   positiveWords: '好用 划算 便宜 超值 加厚 实用 性价比 爆款 热卖 好评 回购 正品 质量好 显瘦 百搭 亲肤 透气 买一送一 福利 优惠 立减 返场 闭眼入 不踩雷 好味 美味 新鲜 干净 好料 足料 真材实料 厚肉 厚身 陈年 正宗 地道 干货 饱满 推荐 放心 有保证 值得 好正 抵买 抵食 平靓正 放心买 great deal worth value must-have best seller good quality tasty delicious fresh authentic genuine premium recommended juicy high quality great value well worth it',
   ctaWords: '上车 落单 下单 拍一发 点击 链接 小黄车 购物车 马上下单 赶紧拍 去抢 库存 只剩 包邮 限时 秒杀 抢购 直播间 评论区 拍1号 1号链接 买它 即刻 上架 拍下 带走 带回家 送礼 礼盒 免费送 再送 送给你 特价 优惠价 福利价 折扣 半价 入手 试一试 试下 心动 手慢无 截单 出货 现货 拍低 带走啦 帮衬 钟意 buy now order now link below add to cart shopping cart limited offer limited time offer free shipping click the link grab yours shop now free gift on sale while stocks last check it out',
   negativeWords: '别买 翻车 不好用 踩雷 智商税 退款 退货 差评 质量差 骗人 假货 亏了 呃人 垃圾 过期 变质 不值 中伏 不要买 唔好买 别乱买 don\'t buy waste of money scam bad quality not worth stay away from',
@@ -223,6 +226,79 @@ function runCmd(bin, args, opts = {}) {
 }
 async function runFf(args, onLine, cwd) {
   return runCmd(ffmpegMod.getFfmpegPath(), args, { onLine, cwd });
+}
+/** 以二进制方式收集 ffmpeg stdout（rawvideo 管道用，runCmd 的字符串收集会破坏字节流） */
+function runFfBuf(args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(ffmpegMod.getFfmpegPath(), args, { windowsHide: true });
+    if (batch) batch.child = child;
+    const chunks = [];
+    let stderr = '';
+    child.stdout.on('data', (c) => chunks.push(c));
+    child.stderr.on('data', (c) => { stderr += c.toString(); if (stderr.length > 20000) stderr = stderr.slice(-10000); });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (batch && batch.child === child) batch.child = null;
+      if (code === 0) resolve(Buffer.concat(chunks));
+      else reject(new Error(`ffmpeg 退出码 ${code}: ${stderr.slice(-300)}`));
+    });
+  });
+}
+
+/* ---------------- 画面有效性检测（黑屏/纯色/静止 → 不合规成片拦截） ----------------
+   反例：合成测试素材（纯色静帧）被切成“黑屏+字幕”成片，与原片内容毫无关联。
+   做法：把片段降采样为 24x24 灰度 rawvideo，在 Node 侧统计
+     detail  帧内空间标准差（纯色画面≈0，任何真实内容>10）
+     motion  相邻帧平均差（静止画面≈0，真实拍摄>0.5）
+     dark    平均亮度（黑屏≈16）与暗帧占比
+   检测失败不误杀（返回 valid:true），绝不阻断导出主流程。 */
+const VIS_GRID = 24;
+async function sampleGrayFrames(input, start, dur, fps, grid) {
+  const g = grid || VIS_GRID;
+  const buf = await runFfBuf([
+    '-v', 'error', '-ss', String(Math.max(0, start)), '-t', String(Math.max(0.3, dur)),
+    '-i', input, '-vf', `fps=${fps},scale=${g}:${g},format=gray`, '-f', 'rawvideo', '-'
+  ]);
+  const n = g * g;
+  const total = Math.floor(buf.length / n);
+  const frames = [];
+  for (let f = 0; f < total; f += 1) {
+    const off = f * n;
+    let s = 0;
+    for (let i = 0; i < n; i += 1) s += buf[off + i];
+    const mean = s / n;
+    let sq = 0;
+    for (let i = 0; i < n; i += 1) { const d = buf[off + i] - mean; sq += d * d; }
+    frames.push({ mean, detail: Math.sqrt(sq / n) });
+  }
+  let motion = 0;
+  for (let f = 1; f < total; f += 1) {
+    let md = 0;
+    const off = f * n;
+    for (let i = 0; i < n; i += 1) md += Math.abs(buf[off + i] - buf[off - n + i]);
+    motion += md / n;
+  }
+  return { frames, motion: total > 1 ? motion / (total - 1) : 0 };
+}
+
+/** 判定一个候选窗口的画面是否有效；返回 {valid, detail, motion, darkRatio} 持久化到候选 */
+async function checkVisual(input, start, dur) {
+  try {
+    // 只采样片段前 8s（无效画面从第一帧就是无效的），1.5fps 足够判断
+    const st = await sampleGrayFrames(input, start + 0.1, Math.min(8, Math.max(1.5, dur)), 1.5);
+    if (!st.frames.length) return { valid: true, skip: true };
+    const dark = st.frames.filter((f) => f.mean < 20).length;
+    const darkRatio = dark / st.frames.length;
+    const brightness = st.frames.reduce((a, f) => a + f.mean, 0) / st.frames.length;
+    const detail = st.frames.reduce((a, f) => a + f.detail, 0) / st.frames.length;
+    const black = darkRatio > 0.8 || brightness < 22;
+    const plain = detail < 3.0;                              // 纯色/合成画面
+    const frozen = st.motion < 0.35 && detail < 12;          // 冻结静帧（带噪声的停帧）
+    const invalid = black || plain || frozen;
+    return { valid: !invalid, detail: Number(detail.toFixed(2)), motion: Number(st.motion.toFixed(3)), darkRatio: Number(darkRatio.toFixed(2)) };
+  } catch (_) {
+    return { valid: true, skip: true }; // 检测异常不误杀
+  }
 }
 
 /* ---------------- 素材选择 / 扫描 ---------------- */
@@ -617,6 +693,21 @@ function snapBoundary(raw, silences, type, probeDur) {
   return Math.max(0, Math.min(probeDur || raw + 1, best));
 }
 
+/** 出点收尾对齐：吸附到“最后一句说完后”的最长静音起点，让结尾停在话音自然落点，
+    避免切在半句话上导致成片结尾生硬。找不到合适静音则回退原出点。 */
+function alignOutPoint(rawEnd, segEnd, silences, probeDur) {
+  const cap = probeDur || rawEnd + 5;
+  let best = null;
+  (silences || []).forEach((z) => {
+    if (z.start > rawEnd + 1.2) return;        // 静音起点不能拖出太多，否则节奏松散
+    if (z.end < segEnd - 0.4) return;          // 必须覆盖最后一句的收尾（是其后的停顿）
+    if (!best || (z.end - z.start) > (best.end - best.start)) best = z;
+  });
+  if (!best) return rawEnd;
+  const out = Math.max(segEnd - 0.3, Math.min(best.start, cap));
+  return Number(Math.min(out, cap).toFixed(2));
+}
+
 /** 规则引擎：ASR 句段 → 候选片段 */
 function buildCandidates(segments, silences, probe, cfg, skus) {
   if (!segments.length) return [];
@@ -700,7 +791,8 @@ function buildCandidates(segments, silences, probe, cfg, skus) {
     const rawStart = Math.max(0, winSegs[0].start - Number(cfg.leadPad || 0));
     const rawEnd = Math.min(probe.duration || winSegs[winSegs.length - 1].end, winSegs[winSegs.length - 1].end + Number(cfg.trailPad || 0));
     const start = snapBoundary(rawStart, silences, 'start', probe.duration);
-    const end = snapBoundary(rawEnd, silences, 'end', probe.duration);
+    // 结尾优先对齐最后一句之后的自然静音（顺滑收尾），无则退回最近边界
+    const end = alignOutPoint(rawEnd, winSegs[winSegs.length - 1].end, silences, probe.duration);
     const sc = scoreWindow(winSegs, start, end, cfg, skus);
     windows.push({ l, r, start, end, ...sc });
   });
@@ -838,6 +930,20 @@ async function analyze(files, opts = {}, onProgress) {
 
       onProgress({ stage: '规则匹配与打分', percent: span(94), index: i + 1, total: files.length, name: meta.name });
       const candidates = buildCandidates(segments, silences, probe, cfg, skus);
+
+      // 画面有效性检测：黑屏/纯色/静止画面的候选直接淘汰（不合规成片在审核期就拦下）
+      if (cfg.visualCheck !== false && candidates.length) {
+        onProgress({ stage: '画面有效性检测', percent: span(96), index: i + 1, total: files.length, name: meta.name });
+        let invalidN = 0;
+        for (const c of candidates) {
+          const v = await checkVisual(meta.path, c.start, c.end - c.start);
+          c.visual = v;
+          if (!v.valid) { c.status = 'rejected'; c.visualInvalid = true; invalidN += 1; }
+        }
+        if (invalidN) {
+          onProgress({ stage: `画面检测淘汰 ${invalidN} 条无效候选`, percent: span(97), index: i + 1, total: files.length, name: meta.name });
+        }
+      }
 
       const rec = {
         version: 1,
@@ -990,6 +1096,26 @@ function buildClipSrt(segments, start, end, maxWidth) {
   return lines.join('\n');
 }
 
+/* ---------------- 字幕颜色预设（描边固定黑，保证任何底色下可读） ---------------- */
+const SUBTITLE_COLORS = {
+  white: '#FFFFFF',
+  yellow: '#FFDE33',
+  green: '#4DFF7C',
+  cyan: '#3AE5FF',
+  pink: '#FF66A3'
+};
+/** #RRGGBB → ASS 主色 &H00BBGGRR */
+function assColor(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+  if (!m) return '&H00FFFFFF';
+  const v = m[1];
+  const r = parseInt(v.slice(0, 2), 16);
+  const g = parseInt(v.slice(2, 4), 16);
+  const b = parseInt(v.slice(4, 6), 16);
+  const p = (x) => x.toString(16).toUpperCase().padStart(2, '0');
+  return `&H00${p(b)}${p(g)}${p(r)}`;
+}
+
 /* ---------------- 成片风格化：行楷花字贴片（黄字红边，弹入） ---------------- */
 // 只打两类点：① 报价（¥199 / 一百九十九蚊）② 高转化短语。每片最多 2 条，宁少勿多。
 const FX_PHRASES = ['买一送一', '免费送', '送一包', '再送', '秒杀', '手慢无', '包邮', '上架', '福利价', '特价', '到手价', '试一试', '最后', '库存', '买它'];
@@ -1080,6 +1206,70 @@ async function makeStickerPng(text, outPath) {
   }
 }
 
+/* ---------------- 短视频封面：最佳帧 + 标题花字，写入 mp4 cover art ---------------- */
+/** 封面标题文案：花字报价/话术优先 → ¥价格 → 商品名；没有可用的就返回 null（纯画面封面） */
+function coverTitleText(c, moments) {
+  if (moments && moments.length) return moments[0].text;
+  const price = (c.priceMatches || []).find((p) => /^¥/.test(String(p)) && String(p).length > 2);
+  if (price) return price;
+  if (Array.isArray(c.skuNames) && c.skuNames.length) return c.skuNames[0];
+  return null;
+}
+
+async function makeCover(input, clipStart, clipDur, titleText, workDir, outPath, W, H) {
+  try {
+    // 1) 扫前 70% 片段（避开片头弹入与结尾淡出）选最佳帧：细节 × 亮度加权
+    const scanDur = Math.min(Math.max(2, clipDur * 0.7), 24);
+    const st = await sampleGrayFrames(input, clipStart + 0.3, scanDur, 3, 48);
+    if (!st.frames.length) return null;
+    let bestIdx = -1;
+    let bestScore = -1;
+    st.frames.forEach((f, idx) => {
+      const bright = f.mean >= 45 && f.mean <= 215 ? 1 : 0.35;
+      const score = f.detail * bright + f.mean * 0.06;
+      if (score > bestScore) { bestScore = score; bestIdx = idx; }
+    });
+    const t = clipStart + 0.3 + bestIdx / 3;
+
+    // 2) 抽全尺寸帧
+    const frameJpg = path.join(workDir, 'cover-frame.jpg');
+    await runFf(['-v', 'error', '-y', '-ss', t.toFixed(3), '-i', input,
+      '-frames:v', '1', '-vf', `scale=${W}:${H}`, '-q:v', '2', frameJpg]);
+    if (!fs.existsSync(frameJpg) || fs.statSync(frameJpg).size < 1000) return null;
+    if (!titleText || !fxFontFile()) {
+      fs.copyFileSync(frameJpg, outPath);
+      return outPath;
+    }
+
+    // 3) 叠标题花字（上方居中，比成片贴片更大）
+    const { cw } = stickerSize(titleText);
+    const dim = await makeStickerPng(titleText, path.join(workDir, 'cover-fx.png'));
+    if (!dim) { fs.copyFileSync(frameJpg, outPath); return outPath; }
+    const bs = (W * 0.88 / cw).toFixed(4);
+    const yPx = Math.round(H * 0.13);
+    await runFf(['-v', 'error', '-y', '-i', frameJpg, '-i', path.join(workDir, 'cover-fx.png'),
+      '-filter_complex',
+      `[1:v]scale=w='trunc(iw*${bs}/2)*2':h=-2:flags=lanczos[fx];` +
+      `[0:v][fx]overlay=x=(W-w)/2:y=${yPx}:format=auto,format=yuvj420p`,
+      '-frames:v', '1', '-q:v', '2', outPath]);
+    return fs.existsSync(outPath) && fs.statSync(outPath).size > 1000 ? outPath : null;
+  } catch (_) {
+    return null; // 封面失败绝不阻断导出
+  }
+}
+
+/** 把封面 JPG 写进成片 mp4 的 cover art（流复制主轨，秒级完成） */
+async function attachCover(mp4Path, coverJpg) {
+  const tmp = `${mp4Path}.cover.mp4`;
+  await runFf(['-v', 'error', '-y', '-i', mp4Path, '-i', coverJpg,
+    '-map', '0:v:0', '-map', '0:a?', '-map', '1:v:0',
+    '-c', 'copy', '-c:v:1', 'mjpeg',
+    '-disposition:v:0', 'default', '-disposition:v:1', 'attached_pic',
+    '-movflags', '+faststart', tmp]);
+  if (!fs.existsSync(tmp) || fs.statSync(tmp).size < 1000) throw new Error('cover remux failed');
+  fs.renameSync(tmp, mp4Path);
+}
+
 function tsName() {
   const d = new Date();
   const p = (x) => String(x).padStart(2, '0');
@@ -1126,6 +1316,18 @@ async function render(options = {}, onProgress) {
       const duration = c.end - c.start;
       const span = (p) => ((i + p) / jobs.length) * 100;
 
+      // 不合规防线：画面无效（黑屏/纯色/静止）的候选一律不导出。
+      // 老缓存里没有 visual 数据的在导出前现补一次检测并落盘。
+      if (cfg.visualCheck !== false) {
+        if (!c.visual) c.visual = await checkVisual(input, c.start, duration);
+        if (c.visual && c.visual.valid === false) {
+          c.visualInvalid = true;
+          writeJson(sourcePath(rec.id), rec);
+          onProgress({ stage: `跳过不合规片段（画面与原片无关）`, percent: span(1), index: i + 1, total: jobs.length, name: path.basename(outFile) });
+          continue;
+        }
+      }
+
       const maxWidth = subtitleMaxWidth(cfg.fontSize, rec.probe && rec.probe.width);
       const srt = buildClipSrt(rec.asr.segments || [], c.start, c.end, maxWidth);
       const useSub = cfg.burnSubtitles && srt.trim();
@@ -1139,12 +1341,13 @@ async function render(options = {}, onProgress) {
       const H = (probe.height || 1280) - ((probe.height || 1280) % 2);
       const polish = !!cfg.polishStyle;
       const hasAudio = probe.hasAudio !== false;
-      const forceStyle = `Fontsize=${Number(cfg.fontSize) || 18},PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=0,MarginV=${Number(cfg.marginV) || 64}`;
+      const subColor = SUBTITLE_COLORS[cfg.subtitleColor] ? cfg.subtitleColor : 'white';
+      const forceStyle = `Fontsize=${Number(cfg.fontSize) || 18},PrimaryColour=${assColor(SUBTITLE_COLORS[subColor])},OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=0,MarginV=${Number(cfg.marginV) || 64}`;
 
-      // 花字贴片：先生成 PNG（失败/无字则跳过，绝不阻断导出）
+      // 花字贴片：先生成 PNG（失败/无字则跳过，绝不阻断导出）；时间点同时供封面复用
+      const moments = pickStickerMoments(rec.asr.segments || [], c.start, c.end, DUR);
       let stickers = [];
       if (polish && fxFontFile()) {
-        const moments = pickStickerMoments(rec.asr.segments || [], c.start, c.end, DUR);
         for (let k = 0; k < moments.length; k += 1) {
           const dim = await makeStickerPng(moments[k].text, path.join(workDir, `fx${k}.png`));
           if (dim) stickers.push({ ...moments[k], ...dim });
@@ -1194,23 +1397,27 @@ async function render(options = {}, onProgress) {
           const pop = `if(lt(${dt}\\,0.14)\\,0.55+0.60*${dt}/0.14\\,if(lt(${dt}\\,0.3)\\,1.15-0.15*(${dt}-0.14)/0.16\\,1))`;
           fc.push(`[${inIdx}:v]format=rgba,fade=t=in:st=${Ts}:d=0.1:alpha=1,fade=t=out:st=${(Te - 0.22).toFixed(2)}:d=0.22:alpha=1,scale=w='trunc(iw*${bs}*${pop}/2)*2':h=-2:eval=frame:flags=lanczos[s${k}]`);
         });
+        // 结尾 0.45s 视频淡出（叠加在花字之后，整幅画面收黑，消除“戛然而止”的截断感）
+        const tailFade = `fade=t=out:st=${Math.max(0, DUR - 0.45).toFixed(2)}:d=0.45`;
         if (stickers.length) {
           fc.push(`[0:v]${vchain.join(',')}[vbase]`);
           let acc = 'vbase';
           stickers.forEach((s, k) => {
             const Ts = Number(s.t.toFixed(2));
             const Te = Number((s.t + LIFE).toFixed(2));
-            const out = k === stickers.length - 1 ? 'vout' : `va${k}`;
+            const out = k === stickers.length - 1 ? 'vpre' : `va${k}`;
             fc.push(`[${acc}][s${k}]overlay=x=(W-w)/2:y='(H-h)*0.40':enable='between(t\\,${Ts}\\,${Te})':eof_action=pass[${out}]`);
             acc = out;
           });
+          fc.push(`[vpre]${tailFade}[vout]`);
         } else {
-          fc.push(`[0:v]${vchain.join(',') || 'null'}[vout]`);
+          fc.push(`[0:v]${vchain.join(',') || 'null'},${tailFade}[vout]`);
         }
 
         const vol = Math.min(0.6, Math.max(0, Number(cfg.bgmVolume) || 0.3));
         const fo = Math.max(0.2, DUR - 0.8).toFixed(2);
-        const master = 'alimiter=limit=0.95,loudnorm=I=-16:TP=-1.2:LRA=11,aresample=44100';
+        const ao = Math.max(0, DUR - 0.55).toFixed(2);
+        const master = `alimiter=limit=0.95,loudnorm=I=-16:TP=-1.2:LRA=11,aresample=44100,afade=t=out:st=${ao}:d=0.55`;
         if (useBgm && hasAudio) {
           fc.push(`[${bgmIdx}:a]atrim=0:${DUR.toFixed(3)},asetpts=PTS-STARTPTS,volume=${vol},afade=t=in:st=0:d=0.4,afade=t=out:st=${fo}:d=0.8[bg]`);
           fc.push('[bg][0:a]sidechaincompress=threshold=0.025:ratio=8:attack=20:release=350:makeup=1[duck]');
@@ -1230,7 +1437,10 @@ async function render(options = {}, onProgress) {
         ffArgs.push(...(mapAudio ? ['-c:a', 'aac', '-b:a', '160k'] : ['-an']), '-movflags', '+faststart', outFile);
         needCwd = true;
       } else {
-        if (useSub) ffArgs.push('-vf', `subtitles=sub.srt:force_style='${forceStyle}'`);
+        const tailFade = `fade=t=out:st=${Math.max(0, DUR - 0.45).toFixed(2)}:d=0.45`;
+        if (useSub) ffArgs.push('-vf', `subtitles=sub.srt:force_style='${forceStyle}',${tailFade}`);
+        else ffArgs.push('-vf', tailFade);
+        if (hasAudio) ffArgs.push('-af', `afade=t=out:st=${Math.max(0, DUR - 0.55).toFixed(2)}:d=0.55`);
         ffArgs.push('-t', DUR.toFixed(3), '-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', outFile);
       }
 
@@ -1242,6 +1452,18 @@ async function render(options = {}, onProgress) {
         }
       }, needCwd ? workDir : undefined);
       checkCanceled();
+
+      // 短视频封面：最佳帧 + 标题花字 → cover-NN.jpg，并写入 mp4 cover art（Finder/QuickTime 直接可见）
+      let coverFile = null;
+      if (cfg.coverArt) {
+        onProgress({ stage: `生成封面 ${i + 1}/${jobs.length}`, percent: span(0.985), index: i + 1, total: jobs.length, name: path.basename(outFile) });
+        const coverPath = path.join(outDir, `cover-${String(i + 1).padStart(2, '0')}.jpg`);
+        const made = await makeCover(input, c.start, DUR, coverTitleText(c, moments), workDir, coverPath, W, H);
+        if (made) {
+          coverFile = path.basename(made);
+          try { await attachCover(outFile, made); } catch (_) { /* cover art 写入失败不影响成片 */ }
+        }
+      }
 
       c.output = outFile;
       writeJson(sourcePath(rec.id), rec);
@@ -1255,6 +1477,7 @@ async function render(options = {}, onProgress) {
         score: c.score,
         skus: c.skuNames || [],
         prices: c.priceMatches || [],
+        cover: coverFile,
         text: c.text
       });
       onProgress({ stage: `导出 ${i + 1}/${jobs.length}`, percent: span(1), index: i + 1, total: jobs.length, name: path.basename(outFile) });
@@ -1262,15 +1485,15 @@ async function render(options = {}, onProgress) {
 
     writeJson(path.join(outDir, 'manifest.json'), { batch: batchName, createdAt: new Date().toISOString(), count: manifest.length, clips: manifest });
     const escCsv = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-    const csv = [['文件', '来源素材', '开始', '结束', '时长', '分数', '商品', '价格', '文案'].join(',')];
+    const csv = [['文件', '封面', '来源素材', '开始', '结束', '时长', '分数', '商品', '价格', '文案'].join(',')];
     manifest.forEach((m) => csv.push([
-      escCsv(m.file), escCsv(m.source), m.start, m.end, m.duration, m.score,
+      escCsv(m.file), escCsv(m.cover || ''), escCsv(m.source), m.start, m.end, m.duration, m.score,
       escCsv(m.skus.join(';')), escCsv(m.prices.join(';')), escCsv(m.text)
     ].join(',')));
     fs.writeFileSync(path.join(outDir, 'manifest.csv'), '﻿' + csv.join('\n'), 'utf8');
 
     onProgress({ stage: '全部导出完成', percent: 100, index: jobs.length, total: jobs.length, name: '' });
-    return { dir: outDir, count: jobs.length };
+    return { dir: outDir, count: manifest.length };
   } finally {
     batch = null;
     try { fs.rmSync(workDir, { recursive: true, force: true }); } catch (_) {}

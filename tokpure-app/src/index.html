@@ -23,7 +23,7 @@
           <img class="brand-logo" id="brand-logo" alt="TokPure" />
           <div>
             <div class="brand-name">TokPure</div>
-            <div class="brand-sub" id="brand-version">v2.7.0</div>
+            <div class="brand-sub" id="brand-version">v2.8.0</div>
           </div>
         </div>
         <nav class="nav" id="nav">
@@ -686,8 +686,19 @@
                   <label class="clip-check"><input type="checkbox" id="clip-burn-out" checked /><span>烧录字幕</span></label>
                   <label class="clip-check">字号<input type="number" id="clip-fontsize" value="18" min="10" max="40" style="width:56px;margin-left:6px" /></label>
                   <label class="clip-check">底边距<input type="number" id="clip-marginv" value="64" min="0" max="200" style="width:56px;margin-left:6px" /></label>
+                  <label class="clip-check">字幕颜色
+                    <span class="clip-swatches" id="clip-subcolor" style="margin-left:6px">
+                      <button type="button" class="clip-swatch sel" data-color="white" style="background:#FFFFFF" title="白色"></button>
+                      <button type="button" class="clip-swatch" data-color="yellow" style="background:#FFDE33" title="黄色"></button>
+                      <button type="button" class="clip-swatch" data-color="green" style="background:#4DFF7C" title="绿色"></button>
+                      <button type="button" class="clip-swatch" data-color="cyan" style="background:#3AE5FF" title="青色"></button>
+                      <button type="button" class="clip-swatch" data-color="pink" style="background:#FF66A3" title="粉色"></button>
+                    </span>
+                  </label>
                   <label class="clip-check"><input type="checkbox" id="clip-polish" checked /><span>成片增强（BGM + 音效 + 花字贴片）</span></label>
                   <label class="clip-check">BGM音量<input type="number" id="clip-bgmvol" value="30" min="0" max="60" style="width:52px;margin-left:6px" />%</label>
+                  <label class="clip-check"><input type="checkbox" id="clip-visualcheck" checked /><span>画面检测（黑屏/纯色自动淘汰）</span></label>
+                  <label class="clip-check"><input type="checkbox" id="clip-coverart" checked /><span>生成封面并写入视频</span></label>
                 </div>
               </div>
             </div>

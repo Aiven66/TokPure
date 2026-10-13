@@ -1073,7 +1073,8 @@ const REASON_LABEL = {
   neg: '负向词',
   filler: '口头禅多',
   len: '时长不佳',
-  density: '语速异常'
+  density: '语速异常',
+  visual: '画面无效'
 };
 function clipReasonLabel(code) { return T(REASON_LABEL[code] || code); }
 
@@ -1151,8 +1152,11 @@ function collectClipCfg() {
     burnSubtitles: $('#clip-burn-out').checked,
     fontSize: num('#clip-fontsize', 18),
     marginV: num('#clip-marginv', 64),
+    subtitleColor: ($('#clip-subcolor .clip-swatch.sel') || {}).dataset?.color || 'white',
     polishStyle: $('#clip-polish').checked,
-    bgmVolume: Math.min(0.6, Math.max(0, num('#clip-bgmvol', 30) / 100))
+    bgmVolume: Math.min(0.6, Math.max(0, num('#clip-bgmvol', 30) / 100)),
+    visualCheck: $('#clip-visualcheck').checked,
+    coverArt: $('#clip-coverart').checked
   };
 }
 
@@ -1174,8 +1178,12 @@ function fillClipCfgForm(cfg) {
   $('#clip-burn-out').checked = cfg.burnSubtitles !== false;
   set('#clip-fontsize', cfg.fontSize);
   set('#clip-marginv', cfg.marginV);
+  const swColor = cfg.subtitleColor || 'white';
+  $$('#clip-subcolor .clip-swatch').forEach((b) => b.classList.toggle('sel', b.dataset.color === swColor));
   $('#clip-polish').checked = cfg.polishStyle !== false;
   set('#clip-bgmvol', Math.round((cfg.bgmVolume != null ? cfg.bgmVolume : 0.3) * 100));
+  $('#clip-visualcheck').checked = cfg.visualCheck !== false;
+  $('#clip-coverart').checked = cfg.coverArt !== false;
 }
 
 async function clipAddFiles(list) {
@@ -1279,6 +1287,9 @@ function renderCandidates() {
       const txt = r.v ? `${clipReasonLabel(r.c)}·${r.v}` : clipReasonLabel(r.c);
       tags.push(`<span class="clip-tag ${cls}">${esc(txt)}</span>`);
     });
+    if (c.visual && c.visual.valid === false) {
+      tags.push(`<span class="clip-tag tag-warn">${esc(T('画面无效'))}·${esc(T('黑屏/纯色/静止'))}</span>`);
+    }
     return `
     <div class="clip-cand st-${c.status} ${state.clips.selectedCid === c.id ? 'sel' : ''}" data-cid="${c.id}">
       <div class="clip-cand-top">
@@ -1603,6 +1614,12 @@ function bindClips() {
       if (vid.paused) previewCandidate(cid);
       else vid.pause();
     }
+  });
+
+  $('#clip-subcolor').addEventListener('click', (e) => {
+    const b = e.target.closest('.clip-swatch');
+    if (!b) return;
+    $$('#clip-subcolor .clip-swatch').forEach((x) => x.classList.toggle('sel', x === b));
   });
 
   $('#clip-export').onclick = clipExport;

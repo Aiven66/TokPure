@@ -1727,6 +1727,23 @@ textarea.ta:focus { border-color: rgba(37, 244, 238, 0.5); }
 .clip-tag.tag-warn { color: #ffb4ab; border-color: rgba(255,107,107,.3); background: rgba(255,107,107,.08); }
 .clip-cand-text { margin: 8px 0 0; font-size: 12px; line-height: 1.65; color: var(--on-surface); }
 
+/* 字幕颜色色板 */
+.clip-swatches { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
+.clip-swatch {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--hairline-strong);
+  background: var(--swatch, #fff);
+  cursor: pointer;
+  padding: 0;
+  outline: none;
+  transition: transform .12s, box-shadow .12s;
+}
+.clip-swatch:hover { transform: scale(1.15); }
+.clip-swatch.sel {
+  box-shadow: 0 0 0 2px var(--surface-container-high), 0 0 0 3.5px var(--secondary);
+}
+
 #view-clips .nav-badge, a.nav-item[data-view="clips"] .nav-badge {
   background: rgba(37,244,238,.16);
   color: var(--secondary);
