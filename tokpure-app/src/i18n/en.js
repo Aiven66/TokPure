@@ -454,6 +454,8 @@
 "留空自动按时间命名": "Leave empty to auto-name by time",
 "导出选项": "Export options",
 "烧录字幕": "Burn subtitles",
+"成片增强（BGM + 音效 + 花字贴片）": "Polish (BGM + SFX + text stickers)",
+"BGM音量": "BGM volume",
 "底边距": "Bottom margin",
 "导出全部已通过片段": "Export all approved clips",
 "取消导出": "Cancel export",

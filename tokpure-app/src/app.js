@@ -1150,7 +1150,9 @@ function collectClipCfg() {
     negativeWords: $('#clip-words-neg').value,
     burnSubtitles: $('#clip-burn-out').checked,
     fontSize: num('#clip-fontsize', 18),
-    marginV: num('#clip-marginv', 64)
+    marginV: num('#clip-marginv', 64),
+    polishStyle: $('#clip-polish').checked,
+    bgmVolume: Math.min(0.6, Math.max(0, num('#clip-bgmvol', 30) / 100))
   };
 }
 
@@ -1172,6 +1174,8 @@ function fillClipCfgForm(cfg) {
   $('#clip-burn-out').checked = cfg.burnSubtitles !== false;
   set('#clip-fontsize', cfg.fontSize);
   set('#clip-marginv', cfg.marginV);
+  $('#clip-polish').checked = cfg.polishStyle !== false;
+  set('#clip-bgmvol', Math.round((cfg.bgmVolume != null ? cfg.bgmVolume : 0.3) * 100));
 }
 
 async function clipAddFiles(list) {

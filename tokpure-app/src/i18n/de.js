@@ -454,6 +454,8 @@
 "留空自动按时间命名": "Leer = automatischer Zeitname",
 "导出选项": "Exportoptionen",
 "烧录字幕": "Untertitel einbrennen",
+"成片增强（BGM + 音效 + 花字贴片）": "Clip-Polish (BGM + SFX + Text-Sticker)",
+"BGM音量": "BGM-Lautstärke",
 "底边距": "Unterer Randabstand",
 "导出全部已通过片段": "Alle freigegebenen Clips exportieren",
 "取消导出": "Export abbrechen",

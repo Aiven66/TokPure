@@ -454,6 +454,8 @@
 "留空自动按时间命名": "Vide = nom automatique par date",
 "导出选项": "Options d'export",
 "烧录字幕": "Incruster les sous-titres",
+"成片增强（BGM + 音效 + 花字贴片）": "Finition (musique + SFX + stickers texte)",
+"BGM音量": "Volume de la musique",
 "底边距": "Marge inférieure",
 "导出全部已通过片段": "Exporter tous les clips approuvés",
 "取消导出": "Annuler l'export",

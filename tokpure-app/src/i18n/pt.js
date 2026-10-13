@@ -454,6 +454,8 @@
 "留空自动按时间命名": "Vazio = nome automático por data",
 "导出选项": "Opções de exportação",
 "烧录字幕": "Gravar legendas",
+"成片增强（BGM + 音效 + 花字贴片）": "Polimento (BGM + efeitos + figurinhas de texto)",
+"BGM音量": "Volume do BGM",
 "底边距": "Margem inferior",
 "导出全部已通过片段": "Exportar todos os clipes aprovados",
 "取消导出": "Cancelar exportação",

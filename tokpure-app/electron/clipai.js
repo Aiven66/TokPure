@@ -23,6 +23,7 @@ const ffmpegMod = require('./ffmpeg');
 const hub = require('./enginehub');
 const aijobs = require('./aijobs');
 const store = require('./store');
+const audiofx = require('./audiofx');
 
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.m4v', '.webm', '.mkv']);
 
@@ -66,6 +67,9 @@ const DEFAULT_CFG = {
   burnSubtitles: true,       // 导出时烧录字幕
   fontSize: 18,
   marginV: 64,
+  polishStyle: true,         // 成片增强：BGM 垫底 + whoosh/pop 音效 + 花字弹出
+  bgmVolume: 0.3,            // BGM 原始音量（人声侧链闪避后约 -24LU，不压话）
+  hookZoom: true,            // 片头 0.5s 轻微推近
   positiveWords: '好用 划算 便宜 超值 加厚 实用 性价比 爆款 热卖 好评 回购 正品 质量好 显瘦 百搭 亲肤 透气 买一送一 福利 优惠 立减 返场 闭眼入 不踩雷 好味 美味 新鲜 干净 好料 足料 真材实料 厚肉 厚身 陈年 正宗 地道 干货 饱满 推荐 放心 有保证 值得 好正 抵买 抵食 平靓正 放心买 great deal worth value must-have best seller good quality tasty delicious fresh authentic genuine premium recommended juicy high quality great value well worth it',
   ctaWords: '上车 落单 下单 拍一发 点击 链接 小黄车 购物车 马上下单 赶紧拍 去抢 库存 只剩 包邮 限时 秒杀 抢购 直播间 评论区 拍1号 1号链接 买它 即刻 上架 拍下 带走 带回家 送礼 礼盒 免费送 再送 送给你 特价 优惠价 福利价 折扣 半价 入手 试一试 试下 心动 手慢无 截单 出货 现货 拍低 带走啦 帮衬 钟意 buy now order now link below add to cart shopping cart limited offer limited time offer free shipping click the link grab yours shop now free gift on sale while stocks last check it out',
   negativeWords: '别买 翻车 不好用 踩雷 智商税 退款 退货 差评 质量差 骗人 假货 亏了 呃人 垃圾 过期 变质 不值 中伏 不要买 唔好买 别乱买 don\'t buy waste of money scam bad quality not worth stay away from',
@@ -986,6 +990,96 @@ function buildClipSrt(segments, start, end, maxWidth) {
   return lines.join('\n');
 }
 
+/* ---------------- 成片风格化：行楷花字贴片（黄字红边，弹入） ---------------- */
+// 只打两类点：① 报价（¥199 / 一百九十九蚊）② 高转化短语。每片最多 2 条，宁少勿多。
+const FX_PHRASES = ['买一送一', '免费送', '送一包', '再送', '秒杀', '手慢无', '包邮', '上架', '福利价', '特价', '到手价', '试一试', '最后', '库存', '买它'];
+let _fxFont = null;
+function fxFontFile() {
+  if (_fxFont !== null) return _fxFont || null;
+  const cands = [];
+  try {
+    const root = '/System/Library/AssetsV2/com_apple_MobileAsset_Font8';
+    if (fs.existsSync(root)) {
+      fs.readdirSync(root).forEach((d) => {
+        const p = path.join(root, d, 'AssetData');
+        const xk = path.join(p, 'Xingkai.ttc');
+        if (fs.existsSync(xk)) cands.push(xk);
+        const ww = path.join(p, 'WawaSC-Regular.otf');
+        if (fs.existsSync(ww)) cands.push(ww);
+      });
+    }
+  } catch (_) {}
+  cands.push('/System/Library/Fonts/STHeiti Medium.ttc', '/System/Library/Fonts/PingFang.ttc');
+  _fxFont = cands.find((p) => { try { return fs.existsSync(p); } catch (_) { return false; } }) || '';
+  return _fxFont || null;
+}
+
+// 从一句识别文本中提取花字文案（报价优先）；无则返回 null。小面额（<10）信息量低，不上花字
+function fxTextFromSeg(segText) {
+  const t = String(segText || '');
+  const m = t.match(/(\d{1,5})(?:\.(\d{1,2}))?\s*(?:蚊鸡|蚊|块钱|块|元钱|元|圆)/);
+  if (m) {
+    if (Number(`${m[1]}.${m[2] || 0}`) < 10) return null;
+    return `¥${m[1]}${m[2] ? '.' + m[2] : ''}`;
+  }
+  const zh = zhPrices(t);
+  if (zh.length && Number(zh[0]) >= 10) return `¥${zh[0]}`;
+  for (const p of FX_PHRASES) if (t.includes(p)) return p;
+  return null;
+}
+
+/* 选择本片段的花字时间点：[{t:相对秒, text}]；只看片段内开始的句子 */
+function pickStickerMoments(segments, start, end, duration) {
+  if (duration < 3.6) return [];
+  const maxN = duration < 6.5 ? 1 : 2;
+  const minGap = 2.4;
+  const picked = [];
+  (segments || []).forEach((s) => {
+    if (picked.length >= maxN) return;
+    if (s.start < start - 0.05 || s.start >= end - 0.2) return;
+    const text = fxTextFromSeg(s.text);
+    if (!text) return;
+    const isPrice = text.startsWith('¥');
+    const rel = Math.max(0.85, Number((s.start - start + 0.12).toFixed(2)));
+    if (rel + 1.8 > duration - 0.15) return; // 贴片尾部留余量
+    if (picked.some((e) => Math.abs(e.t - rel) < minGap)) return;
+    picked.push({ t: rel, text, price: isPrice });
+  });
+  picked.sort((a, b) => (a.price === b.price ? a.t - b.t : a.price ? -1 : 1));
+  return picked.slice(0, maxN).map(({ t, text }) => ({ t, text }));
+}
+
+/* 花字画布尺寸（与 makeStickerPng 保持一致），用于叠加时的缩放基准 */
+function stickerSize(text) {
+  const fsPx = 96;
+  let w = 30;
+  for (const ch of text) w += /[\x20-\x7e]/.test(ch) ? fsPx * 0.62 : fsPx * 1.06;
+  return { cw: Math.ceil(w + 56), chH: Math.ceil(fsPx * 1.72 + 48) };
+}
+
+/* 用 ffmpeg 生成透明底花字 PNG：黄色外发光 + 深红描边 + 明黄填充 */
+async function makeStickerPng(text, outPath) {
+  const font = fxFontFile();
+  if (!font) return null;
+  const { cw, chH } = stickerSize(text);
+  const fsPx = 96;
+  const pos = `x=(w-tw)/2:y=(h-th)/2`;
+  const common = `fontfile='${font}':textfile=fx.txt:fontsize=${fsPx}:${pos}`;
+  const vf = [
+    `format=rgba,colorchannelmixer=aa=0,drawtext=${common}:fontcolor=yellow@0.0:borderw=22:bordercolor=0xFFC800@0.5,boxblur=8:1`,
+    `drawtext=${common}:fontcolor=yellow@0.0:borderw=12:bordercolor=0xB00000:shadowcolor=black@0.55:shadowx=3:shadowy=4`,
+    `drawtext=${common}:fontcolor=0xFFE33A:borderw=0`
+  ].join(',');
+  fs.writeFileSync(path.join(path.dirname(outPath), 'fx.txt'), text, 'utf8');
+  try {
+    await runFf(['-v', 'error', '-f', 'lavfi', '-i', `color=black:s=${cw}x${chH}:d=1`,
+      '-vf', vf, '-frames:v', '1', '-y', outPath], () => {}, path.dirname(outPath));
+    return fs.existsSync(outPath) && fs.statSync(outPath).size > 0 ? { cw, chH } : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function tsName() {
   const d = new Date();
   const p = (x) => String(x).padStart(2, '0');
@@ -1038,19 +1132,115 @@ async function render(options = {}, onProgress) {
       if (useSub) fs.writeFileSync(path.join(workDir, 'sub.srt'), '﻿' + srt, 'utf8');
 
       onProgress({ stage: `导出 ${i + 1}/${jobs.length}`, percent: span(0), index: i + 1, total: jobs.length, name: path.basename(outFile) });
-      const ffArgs = ['-y', '-ss', String(c.start), '-i', input, '-t', duration.toFixed(3)];
-      if (useSub) {
-        const force = `Fontsize=${Number(cfg.fontSize) || 18},PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=0,MarginV=${Number(cfg.marginV) || 64}`;
-        ffArgs.push('-vf', `subtitles=sub.srt:force_style='${force}'`);
+
+      const DUR = duration;
+      const probe = rec.probe || {};
+      const W = (probe.width || 720) - ((probe.width || 720) % 2);
+      const H = (probe.height || 1280) - ((probe.height || 1280) % 2);
+      const polish = !!cfg.polishStyle;
+      const hasAudio = probe.hasAudio !== false;
+      const forceStyle = `Fontsize=${Number(cfg.fontSize) || 18},PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=0,MarginV=${Number(cfg.marginV) || 64}`;
+
+      // 花字贴片：先生成 PNG（失败/无字则跳过，绝不阻断导出）
+      let stickers = [];
+      if (polish && fxFontFile()) {
+        const moments = pickStickerMoments(rec.asr.segments || [], c.start, c.end, DUR);
+        for (let k = 0; k < moments.length; k += 1) {
+          const dim = await makeStickerPng(moments[k].text, path.join(workDir, `fx${k}.png`));
+          if (dim) stickers.push({ ...moments[k], ...dim });
+        }
       }
-      ffArgs.push('-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', outFile);
+
+      const ffArgs = ['-y', '-ss', String(c.start), '-i', input];
+      let needCwd = useSub;
+      let mapAudio = true;
+
+      if (polish) {
+        const bgmPath = audiofx.audioAsset('bgm-bed.wav');
+        const useBgm = fs.existsSync(bgmPath);
+        let bgmIdx = -1;
+        if (useBgm) {
+          bgmIdx = 1;
+          ffArgs.push('-stream_loop', '-1', '-i', bgmPath);
+        }
+        stickers.forEach((s, k) => {
+          ffArgs.push('-loop', '1', '-t', DUR.toFixed(3), '-i', path.join(workDir, `fx${k}.png`));
+        });
+        // 音效轨：片头 whoosh + 花字 pop（纯合成，随片生成）
+        const sfxIdx = 1 + (useBgm ? 1 : 0) + stickers.length;
+        const sfxPath = path.join(workDir, 'sfx.wav');
+        audiofx.buildSfxTrack(DUR, stickers.map((s) => ({ t: s.t, type: 'pop' })), sfxPath);
+        ffArgs.push('-i', sfxPath);
+        ffArgs.push('-t', DUR.toFixed(3));
+
+        const fc = [];
+        const vchain = [];
+        // 片头 0.5s 轻微推近（约 7%，呼应目标片的开场节奏）；zoompan 逐帧求值，crop 的 w/h 不支持
+        if (cfg.hookZoom !== false) {
+          const fps = Math.max(1, Number(probe.fps) || 30);
+          const zn = Math.max(2, Math.round(fps * 0.5));
+          vchain.push(`zoompan=z='1+0.07*(1-min(1\\,on/${zn}))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${fps},setsar=1`);
+        }
+        if (useSub) vchain.push(`subtitles=sub.srt:force_style='${forceStyle}'`);
+
+        // 弹入：0→0.14s 从 0.55 放大到 1.15（过冲），0.14→0.30s 回落到 1.0；末段 0.22s 淡出
+        const LIFE = 1.9;
+        stickers.forEach((s, k) => {
+          const inIdx = 1 + (useBgm ? 1 : 0) + k;
+          const Ts = Number(s.t.toFixed(2));
+          const Te = Number((Ts + LIFE).toFixed(2));
+          const bs = (W * 0.72 / s.cw).toFixed(4);
+          const dt = `(t-${Ts})`;
+          const pop = `if(lt(${dt}\\,0.14)\\,0.55+0.60*${dt}/0.14\\,if(lt(${dt}\\,0.3)\\,1.15-0.15*(${dt}-0.14)/0.16\\,1))`;
+          fc.push(`[${inIdx}:v]format=rgba,fade=t=in:st=${Ts}:d=0.1:alpha=1,fade=t=out:st=${(Te - 0.22).toFixed(2)}:d=0.22:alpha=1,scale=w='trunc(iw*${bs}*${pop}/2)*2':h=-2:eval=frame:flags=lanczos[s${k}]`);
+        });
+        if (stickers.length) {
+          fc.push(`[0:v]${vchain.join(',')}[vbase]`);
+          let acc = 'vbase';
+          stickers.forEach((s, k) => {
+            const Ts = Number(s.t.toFixed(2));
+            const Te = Number((s.t + LIFE).toFixed(2));
+            const out = k === stickers.length - 1 ? 'vout' : `va${k}`;
+            fc.push(`[${acc}][s${k}]overlay=x=(W-w)/2:y='(H-h)*0.40':enable='between(t\\,${Ts}\\,${Te})':eof_action=pass[${out}]`);
+            acc = out;
+          });
+        } else {
+          fc.push(`[0:v]${vchain.join(',') || 'null'}[vout]`);
+        }
+
+        const vol = Math.min(0.6, Math.max(0, Number(cfg.bgmVolume) || 0.3));
+        const fo = Math.max(0.2, DUR - 0.8).toFixed(2);
+        const master = 'alimiter=limit=0.95,loudnorm=I=-16:TP=-1.2:LRA=11,aresample=44100';
+        if (useBgm && hasAudio) {
+          fc.push(`[${bgmIdx}:a]atrim=0:${DUR.toFixed(3)},asetpts=PTS-STARTPTS,volume=${vol},afade=t=in:st=0:d=0.4,afade=t=out:st=${fo}:d=0.8[bg]`);
+          fc.push('[bg][0:a]sidechaincompress=threshold=0.025:ratio=8:attack=20:release=350:makeup=1[duck]');
+          fc.push(`[0:a][duck][${sfxIdx}:a]amix=inputs=3:duration=first:weights=1 0.9 0.85:normalize=0,${master}[aout]`);
+        } else if (useBgm) {
+          fc.push(`[${bgmIdx}:a]atrim=0:${DUR.toFixed(3)},asetpts=PTS-STARTPTS,volume=${(vol * 1.7).toFixed(2)},afade=t=in:st=0:d=0.4,afade=t=out:st=${fo}:d=0.8[bg]`);
+          fc.push(`[bg][${sfxIdx}:a]amix=inputs=2:duration=first:weights=1 0.9:normalize=0,${master}[aout]`);
+        } else if (hasAudio) {
+          fc.push(`[0:a][${sfxIdx}:a]amix=inputs=2:duration=first:weights=1 0.85:normalize=0,${master}[aout]`);
+        } else {
+          mapAudio = false;
+        }
+
+        ffArgs.push('-filter_complex', fc.join(';'), '-map', '[vout]');
+        if (mapAudio) ffArgs.push('-map', '[aout]');
+        ffArgs.push('-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast', '-pix_fmt', 'yuv420p');
+        ffArgs.push(...(mapAudio ? ['-c:a', 'aac', '-b:a', '160k'] : ['-an']), '-movflags', '+faststart', outFile);
+        needCwd = true;
+      } else {
+        if (useSub) ffArgs.push('-vf', `subtitles=sub.srt:force_style='${forceStyle}'`);
+        ffArgs.push('-t', DUR.toFixed(3), '-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', outFile);
+      }
+
       await runFf(ffArgs, (line) => {
         const m = line.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
-        if (m && duration > 0) {
+        if (m && DUR > 0) {
           const t = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
-          onProgress({ stage: `导出 ${i + 1}/${jobs.length}`, percent: span(Math.min(0.98, t / duration)), index: i + 1, total: jobs.length, name: path.basename(outFile) });
+          onProgress({ stage: `导出 ${i + 1}/${jobs.length}`, percent: span(Math.min(0.98, t / DUR)), index: i + 1, total: jobs.length, name: path.basename(outFile) });
         }
-      }, useSub ? workDir : undefined);
+      }, needCwd ? workDir : undefined);
       checkCanceled();
 
       c.output = outFile;

@@ -454,6 +454,8 @@
 "留空自动按时间命名": "Vacío = nombre automático por fecha",
 "导出选项": "Opciones de exportación",
 "烧录字幕": "Incrustar subtítulos",
+"成片增强（BGM + 音效 + 花字贴片）": "Mejora del clip (BGM + efectos + pegatinas de texto)",
+"BGM音量": "Volumen del BGM",
 "底边距": "Margen inferior",
 "导出全部已通过片段": "Exportar todos los clips aprobados",
 "取消导出": "Cancelar exportación",
