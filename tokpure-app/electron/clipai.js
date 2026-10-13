@@ -73,6 +73,14 @@ const DEFAULT_CFG = {
   hookZoom: true,            // 片头 0.5s 轻微推近
   visualCheck: true,         // 画面有效性检测：黑屏/纯色/静止画面的候选自动淘汰（不合规成片拦截）
   coverArt: true,            // 导出时自动生成短视频封面（最佳帧+标题花字）并写入 mp4
+  composeMode: true,         // 结构化组片：钩子+产品介绍+价格机制 三段拼装成带货短视频
+  targetShort: 50,           // 组片目标时长（秒），产出 30-90s、多数 50s 左右
+  dedupeFx: true,            // 去重变换：连续缩放 + 随机水平翻转 + 滤镜预设轮换，素材成片互不撞车
+  insertShots: false,        // 关键字画中画插镜头：说到关键字时右上角弹出商品展示镜头
+  shotsDir: '',              // 「镜头」文件夹（商品展示镜头库，画中画素材来源）
+  shotKeywords: '看这个 就这个 就是它 给你们看 看一眼 拍一下 上车 走一个 这个好 look at this take a look check this out',
+  funnyQuotes: '',           // 直播间金句/语录库（分号或换行分隔，命中判为「金句钩子」）
+  subtitleFixes: '',         // 字幕纠错表：错词=正词，分号或换行分隔（ASR 错别字热词修正）
   positiveWords: '好用 划算 便宜 超值 加厚 实用 性价比 爆款 热卖 好评 回购 正品 质量好 显瘦 百搭 亲肤 透气 买一送一 福利 优惠 立减 返场 闭眼入 不踩雷 好味 美味 新鲜 干净 好料 足料 真材实料 厚肉 厚身 陈年 正宗 地道 干货 饱满 推荐 放心 有保证 值得 好正 抵买 抵食 平靓正 放心买 great deal worth value must-have best seller good quality tasty delicious fresh authentic genuine premium recommended juicy high quality great value well worth it',
   ctaWords: '上车 落单 下单 拍一发 点击 链接 小黄车 购物车 马上下单 赶紧拍 去抢 库存 只剩 包邮 限时 秒杀 抢购 直播间 评论区 拍1号 1号链接 买它 即刻 上架 拍下 带走 带回家 送礼 礼盒 免费送 再送 送给你 特价 优惠价 福利价 折扣 半价 入手 试一试 试下 心动 手慢无 截单 出货 现货 拍低 带走啦 帮衬 钟意 buy now order now link below add to cart shopping cart limited offer limited time offer free shipping click the link grab yours shop now free gift on sale while stocks last check it out',
   negativeWords: '别买 翻车 不好用 踩雷 智商税 退款 退货 差评 质量差 骗人 假货 亏了 呃人 垃圾 过期 变质 不值 中伏 不要买 唔好买 别乱买 don\'t buy waste of money scam bad quality not worth stay away from',
@@ -295,8 +303,9 @@ async function checkVisual(input, start, dur) {
     const plain = detail < 3.0;                              // 纯色/合成画面
     const frozen = st.motion < 0.35 && detail < 12;          // 冻结静帧（带噪声的停帧）
     const invalid = black || plain || frozen;
-    return { valid: !invalid, detail: Number(detail.toFixed(2)), motion: Number(st.motion.toFixed(3)), darkRatio: Number(darkRatio.toFixed(2)) };
-  } catch (_) {
+    const out = { valid: !invalid, detail: Number(detail.toFixed(2)), motion: Number(st.motion.toFixed(3)), darkRatio: Number(darkRatio.toFixed(2)) };
+    return out;
+  } catch (e) {
     return { valid: true, skip: true }; // 检测异常不误杀
   }
 }
@@ -348,6 +357,106 @@ function sourceIdOf(meta) {
 }
 function sourcePath(id) {
   return path.join(sourcesDir(), `${id}.json`);
+}
+
+/* ---------------- 结构化素材（钩子库 / 产品介绍库 / 价格机制库） ----------------
+   三宝扎类素材拍摄时就按三段结构分好文件夹：导入时标记角色，组片引擎按
+   「钩子 → 介绍 → 价格」拼装成 30-90s 带货短视频（目标 50s）。 */
+const ROLES = {
+  hook: { label: '钩子', minDuration: 4, maxCandidates: 30 },
+  intro: { label: '介绍', minDuration: 12, maxCandidates: 20 },
+  price: { label: '价格', minDuration: 6, maxCandidates: 24 }
+};
+/** 组片时的角色专属参数：钩子允许更短的片段（开场只要 3-10 秒） */
+function roleCfg(cfg, role) {
+  const r = ROLES[role];
+  if (!r) return cfg;
+  return { ...cfg, minDuration: r.minDuration, maxCandidates: r.maxCandidates };
+}
+async function pickStructureFolder(role) {
+  const label = (ROLES[role] || {}).label || role;
+  const res = await dialog.showOpenDialog({
+    title: `选择「${label}」素材文件夹（自动递归扫描）`,
+    properties: ['openDirectory']
+  });
+  if (res.canceled || !res.filePaths.length) return { role, files: [] };
+  const root = res.filePaths[0];
+  const out = [];
+  const walk = (dir, depth) => {
+    if (depth > 6 || out.length > 2000) return;
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+    entries.forEach((e) => {
+      if (e.name.startsWith('.') || e.name === 'node_modules') return;
+      const fp = path.join(dir, e.name);
+      if (e.isDirectory()) walk(fp, depth + 1);
+      else {
+        const m = fileMeta(fp);
+        if (m) out.push({ ...m, role });
+      }
+    });
+  };
+  walk(root, 0);
+  return { role, dir: root, files: out };
+}
+function setSourceRole(id, role) {
+  const rec = readJsonSafe(sourcePath(id), null);
+  if (!rec) throw new Error('片段库不存在');
+  rec.structureRole = ROLES[role] ? role : null;
+  // 角色变化影响候选时长规则，重建候选（复用已落盘 ASR，不重新识别）
+  const cfg = getConfig();
+  rec.candidates = buildCandidates(rec.asr.segments || [], rec.silences || [], rec.probe || {}, roleCfg(cfg, rec.structureRole), getSkus());
+  rec.rules = ruleSignature(cfg);
+  writeJson(sourcePath(id), rec);
+  return summarize(rec);
+}
+
+/* ---------------- 钩子分类器（纯规则，无需云端模型） ----------------
+   五类钩子：question 提问钩子 / price 价格钩子 / sellingPoint 卖点开头 /
+   funny 金句笑点（语录库命中）/ soft 软性带货（探店玩乐植入） */
+const HOOK_Q = /见过|有没有|听过|听说过|知道吗|你们猜|猜猜|是什么|什么是|居然|竟然|谁懂|有人认识|认识这个|见过没|没见过|看过没|你敢信|难以置信|猜不到|why|guess what|have you seen|ever seen|did you know|can you believe/i;
+const HOOK_PRICE = /破价|市面|专柜|只要|低至|机制|买一送|拍一发|补贴|清仓|特价|白送|免费送|送一包|再送|工厂价|源头|批发|亏本|亏钱|放血|地板价|全网最低|never this cheap|best price/i;
+const HOOK_SP = /吃了|用了|喝了|功效|效果|改善|帮助|含有|富含|古法|百年|秘方|调理|养生|上火|祛湿|化痰|润肺|养胃|补气|补血|健脾|失眠|手脚冰|体质|适合哪|什么人|建议|坚持|customary|benefit|good for/i;
+const HOOK_SOFT = /今天带大家|探店|打卡|去玩|逛一逛|游玩|旅行|日常|跟着我|带你们|周末|好去处|vlog|come with me|day out/i;
+
+/** 对候选开头 6 秒内的文本判钩子类型；返回 {type, hit} */
+function classifyHook(text6, cfg) {
+  const t = String(text6 || '');
+  if (!t.trim()) return { type: 'normal', hit: '' };
+  const quotes = String(cfg.funnyQuotes || '').split(/[;;\n]/).map((s) => s.trim()).filter((s) => s.length >= 2);
+  for (const q of quotes) {
+    if (t.includes(q)) return { type: 'funny', hit: q };
+  }
+  const mq = t.match(HOOK_Q);
+  if (mq) return { type: 'question', hit: mq[0] };
+  const mp = t.match(HOOK_PRICE);
+  if (mp) return { type: 'price', hit: mp[0] };
+  const ms = t.match(HOOK_SP);
+  if (ms) return { type: 'sellingPoint', hit: ms[0] };
+  const mf = t.match(HOOK_SOFT);
+  if (mf) return { type: 'soft', hit: mf[0] };
+  return { type: 'normal', hit: '' };
+}
+const HOOK_LABEL = {
+  funny: '金句钩子',
+  question: '提问钩子',
+  price: '价格钩子',
+  sellingPoint: '卖点开头',
+  soft: '软性带货',
+  normal: '常规'
+};
+
+/* ---------------- 字幕热词纠错（ASR 错别字修正，字幕/花字/封面统一应用） ---------------- */
+function applySubtitleFixes(t, cfg) {
+  let out = String(t || '');
+  String((cfg && cfg.subtitleFixes) || '').split(/[;;\n]/).forEach((pair) => {
+    const i = pair.indexOf('=');
+    if (i <= 0) return;
+    const a = pair.slice(0, i).trim();
+    const b = pair.slice(i + 1).trim();
+    if (a) out = out.split(a).join(b);
+  });
+  return out;
 }
 
 /* ---------------- 静音检测 ---------------- */
@@ -793,8 +902,14 @@ function buildCandidates(segments, silences, probe, cfg, skus) {
     const start = snapBoundary(rawStart, silences, 'start', probe.duration);
     // 结尾优先对齐最后一句之后的自然静音（顺滑收尾），无则退回最近边界
     const end = alignOutPoint(rawEnd, winSegs[winSegs.length - 1].end, silences, probe.duration);
+    // 钩子分类：开头 6 秒文本判钩子类型，钩子句在组片时当开场用
+    const text6 = winSegs.filter((s) => s.start < start + 6).map((s) => s.text).join(' ');
+    const hk = classifyHook(text6, cfg);
+    const hookBonus = hk.type === 'question' || hk.type === 'price' ? 8
+      : hk.type === 'sellingPoint' || hk.type === 'funny' ? 6
+        : hk.type === 'soft' ? 3 : 0;
     const sc = scoreWindow(winSegs, start, end, cfg, skus);
-    windows.push({ l, r, start, end, ...sc });
+    windows.push({ l, r, start, end, ...sc, score: sc.score + hookBonus, hookType: hk.type, hookHit: hk.hit });
   });
 
   // NMS：按分排序，重叠度高的只留高分
@@ -811,11 +926,12 @@ function buildCandidates(segments, silences, probe, cfg, skus) {
   }
   // 回到时间顺序并编号；再按最低分/商品过滤
   kept.sort((a, b) => a.start - b.start);
+  const isHookRole = cfg.structureRole === 'hook'; // 钩子库片段作开场用，不要求报价/CTA 锚点
   return kept
     .filter((w) => w.score >= cfg.minScore)
     // 成片必须有转化钩子（报价或 CTA）；只有商品名的讲解/故事段不切片，
-    // 除非分极高（≥60，即多商品+多正向词的强种草段）。
-    .filter((w) => w.prices.length || w.reasons.some((r) => r.c === 'cta') || w.score >= 60)
+    // 除非分极高（≥60，即多商品+多正向词的强种草段）。钩子库片段豁免。
+    .filter((w) => isHookRole || w.prices.length || w.reasons.some((r) => r.c === 'cta') || w.score >= 60)
     .filter((w) => !(cfg.requireSku && !w.skuIds.length))
     .filter((w) => !(w.negCount > 0 && !w.skuIds.length))
     .slice(0, cfg.maxCandidates)
@@ -826,6 +942,8 @@ function buildCandidates(segments, silences, probe, cfg, skus) {
       text: segments.slice(w.l, w.r + 1).map((s) => s.text).join(' '),
       score: w.score,
       reasons: w.reasons,
+      hookType: w.hookType || 'normal',
+      hookHit: w.hookHit || '',
       skuIds: w.skuIds,
       skuNames: w.skuNames,
       priceMatches: w.prices,
@@ -856,6 +974,7 @@ async function analyze(files, opts = {}, onProgress) {
         continue;
       }
       const id = sourceIdOf(meta);
+      const role = ROLES[f.role] ? f.role : null; // 结构化导入时逐文件携带的角色
       const cachePath = sourcePath(id);
       const span = (p) => basePct + (p / files.length);
 
@@ -865,9 +984,11 @@ async function analyze(files, opts = {}, onProgress) {
         const asrStale = cached && cached.asr
           && (cached.asr.modelId !== (cfg.modelId || 'whisper-base') || cached.asr.language !== (cfg.language || 'auto'));
         if (cached && Array.isArray(cached.candidates) && fs.existsSync(meta.path) && !asrStale) {
+          const effRole = role || cached.structureRole || null;
           // 规则/商品库变化时可直接重算候选（不重新 ASR）
-          if (opts.rerunRules) {
-            cached.candidates = buildCandidates(cached.asr.segments, cached.silences, cached.probe, cfg, skus);
+          if (opts.rerunRules || (effRole && cached.structureRole !== effRole)) {
+            cached.structureRole = effRole;
+            cached.candidates = buildCandidates(cached.asr.segments, cached.silences, cached.probe, roleCfg(cfg, effRole), skus);
             cached.rules = ruleSignature(cfg);
             writeJson(cachePath, cached);
           }
@@ -929,7 +1050,7 @@ async function analyze(files, opts = {}, onProgress) {
       checkCanceled();
 
       onProgress({ stage: '规则匹配与打分', percent: span(94), index: i + 1, total: files.length, name: meta.name });
-      const candidates = buildCandidates(segments, silences, probe, cfg, skus);
+      const candidates = buildCandidates(segments, silences, probe, roleCfg(cfg, role), skus);
 
       // 画面有效性检测：黑屏/纯色/静止画面的候选直接淘汰（不合规成片在审核期就拦下）
       if (cfg.visualCheck !== false && candidates.length) {
@@ -949,6 +1070,7 @@ async function analyze(files, opts = {}, onProgress) {
         version: 1,
         id,
         source: { id, path: meta.path, name: meta.name, size: meta.size, mtimeMs: meta.mtimeMs },
+        structureRole: role || null,
         probe,
         asr: {
           engine: 'whisper',
@@ -985,10 +1107,13 @@ function ruleSignature(cfg) {
 
 function summarize(rec) {
   const c = rec.candidates || [];
+  const hooks = {};
+  c.forEach((x) => { hooks[x.hookType || 'normal'] = (hooks[x.hookType || 'normal'] || 0) + 1; });
   return {
     id: rec.id,
     name: rec.source.name,
     path: rec.source.path,
+    structureRole: rec.structureRole || null,
     exists: fs.existsSync(rec.source.path),
     size: rec.source.size,
     duration: rec.probe.duration,
@@ -1000,6 +1125,7 @@ function summarize(rec) {
     total: c.length,
     approved: c.filter((x) => x.status === 'approved').length,
     rejected: c.filter((x) => x.status === 'rejected').length,
+    hooks,
     analyzedAt: rec.analyzedAt
   };
 }
@@ -1279,57 +1405,201 @@ function safeName(s) {
   return String(s).replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80).trim() || 'clip';
 }
 
+/* 去重滤镜预设（轮换套用，配合随机缩放/翻转让同一素材的多条成片互不撞车） */
+const DEDUPE_EQ = [
+  'eq=saturation=1.06:contrast=1.04',
+  'eq=saturation=0.94:brightness=0.02:contrast=1.02',
+  'eq=gamma_r=1.05:gamma_b=0.97:saturation=1.08', // eq 无 hue 选项（hue 是独立滤镜），用通道 gamma 微偏色替代
+  'eq=gamma=0.96:contrast=1.06:saturation=1.03',
+  'eq=brightness=-0.012:saturation=1.0:contrast=1.08:gamma=1.02'
+];
+
+function listShotPool(dir) {
+  const out = [];
+  const walk = (d, depth) => {
+    if (depth > 3 || out.length > 400) return;
+    let entries = [];
+    try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch (_) { return; }
+    entries.forEach((e) => {
+      if (e.name.startsWith('.')) return;
+      const fp = path.join(d, e.name);
+      if (e.isDirectory()) walk(fp, depth + 1);
+      else { const m = fileMeta(fp); if (m) out.push(m); }
+    });
+  };
+  walk(dir, 0);
+  return out;
+}
+
+/** 收集镜头插入事件：ASR 文本命中关键字的位置 → 画中画展示随机商品镜头 */
+function buildShotEvents(segments, c, cfg, shotPool, maxEvents) {
+  if (!shotPool.length) return [];
+  const words = String(cfg.shotKeywords || '').split(/\s+/).filter((w) => w.length >= 2);
+  if (!words.length) return [];
+  const DUR = c.end - c.start;
+  const events = [];
+  const usedShots = new Set();
+  (segments || []).forEach((s) => {
+    if (events.length >= maxEvents) return;
+    const st = s.start, en = Math.min(s.end, c.end);
+    if (en <= c.start || st >= c.end) return;
+    const txt = applySubtitleFixes(s.text, cfg);
+    if (!words.some((w) => txt.includes(w))) return;
+    let t = (Math.max(st, c.start) + en) / 2 - c.start;
+    t = Math.max(0.6, Math.min(DUR - 1.8, t));
+    if (events.some((e) => Math.abs(e.t - t) < 4)) return; // 间隔至少 4s，避免连环弹窗
+    let k = Math.floor(Math.random() * shotPool.length);
+    for (let tries = 0; tries < shotPool.length && usedShots.has(k); tries += 1) k = (k + 1) % shotPool.length;
+    usedShots.add(k);
+    events.push({ t, shot: shotPool[k], offset: Math.max(0, Math.random() * 2.5) });
+  });
+  return events;
+}
+
+/** 结构化组片：按「钩子 → 介绍 → 价格」拼装 30-90s 带货短视频（目标 targetShort 秒）。
+    同一批内钩子/介绍/价格候选互不重复，素材之间不撞车。 */
+function buildComposeJobs(cfg) {
+  const byRole = { hook: [], intro: [], price: [] };
+  listSources().forEach((sum) => {
+    if (!sum.exists || !byRole[sum.structureRole]) return;
+    const rec = readJsonSafe(sourcePath(sum.id), null);
+    if (!rec) return;
+    (rec.candidates || []).forEach((c) => {
+      if (c.status === 'approved' && !(c.visual && c.visual.valid === false)) byRole[sum.structureRole].push({ rec, c });
+    });
+  });
+  const key = (x) => `${x.rec.id}:${x.c.id}`;
+  const dur = (x) => x.c.end - x.c.start;
+  const byScore = (a, b) => (b.c.score || 0) - (a.c.score || 0);
+  byRole.hook.sort(byScore);
+  byRole.intro.sort(byScore);
+  byRole.price.sort(byScore);
+
+  const target = Math.min(90, Math.max(30, Number(cfg.targetShort) || 50));
+  const usedHook = new Set();
+  const usedIntro = new Set();
+  const usedPrice = new Set();
+  const combos = [];
+  const maxCombos = Math.min(byRole.hook.length, byRole.price.length, Math.max(1, Math.floor(byRole.intro.length / 2)));
+  for (let n = 0; n < maxCombos; n += 1) {
+    const hook = byRole.hook.find((x) => !usedHook.has(key(x)) && dur(x) >= 3.5);
+    const price = byRole.price.find((x) => !usedPrice.has(key(x)));
+    if (!hook || !price) break;
+    const hookDur = Math.min(dur(hook), 9);           // 开场 4-9s
+    const priceDur = Math.min(Math.max(dur(price), 8), 25); // 价格/CTA 8-25s
+    const remaining = target - hookDur - priceDur;
+    const picks = [];
+    let acc = 0;
+    for (const x of byRole.intro) {                    // 介绍贪心凑时长：最多 2 段
+      if (picks.length >= 2) break;
+      const k = key(x);
+      if (usedIntro.has(k) || picks.some((p) => key(p) === k)) continue;
+      const d = dur(x);
+      if (d >= 8 && acc + d <= remaining + 10) { picks.push(x); acc += d; }
+    }
+    if (acc < remaining - 8) {                         // 不够就整段补上（宁可略长）
+      const extra = byRole.intro.find((x) => !usedIntro.has(key(x)) && !picks.some((p) => key(p) === key(x)));
+      if (extra) { picks.push(extra); acc += dur(extra); }
+    }
+    if (!picks.length) break;
+    picks.forEach((x) => usedIntro.add(key(x)));
+    usedHook.add(key(hook));
+    usedPrice.add(key(price));
+    combos.push({ hook, price, intros: picks, hookDur, priceDur, introDur: acc });
+  }
+  const jobs = [];
+  combos.forEach((combo, ci) => {
+    const mkPart = (x, role, part, isLast, durOverride) => {
+      const c2 = { ...x.c, of: x.c }; // of 指回落盘候选对象：渲染期检测/输出要同步回原候选才能随 rec 持久化
+      if (durOverride) c2.end = Number((x.c.start + durOverride).toFixed(2));
+      return { rec: x.rec, c: c2, compose: { combo: ci, role, part, isLast } };
+    };
+    jobs.push(mkPart(combo.hook, 'hook', 0, false, combo.hookDur));
+    combo.intros.forEach((x, k) => jobs.push(mkPart(x, 'intro', 1 + k, false, null)));
+    jobs.push(mkPart(combo.price, 'price', combo.intros.length + 1, true, combo.priceDur));
+  });
+  return { combos, jobs };
+}
+
 async function render(options = {}, onProgress) {
   if (isBusy()) throw new Error('已有批量任务进行中');
   if (aijobs.isBusy()) throw new Error('已有 AI 任务进行中，请稍候');
   const cfg = { ...getConfig(), ...options };
   ensureDirs();
 
-  // 收集全部已通过候选
+  // 收集任务：普通模式 = 全部已通过候选；组片模式 = 钩子+介绍+价格三段拼装
+  const compose = !!options.compose;
+  let combos = [];
   const jobs = [];
-  listSources().forEach((sum) => {
-    if (options.sourceIds && options.sourceIds.length && !options.sourceIds.includes(sum.id)) return;
-    if (!sum.exists) return;
-    const rec = readJsonSafe(sourcePath(sum.id), null);
-    if (!rec) return;
-    (rec.candidates || []).forEach((c) => {
-      if (c.status === 'approved') jobs.push({ rec, c });
+  if (compose) {
+    const built = buildComposeJobs(cfg);
+    combos = built.combos;
+    jobs.push(...built.jobs);
+    if (!combos.length) throw new Error('组片失败：需要「钩子库」「产品介绍库」「价格库」三类已分析素材，且各类中至少通过一个片段（素材卡上可设置分类）');
+  } else {
+    listSources().forEach((sum) => {
+      if (options.sourceIds && options.sourceIds.length && !options.sourceIds.includes(sum.id)) return;
+      if (!sum.exists) return;
+      const rec = readJsonSafe(sourcePath(sum.id), null);
+      if (!rec) return;
+      (rec.candidates || []).forEach((c) => {
+        if (c.status === 'approved') jobs.push({ rec, c });
+      });
     });
-  });
+  }
   if (!jobs.length) throw new Error('没有已通过的候选片段，请先在审核区通过至少一个片段');
 
   const batchName = options.batchName ? safeName(options.batchName) : `clips-${tsName()}`;
   const outDir = path.join(store.get().downloadDir || app.getPath('downloads'), 'TokPure-Clips', batchName);
   fs.mkdirSync(outDir, { recursive: true });
+  const partsDir = path.join(outDir, 'parts');
+  if (compose) fs.mkdirSync(partsDir, { recursive: true });
   const workDir = path.join(tmpDir(), `render-${Date.now()}`);
   fs.mkdirSync(workDir, { recursive: true });
+
+  // 「镜头」库（画中画商品展示镜头）：导出前扫描一次
+  const shotPool = (cfg.insertShots && cfg.shotsDir && fs.existsSync(cfg.shotsDir))
+    ? listShotPool(cfg.shotsDir) : [];
+  if (compose) {
+    // 组片统一走 polish 管线（跨素材拼接需要统一分辨率与滤镜链）
+    cfg.polishStyle = true;
+  }
 
   batch = { kind: 'render', canceled: false, child: null };
   const manifest = [];
   try {
+    const comboParts = {}; // 组片模式：combo 序号 → parts 落盘信息，循环结束后 concat
     for (let i = 0; i < jobs.length; i += 1) {
       checkCanceled();
-      const { rec, c } = jobs[i];
+      const job = jobs[i];
+      const { rec, c } = job;
+      const composeRole = job.compose ? job.compose.role : null;
+      const lastPart = !job.compose || job.compose.isLast;
       const input = rec.source.path;
       const base = safeName(rec.source.name);
-      const outFile = path.join(outDir, `${base}-${String(i + 1).padStart(2, '0')}.mp4`);
+      const outFile = job.compose
+        ? path.join(partsDir, `combo-${String(job.compose.combo + 1).padStart(2, '0')}-part${job.compose.part}.mp4`)
+        : path.join(outDir, `${base}-${String(i + 1).padStart(2, '0')}.mp4`);
       const duration = c.end - c.start;
       const span = (p) => ((i + p) / jobs.length) * 100;
 
       // 不合规防线：画面无效（黑屏/纯色/静止）的候选一律不导出。
       // 老缓存里没有 visual 数据的在导出前现补一次检测并落盘。
       if (cfg.visualCheck !== false) {
+        if (!c.visual && c.of && c.of.visual) c.visual = c.of.visual; // 复用已落盘检测结果
         if (!c.visual) c.visual = await checkVisual(input, c.start, duration);
         if (c.visual && c.visual.valid === false) {
           c.visualInvalid = true;
+          if (c.of) { c.of.visual = c.visual; c.of.visualInvalid = true; } // 同步回落盘候选
           writeJson(sourcePath(rec.id), rec);
           onProgress({ stage: `跳过不合规片段（画面与原片无关）`, percent: span(1), index: i + 1, total: jobs.length, name: path.basename(outFile) });
           continue;
         }
       }
 
-      const maxWidth = subtitleMaxWidth(cfg.fontSize, rec.probe && rec.probe.width);
-      const srt = buildClipSrt(rec.asr.segments || [], c.start, c.end, maxWidth);
+      const maxWidth = subtitleMaxWidth(cfg.fontSize, compose ? 720 : (rec.probe && rec.probe.width));
+      const fixedSegs = (rec.asr.segments || []).map((s) => ({ ...s, text: applySubtitleFixes(s.text, cfg) }));
+      const srt = buildClipSrt(fixedSegs, c.start, c.end, maxWidth);
       const useSub = cfg.burnSubtitles && srt.trim();
       if (useSub) fs.writeFileSync(path.join(workDir, 'sub.srt'), '﻿' + srt, 'utf8');
 
@@ -1337,15 +1607,18 @@ async function render(options = {}, onProgress) {
 
       const DUR = duration;
       const probe = rec.probe || {};
-      const W = (probe.width || 720) - ((probe.width || 720) % 2);
-      const H = (probe.height || 1280) - ((probe.height || 1280) % 2);
+      // 组片模式统一 720x1280 竖屏：跨素材 concat -c copy 需要所有分段参数一致
+      const W = compose ? 720 : (probe.width || 720) - ((probe.width || 720) % 2);
+      const H = compose ? 1280 : (probe.height || 1280) - ((probe.height || 1280) % 2);
       const polish = !!cfg.polishStyle;
       const hasAudio = probe.hasAudio !== false;
       const subColor = SUBTITLE_COLORS[cfg.subtitleColor] ? cfg.subtitleColor : 'white';
       const forceStyle = `Fontsize=${Number(cfg.fontSize) || 18},PrimaryColour=${assColor(SUBTITLE_COLORS[subColor])},OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=0,MarginV=${Number(cfg.marginV) || 64}`;
 
       // 花字贴片：先生成 PNG（失败/无字则跳过，绝不阻断导出）；时间点同时供封面复用
-      const moments = pickStickerMoments(rec.asr.segments || [], c.start, c.end, DUR);
+      const moments = pickStickerMoments(fixedSegs, c.start, c.end, DUR);
+      // 画中画插镜头：ASR 文本命中关键字 → 右上角随机商品镜头 1.4s
+      const shots = (cfg.insertShots && shotPool.length) ? buildShotEvents(fixedSegs, c, cfg, shotPool, 3) : [];
       let stickers = [];
       if (polish && fxFontFile()) {
         for (let k = 0; k < moments.length; k += 1) {
@@ -1372,14 +1645,31 @@ async function render(options = {}, onProgress) {
         // 音效轨：片头 whoosh + 花字 pop（纯合成，随片生成）
         const sfxIdx = 1 + (useBgm ? 1 : 0) + stickers.length;
         const sfxPath = path.join(workDir, 'sfx.wav');
-        audiofx.buildSfxTrack(DUR, stickers.map((s) => ({ t: s.t, type: 'pop' })), sfxPath);
+        audiofx.buildSfxTrack(DUR, stickers.map((st) => ({ t: st.t, type: 'pop' })), sfxPath);
         ffArgs.push('-i', sfxPath);
+        // 镜头输入必须在 -t 之前 push（-t 是输出选项，落在 -i 后会被当成输入选项）；
+        // 偏移用 trim=start 实现——「-stream_loop -1 + 输入 -ss」组合会让 trim=duration 拿不到帧
+        shots.forEach((ev) => {
+          ffArgs.push('-stream_loop', '-1', '-i', ev.shot.path);
+        });
         ffArgs.push('-t', DUR.toFixed(3));
 
         const fc = [];
         const vchain = [];
-        // 片头 0.5s 轻微推近（约 7%，呼应目标片的开场节奏）；zoompan 逐帧求值，crop 的 w/h 不支持
-        if (cfg.hookZoom !== false) {
+        // 组片：跨素材统一画布（缩放裁剪到 720x1280、SAR 归一、帧率统一 30，保证 concat -c copy 可拼）
+        if (compose) vchain.push(`scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30`);
+        if (cfg.dedupeFx !== false) {
+          // 去重变换：整段连续缓推/缓拉 + 35% 随机水平翻转 + 5 套滤镜预设轮换 → 同素材多条成片互不撞车
+          const zin = Math.random() < 0.5;
+          const z0 = 1 + Math.random() * 0.05;
+          const dz = 0.05 + Math.random() * 0.07;
+          const frames = Math.max(2, Math.round(DUR * 30));
+          const zexpr = zin ? `${z0.toFixed(3)}+${dz.toFixed(3)}*on/${frames}` : `${(z0 + dz).toFixed(3)}-${dz.toFixed(3)}*on/${frames}`;
+          if (Math.random() < 0.35) vchain.push('hflip');
+          vchain.push(`zoompan=z='${zexpr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=30,setsar=1`);
+          vchain.push(DEDUPE_EQ[Math.floor(Math.random() * DEDUPE_EQ.length)]);
+        } else if (cfg.hookZoom !== false) {
+          // 片头 0.5s 轻微推近（约 7%，呼应目标片的开场节奏）；zoompan 逐帧求值，crop 的 w/h 不支持
           const fps = Math.max(1, Number(probe.fps) || 30);
           const zn = Math.max(2, Math.round(fps * 0.5));
           vchain.push(`zoompan=z='1+0.07*(1-min(1\\,on/${zn}))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${fps},setsar=1`);
@@ -1397,33 +1687,53 @@ async function render(options = {}, onProgress) {
           const pop = `if(lt(${dt}\\,0.14)\\,0.55+0.60*${dt}/0.14\\,if(lt(${dt}\\,0.3)\\,1.15-0.15*(${dt}-0.14)/0.16\\,1))`;
           fc.push(`[${inIdx}:v]format=rgba,fade=t=in:st=${Ts}:d=0.1:alpha=1,fade=t=out:st=${(Te - 0.22).toFixed(2)}:d=0.22:alpha=1,scale=w='trunc(iw*${bs}*${pop}/2)*2':h=-2:eval=frame:flags=lanczos[s${k}]`);
         });
-        // 结尾 0.45s 视频淡出（叠加在花字之后，整幅画面收黑，消除“戛然而止”的截断感）
-        const tailFade = `fade=t=out:st=${Math.max(0, DUR - 0.45).toFixed(2)}:d=0.45`;
-        if (stickers.length) {
-          fc.push(`[0:v]${vchain.join(',')}[vbase]`);
-          let acc = 'vbase';
+        // 画中画商品镜头：右上角小窗展示 1.4s（不动时间轴，enable 窗口控制）；
+        // overlay 按时间戳同步副输入，pip 帧必须 setpts 平移到事件时刻 Ts，
+        // 否则帧落在 0-1.4s 被 enable 窗口外的主画面消费（EOF 后 eof_action=pass 直接透传）
+        shots.forEach((ev, k) => {
+          const inIdx = sfxIdx + 1 + k;
+          const pw = Math.round(W * 0.4);
+          const ph = Math.round(H * 0.3);
+          const off = Number(ev.offset || 0).toFixed(2);
+          const Ts = Number(ev.t.toFixed(2));
+          fc.push(`[${inIdx}:v]trim=start=${off}:duration=${Number((ev.offset || 0) + 1.4).toFixed(2)},setpts=PTS-STARTPTS+${Ts}/TB,scale=${pw}:${ph}:force_original_aspect_ratio=decrease[pips${k}]`);
+        });
+        // 结尾 0.45s 视频淡出（叠加在花字之后，整幅画面收黑，消除“戛然而止”的截断感）；
+        // 组片模式下只有最后一段（价格/CTA）收尾，中段保持 hard cut + 下段 whoosh 作转场
+        const tailFade = lastPart ? `fade=t=out:st=${Math.max(0, DUR - 0.45).toFixed(2)}:d=0.45` : null;
+        {
+          let cur = '0:v';
+          if (vchain.length) {
+            fc.push(`[${cur}]${vchain.join(',')}[vbase]`);
+            cur = 'vbase';
+          }
           stickers.forEach((s, k) => {
             const Ts = Number(s.t.toFixed(2));
             const Te = Number((s.t + LIFE).toFixed(2));
-            const out = k === stickers.length - 1 ? 'vpre' : `va${k}`;
-            fc.push(`[${acc}][s${k}]overlay=x=(W-w)/2:y='(H-h)*0.40':enable='between(t\\,${Ts}\\,${Te})':eof_action=pass[${out}]`);
-            acc = out;
+            fc.push(`[${cur}][s${k}]overlay=x=(W-w)/2:y='(H-h)*0.40':enable='between(t\\,${Ts}\\,${Te})':eof_action=pass[vx${k}]`);
+            cur = `vx${k}`;
           });
-          fc.push(`[vpre]${tailFade}[vout]`);
-        } else {
-          fc.push(`[0:v]${vchain.join(',') || 'null'},${tailFade}[vout]`);
+          shots.forEach((ev, k) => {
+            const Ts = Number(ev.t.toFixed(2));
+            const Te = Number((ev.t + 1.4).toFixed(2));
+            fc.push(`[${cur}][pips${k}]overlay=x=W-w-24:y='H*0.08':enable='between(t\\,${Ts}\\,${Te})':eof_action=pass[px${k}]`);
+            cur = `px${k}`;
+          });
+          fc.push(`[${cur}]${tailFade || 'null'}[vout]`);
         }
 
         const vol = Math.min(0.6, Math.max(0, Number(cfg.bgmVolume) || 0.3));
         const fo = Math.max(0.2, DUR - 0.8).toFixed(2);
         const ao = Math.max(0, DUR - 0.55).toFixed(2);
-        const master = `alimiter=limit=0.95,loudnorm=I=-16:TP=-1.2:LRA=11,aresample=44100,afade=t=out:st=${ao}:d=0.55`;
+        // 结尾音频淡出只落在组片的最后一段；中段音频随画面 hard cut，由下段 whoosh 掩护
+        const master = `alimiter=limit=0.95,loudnorm=I=-16:TP=-1.2:LRA=11,aresample=44100${lastPart ? `,afade=t=out:st=${ao}:d=0.55` : ''}`;
+        const bgmOut = lastPart ? `,afade=t=out:st=${fo}:d=0.8` : '';
         if (useBgm && hasAudio) {
-          fc.push(`[${bgmIdx}:a]atrim=0:${DUR.toFixed(3)},asetpts=PTS-STARTPTS,volume=${vol},afade=t=in:st=0:d=0.4,afade=t=out:st=${fo}:d=0.8[bg]`);
+          fc.push(`[${bgmIdx}:a]atrim=0:${DUR.toFixed(3)},asetpts=PTS-STARTPTS,volume=${vol},afade=t=in:st=0:d=0.4${bgmOut}[bg]`);
           fc.push('[bg][0:a]sidechaincompress=threshold=0.025:ratio=8:attack=20:release=350:makeup=1[duck]');
           fc.push(`[0:a][duck][${sfxIdx}:a]amix=inputs=3:duration=first:weights=1 0.9 0.85:normalize=0,${master}[aout]`);
         } else if (useBgm) {
-          fc.push(`[${bgmIdx}:a]atrim=0:${DUR.toFixed(3)},asetpts=PTS-STARTPTS,volume=${(vol * 1.7).toFixed(2)},afade=t=in:st=0:d=0.4,afade=t=out:st=${fo}:d=0.8[bg]`);
+          fc.push(`[${bgmIdx}:a]atrim=0:${DUR.toFixed(3)},asetpts=PTS-STARTPTS,volume=${(vol * 1.7).toFixed(2)},afade=t=in:st=0:d=0.4${bgmOut}[bg]`);
           fc.push(`[bg][${sfxIdx}:a]amix=inputs=2:duration=first:weights=1 0.9:normalize=0,${master}[aout]`);
         } else if (hasAudio) {
           fc.push(`[0:a][${sfxIdx}:a]amix=inputs=2:duration=first:weights=1 0.85:normalize=0,${master}[aout]`);
@@ -1453,9 +1763,10 @@ async function render(options = {}, onProgress) {
       }, needCwd ? workDir : undefined);
       checkCanceled();
 
-      // 短视频封面：最佳帧 + 标题花字 → cover-NN.jpg，并写入 mp4 cover art（Finder/QuickTime 直接可见）
+      // 短视频封面：最佳帧 + 标题花字 → cover-NN.jpg，并写入 mp4 cover art（Finder/QuickTime 直接可见）；
+      // 组片模式分段不出封面，等 concat 拼完整条 combo 后统一生成
       let coverFile = null;
-      if (cfg.coverArt) {
+      if (cfg.coverArt && !compose) {
         onProgress({ stage: `生成封面 ${i + 1}/${jobs.length}`, percent: span(0.985), index: i + 1, total: jobs.length, name: path.basename(outFile) });
         const coverPath = path.join(outDir, `cover-${String(i + 1).padStart(2, '0')}.jpg`);
         const made = await makeCover(input, c.start, DUR, coverTitleText(c, moments), workDir, coverPath, W, H);
@@ -1465,22 +1776,76 @@ async function render(options = {}, onProgress) {
         }
       }
 
-      c.output = outFile;
-      writeJson(sourcePath(rec.id), rec);
-      manifest.push({
-        file: path.basename(outFile),
-        source: rec.source.name,
-        sourcePath: rec.source.path,
-        start: c.start,
-        end: c.end,
-        duration: Number(duration.toFixed(2)),
-        score: c.score,
-        skus: c.skuNames || [],
-        prices: c.priceMatches || [],
-        cover: coverFile,
-        text: c.text
-      });
+      if (compose) {
+        (comboParts[job.compose.combo] = comboParts[job.compose.combo] || []).push({
+          part: job.compose.part, role: composeRole, file: outFile, rec, c, duration
+        });
+      } else {
+        c.output = outFile;
+        writeJson(sourcePath(rec.id), rec);
+        manifest.push({
+          file: path.basename(outFile),
+          source: rec.source.name,
+          sourcePath: rec.source.path,
+          start: c.start,
+          end: c.end,
+          duration: Number(duration.toFixed(2)),
+          score: c.score,
+          skus: c.skuNames || [],
+          prices: c.priceMatches || [],
+          cover: coverFile,
+          text: c.text
+        });
+      }
       onProgress({ stage: `导出 ${i + 1}/${jobs.length}`, percent: span(1), index: i + 1, total: jobs.length, name: path.basename(outFile) });
+    }
+
+    // 组片：把「钩子 + 介绍 + 价格」分段拼成完整带货短视频（concat -c copy，秒级、零转码）
+    if (compose) {
+      const comboIdxs = Object.keys(comboParts).map(Number).sort((a, b) => a - b);
+      for (let ci = 0; ci < comboIdxs.length; ci += 1) {
+        checkCanceled();
+        const comboNo = comboIdxs[ci] + 1;
+        const parts = comboParts[comboIdxs[ci]].sort((a, b) => a.part - b.part);
+        const outFile = path.join(outDir, `combo-${String(comboNo).padStart(2, '0')}.mp4`);
+        const totalDur = parts.reduce((s, p) => s + p.duration, 0);
+        onProgress({ stage: `拼接成片 ${ci + 1}/${comboIdxs.length}`, percent: ((ci + 0.2) / comboIdxs.length) * 100, index: ci + 1, total: comboIdxs.length, name: path.basename(outFile) });
+        const listPath = path.join(workDir, `combo-${comboNo}.txt`);
+        fs.writeFileSync(listPath, parts.map((p) => `file '${p.file.replace(/'/g, "'\\''")}'`).join('\n'), 'utf8');
+        await runFf(['-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', '-movflags', '+faststart', outFile]);
+        checkCanceled();
+
+        // combo 封面：标题取价格段的报价/商品名（转化点优先）
+        let coverFile = null;
+        if (cfg.coverArt) {
+          onProgress({ stage: `生成封面 ${ci + 1}/${comboIdxs.length}`, percent: ((ci + 0.7) / comboIdxs.length) * 100, index: ci + 1, total: comboIdxs.length, name: path.basename(outFile) });
+          const pc = parts[parts.length - 1].c;
+          const priceSegs = parts[parts.length - 1].rec.asr.segments || [];
+          const cMoments = pickStickerMoments(priceSegs.map((s) => ({ ...s, text: applySubtitleFixes(s.text, cfg) })), pc.start, pc.end, pc.end - pc.start);
+          const title = coverTitleText(pc, cMoments) || (parts[0].c.skuNames || [])[0] || null;
+          const coverPath = path.join(outDir, `cover-${String(comboNo).padStart(2, '0')}.jpg`);
+          const made = await makeCover(outFile, 0, totalDur, title, workDir, coverPath, 720, 1280);
+          if (made) {
+            coverFile = path.basename(made);
+            try { await attachCover(outFile, made); } catch (_) {}
+          }
+        }
+
+        manifest.push({
+          file: path.basename(outFile),
+          source: parts.map((p) => p.rec.source.name).join(' + '),
+          structure: parts.map((p) => `${ROLES[p.role] ? ROLES[p.role].label : p.role} ${Number(p.duration.toFixed(1))}s`).join(' + '),
+          sourcePath: parts.map((p) => p.rec.source.path).join(' + '),
+          start: parts[0].c.start,
+          end: parts[parts.length - 1].c.end,
+          duration: Number(totalDur.toFixed(2)),
+          score: Math.round(parts.reduce((s, p) => s + (p.c.score || 0), 0) / parts.length),
+          skus: [...new Set(parts.flatMap((p) => p.c.skuNames || []))],
+          prices: parts.flatMap((p) => p.priceFixes || p.c.priceMatches || []),
+          cover: coverFile,
+          text: parts.map((p) => p.c.text).filter(Boolean).join(' ')
+        });
+      }
     }
 
     writeJson(path.join(outDir, 'manifest.json'), { batch: batchName, createdAt: new Date().toISOString(), count: manifest.length, clips: manifest });
@@ -1509,6 +1874,8 @@ module.exports = {
   saveSkus,
   importSkusCsv,
   exportSkusCsv,
+  pickStructureFolder,
+  setSourceRole,
   analyze,
   listSources,
   getSource,

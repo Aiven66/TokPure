@@ -422,6 +422,15 @@ function registerIpc() {
   // ===================== AI 批量切片（v2.6） =====================
   ipcMain.handle('clip:pickFiles', () => clipai.pickFiles());
   ipcMain.handle('clip:scanDir', () => clipai.scanDir());
+  ipcMain.handle('clip:pickStructureFolder', (_e, role) => clipai.pickStructureFolder(role));
+  ipcMain.handle('clip:setSourceRole', (_e, id, role) => clipai.setSourceRole(id, role));
+  ipcMain.handle('clip:pickShotsDir', async () => {
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: '选择「镜头」素材文件夹（商品展示镜头，随机画中画插入）',
+      properties: ['openDirectory']
+    });
+    return res.canceled || !res.filePaths.length ? null : res.filePaths[0];
+  });
   ipcMain.handle('clip:getConfig', () => clipai.getConfig());
   ipcMain.handle('clip:saveConfig', (_e, patch) => clipai.saveConfig(patch));
   ipcMain.handle('clip:getSkus', () => clipai.getSkus());

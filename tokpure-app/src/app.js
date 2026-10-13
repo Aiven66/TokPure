@@ -1113,6 +1113,9 @@ function updateClipAnalyzeState() {
   if (hint) hint.textContent = why;
 }
 
+const ROLE_BADGE = { hook: '钩子库', intro: '介绍库', price: '价格库' };
+const HOOK_BADGE = { funny: '金句钩子', question: '提问钩子', price: '价格钩子', sellingPoint: '卖点开头', soft: '软性带货' };
+
 function renderClipFiles() {
   const wrap = $('#clip-files');
   if (!state.clips.files.length) {
@@ -1122,6 +1125,7 @@ function renderClipFiles() {
       <div class="clip-file-row">
         <span class="clip-file-ic">${ic('film', 15)}</span>
         <span class="clip-file-name" title="${esc(f.path)}">${esc(f.name)}</span>
+        ${f.role ? `<span class="clip-tag tag-hit">${esc(T(ROLE_BADGE[f.role] || f.role))}</span>` : ''}
         <span class="muted mono">${fmtBytes(f.size)}</span>
         <button class="btn tiny" data-act="remove-file" data-i="${i}">${ic('x', 13)}</button>
       </div>`).join('');
@@ -1156,7 +1160,14 @@ function collectClipCfg() {
     polishStyle: $('#clip-polish').checked,
     bgmVolume: Math.min(0.6, Math.max(0, num('#clip-bgmvol', 30) / 100)),
     visualCheck: $('#clip-visualcheck').checked,
-    coverArt: $('#clip-coverart').checked
+    coverArt: $('#clip-coverart').checked,
+    funnyQuotes: $('#clip-quotes').value,
+    subtitleFixes: $('#clip-fixes').value,
+    targetShort: num('#clip-targetshort', 50),
+    dedupeFx: $('#clip-dedupefx').checked,
+    insertShots: $('#clip-insertshots').checked,
+    shotsDir: state.clips.shotsDir || '',
+    shotKeywords: $('#clip-shotwords').value
   };
 }
 
@@ -1184,6 +1195,19 @@ function fillClipCfgForm(cfg) {
   set('#clip-bgmvol', Math.round((cfg.bgmVolume != null ? cfg.bgmVolume : 0.3) * 100));
   $('#clip-visualcheck').checked = cfg.visualCheck !== false;
   $('#clip-coverart').checked = cfg.coverArt !== false;
+  set('#clip-quotes', cfg.funnyQuotes);
+  set('#clip-fixes', cfg.subtitleFixes);
+  set('#clip-targetshort', cfg.targetShort);
+  $('#clip-dedupefx').checked = cfg.dedupeFx !== false;
+  $('#clip-insertshots').checked = !!cfg.insertShots;
+  state.clips.shotsDir = cfg.shotsDir || '';
+  updateShotsDirLabel();
+  set('#clip-shotwords', cfg.shotKeywords);
+}
+
+function updateShotsDirLabel() {
+  const el = $('#clip-shots-dir-name');
+  if (el) el.textContent = state.clips.shotsDir || T('未选择');
 }
 
 async function clipAddFiles(list) {
@@ -1234,7 +1258,7 @@ async function loadClipSources(preselect) {
     renderCandidates();
   } else {
     sel.innerHTML = state.clips.sources.map((s) =>
-      `<option value="${s.id}" ${s.id === state.clips.currentId ? 'selected' : ''}>${esc(s.name)} · ${s.total} ${T('候选')} · ${s.approved}✓</option>`
+      `<option value="${s.id}" ${s.id === state.clips.currentId ? 'selected' : ''}>${esc(s.name)}${s.structureRole ? ' · ' + T(ROLE_BADGE[s.structureRole] || s.structureRole) : ''} · ${s.total} ${T('候选')} · ${s.approved}✓</option>`
     ).join('');
     const want = preselect || (state.clips.currentId && state.clips.sources.some((s) => s.id === state.clips.currentId) ? state.clips.currentId : state.clips.sources[0].id);
     state.clips.currentId = want;
@@ -1249,6 +1273,8 @@ async function loadClipSource(id) {
   if (!id) { state.clips.current = null; renderCandidates(); return; }
   state.clips.current = await api.clips.get(id);
   state.clips.currentId = id;
+  const roleSel = $('#clip-role-select');
+  if (roleSel) roleSel.value = state.clips.current.structureRole || '';
   renderCandidates();
 }
 
@@ -1289,6 +1315,9 @@ function renderCandidates() {
     });
     if (c.visual && c.visual.valid === false) {
       tags.push(`<span class="clip-tag tag-warn">${esc(T('画面无效'))}·${esc(T('黑屏/纯色/静止'))}</span>`);
+    }
+    if (c.hookType && c.hookType !== 'normal') {
+      tags.push(`<span class="clip-tag tag-sku">${esc(T(HOOK_BADGE[c.hookType] || c.hookType))}${c.hookHit ? '·' + esc(c.hookHit) : ''}</span>`);
     }
     return `
     <div class="clip-cand st-${c.status} ${state.clips.selectedCid === c.id ? 'sel' : ''}" data-cid="${c.id}">
@@ -1425,11 +1454,14 @@ async function clipAnalyze(rerunCurrent) {
   }
 }
 
-async function clipExport() {
+async function clipExport(composeMode = false) {
   const opts = collectClipCfg();
   opts.batchName = $('#clip-batch-name').value.trim();
+  if (composeMode) opts.compose = true;
   state.clips.busy = 'render';
   $('#clip-export').disabled = true;
+  const composeBtn = $('#clip-compose');
+  if (composeBtn) composeBtn.disabled = true;
   $('#clip-export-cancel').classList.remove('hidden');
   $('#clip-export-progress').classList.remove('hidden');
   $('#clip-export-bar').style.width = '0%';
@@ -1438,7 +1470,7 @@ async function clipExport() {
     state.clips.exportDir = res.dir;
     $('#clip-reveal-dir').disabled = false;
     await loadClipSources();
-    toast(T('已导出 {0} 条片段', res.count), 'ok');
+    toast(composeMode ? T('组片完成：已拼出 {0} 条带货短视频', res.count) : T('已导出 {0} 条片段', res.count), 'ok');
     api.fs.reveal(res.dir);
   } catch (e) {
     const msg = cleanIpcError(e);
@@ -1447,6 +1479,7 @@ async function clipExport() {
   } finally {
     state.clips.busy = null;
     $('#clip-export-cancel').classList.add('hidden');
+    if (composeBtn) composeBtn.disabled = false;
     updateClipApprovedCount();
   }
 }
@@ -1498,6 +1531,18 @@ function bindClips() {
     await clipAddFiles(list);
     if (list.length) toast(T('已扫描到 {0} 个视频', list.length), 'ok');
   };
+  // 结构化素材导入：选文件夹后按角色标记，随分析一起入库
+  [['#clip-pick-hook', 'hook'], ['#clip-pick-intro', 'intro'], ['#clip-pick-price', 'price']].forEach(([selId, role]) => {
+    $(selId).onclick = async () => {
+      const r = await api.clips.pickStructureFolder(role);
+      const list = r.files || [];
+      list.forEach((f) => {
+        if (f && f.path && !state.clips.files.some((x) => x.path === f.path)) state.clips.files.push(f);
+      });
+      renderClipFiles();
+      if (list.length) toast(T('已加入 {0} 个「{1}」素材', list.length, T(ROLE_BADGE[role])), 'ok');
+    };
+  });
   $('#clip-goto-engine').onclick = () => switchView('engine');
   $('#clip-clear').onclick = () => { state.clips.files = []; renderClipFiles(); };
   $('#clip-model').onchange = updateClipAnalyzeState;
@@ -1545,6 +1590,12 @@ function bindClips() {
   };
 
   $('#clip-source-select').onchange = (e) => loadClipSource(e.target.value);
+  $('#clip-role-select').onchange = async (e) => {
+    if (!state.clips.currentId) return;
+    await api.clips.setSourceRole(state.clips.currentId, e.target.value);
+    await loadClipSources(state.clips.currentId);
+    toast(T('素材分类已更新，候选已按新角色重算'), 'ok');
+  };
   $('#clip-filter').addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
@@ -1622,7 +1673,16 @@ function bindClips() {
     $$('#clip-subcolor .clip-swatch').forEach((x) => x.classList.toggle('sel', x === b));
   });
 
-  $('#clip-export').onclick = clipExport;
+  $('#clip-export').onclick = () => clipExport(false);
+  $('#clip-compose').onclick = () => clipExport(true);
+  $('#clip-shots-dir').onclick = async () => {
+    const r = await api.clips.pickShotsDir();
+    if (r) {
+      state.clips.shotsDir = r;
+      updateShotsDirLabel();
+      $('#clip-insertshots').checked = true;
+    }
+  };
   $('#clip-export-cancel').onclick = () => api.clips.cancel();
   $('#clip-reveal-dir').onclick = () => state.clips.exportDir && api.fs.reveal(state.clips.exportDir);
 }

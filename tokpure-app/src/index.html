@@ -23,7 +23,7 @@
           <img class="brand-logo" id="brand-logo" alt="TokPure" />
           <div>
             <div class="brand-name">TokPure</div>
-            <div class="brand-sub" id="brand-version">v2.8.0</div>
+            <div class="brand-sub" id="brand-version">v2.9.0</div>
           </div>
         </div>
         <nav class="nav" id="nav">
@@ -552,6 +552,14 @@
               </div>
             </div>
 
+            <div class="bar" style="margin-top:10px;flex-wrap:wrap">
+              <span class="lbl" style="margin-right:4px"><span data-ic="queue" data-size="14"></span>结构化素材导入（组片用）：</span>
+              <button class="btn small" id="clip-pick-hook"><span data-ic="zap" data-size="14"></span>钩子库</button>
+              <button class="btn small" id="clip-pick-intro"><span data-ic="box" data-size="14"></span>产品介绍库</button>
+              <button class="btn small" id="clip-pick-price"><span data-ic="tags" data-size="14"></span>价格机制库</button>
+              <span class="muted" style="font-size:11px">按素材已分好的文件夹导入，自动标记结构角色；组片引擎按「钩子→介绍→价格」拼成带货短视频</span>
+            </div>
+
             <div class="clip-files" id="clip-files">
               <div class="clip-empty"><span data-ic="inbox" data-size="20"></span><span>还没有素材：点右上角选择视频文件，或直接选择整个素材文件夹（自动递归扫描）。</span></div>
             </div>
@@ -614,6 +622,21 @@
               <textarea id="clip-words-cta" class="clip-words" rows="2"></textarea>
               <span class="lbl" style="margin-top:8px;display:block">负向排除词（命中且无商品则直接淘汰）</span>
               <textarea id="clip-words-neg" class="clip-words" rows="2"></textarea>
+              <span class="lbl" style="margin-top:8px;display:block">金句语录库（直播间金句/搞笑语录，分号分隔，命中即打「金句钩子」标）</span>
+              <textarea id="clip-quotes" class="clip-words" rows="2" placeholder="例如：家人们谁懂啊；这个价格我不允许你错过"></textarea>
+              <span class="lbl" style="margin-top:8px;display:block">字幕纠错表（错词=正词，分号分隔，字幕/花字/封面统一应用）</span>
+              <textarea id="clip-fixes" class="clip-words" rows="2" placeholder="例如：三爆扎=三宝扎；壮蛎=牡蛎"></textarea>
+              <div class="grid-2" style="margin-top:10px">
+                <div><span class="lbl">组片目标时长(秒)</span><div class="field" style="padding:7px 10px"><input type="number" id="clip-targetshort" min="30" max="90" /></div></div>
+                <div><span class="lbl" style="visibility:hidden">占位</span><label class="clip-check" style="margin-top:8px"><input type="checkbox" id="clip-dedupefx" checked /><span>去重变换（缓推缓拉+随机翻转+滤镜轮换，防撞车）</span></label></div>
+              </div>
+              <label class="clip-check" style="margin-top:6px"><input type="checkbox" id="clip-insertshots" /><span>说到关键字时画中画插入「镜头」文件夹的商品镜头</span></label>
+              <div class="bar" style="margin-top:6px;flex-wrap:wrap">
+                <button class="btn small" id="clip-shots-dir"><span data-ic="folder" data-size="14"></span>选择镜头文件夹</button>
+                <span class="muted mono" id="clip-shots-dir-name" style="font-size:11px">未选择</span>
+              </div>
+              <span class="lbl" style="margin-top:6px;display:block">插镜头关键字（空格分隔，命中即插入随机商品镜头）</span>
+              <textarea id="clip-shotwords" class="clip-words" rows="2"></textarea>
               <div class="notice" style="margin-top:10px"><span data-ic="info" data-size="15"></span><span>改完规则点「保存规则」；对已分析素材可在审核区「按新规则重算」，无需重新识别语音。</span></div>
               <button class="btn cyan small" id="clip-save-rules" style="margin-top:10px"><span data-ic="save" data-size="15"></span>保存规则</button>
             </div>
@@ -642,6 +665,12 @@
               <div class="card-title" style="font-size:13px"><span data-ic="checkCircle" data-size="16" style="color:var(--tertiary-bright)"></span>候选片段快审</div>
               <div class="gap-row">
                 <select id="clip-source-select" class="clip-source-select" style="max-width:280px"></select>
+                <select id="clip-role-select" class="clip-source-select" style="max-width:130px">
+                  <option value="">未分类</option>
+                  <option value="hook">钩子库</option>
+                  <option value="intro">介绍库</option>
+                  <option value="price">价格库</option>
+                </select>
                 <div class="seg" id="clip-filter">
                   <button class="on" data-filter="all">全部</button>
                   <button data-filter="candidate">待审</button>
@@ -705,6 +734,7 @@
             <div class="bar" style="margin-top:12px">
               <div class="left">
                 <button class="btn primary" id="clip-export"><span data-ic="fileDownload" data-size="16"></span>导出全部已通过片段</button>
+                <button class="btn cyan" id="clip-compose"><span data-ic="queue" data-size="16"></span>结构化组片导出（钩子+介绍+价格）</button>
                 <button class="btn ghost hidden" id="clip-export-cancel"><span data-ic="stop" data-size="15"></span>取消导出</button>
                 <button class="btn small" id="clip-reveal-dir" disabled><span data-ic="folderOpen" data-size="14"></span>打开导出目录</button>
               </div>
