@@ -981,11 +981,19 @@ label.lbl {
 }
 .seg.tiny button { padding: 4px 10px; font-size: 11.5px; font-family: var(--font-mono); }
 
-/* switch */
+/* switch
+ * 尺寸用变量驱动，knob 位移/居中按 W/H/K 推导，避免写死像素导致
+ * 不同尺寸（如标题栏 32×18）下白色圆点溢出胶囊外。
+ *   off: left=2
+ *   on : left = (W-2) - 2 - K  →  translateX = W - K - 6
+ *   top: (H - K - 2) / 2       （相对 padding box，border-box） */
 .switch {
+  --sw-w: 38px;
+  --sw-h: 22px;
+  --sw-knob: 16px;
   position: relative;
-  width: 38px;
-  height: 22px;
+  width: var(--sw-w);
+  height: var(--sw-h);
   border-radius: 9999px;
   background: var(--surface-container-highest);
   border: 1px solid var(--hairline);
@@ -996,10 +1004,10 @@ label.lbl {
 .switch::after {
   content: '';
   position: absolute;
-  top: 2px;
+  top: calc((var(--sw-h) - var(--sw-knob) - 2px) / 2);
   left: 2px;
-  width: 16px;
-  height: 16px;
+  width: var(--sw-knob);
+  height: var(--sw-knob);
   border-radius: 9999px;
   background: #fff;
   transition: transform 0.2s;
@@ -1009,7 +1017,7 @@ label.lbl {
   background: linear-gradient(180deg, var(--primary-soft), var(--primary));
   border-color: transparent;
 }
-.switch.on::after { transform: translateX(16px); }
+.switch.on::after { transform: translateX(calc(var(--sw-w) - var(--sw-knob) - 6px)); }
 .switch.emerald.on { background: linear-gradient(180deg, #34d399, var(--tertiary)); }
 
 /* checkbox */
@@ -1621,6 +1629,22 @@ details.adv[open] > summary { margin-bottom: 10px; }
 .clip-file-row:last-child { border-bottom: 0; }
 .clip-file-ic { color: var(--secondary); display: flex; }
 .clip-file-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 素材卡上的结构分类下拉（组片取料依据），沿用 clip-source-select 的配色但更紧凑 */
+.clip-role-sel {
+  flex: none;
+  max-width: 96px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--hairline);
+  background: var(--surface-container-high);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+}
+.clip-role-sel:hover { color: var(--on-surface); border-color: var(--hairline-strong); }
+.clip-role-sel:disabled { opacity: .6; cursor: default; }
 .clip-empty {
   display: flex; align-items: center; gap: 10px;
   padding: 18px 14px; color: var(--text-dim); font-size: 12px; line-height: 1.6;

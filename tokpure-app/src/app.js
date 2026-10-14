@@ -1090,6 +1090,15 @@ function updateClipAnalyzeState() {
 }
 
 const ROLE_BADGE = { hook: '钩子库', intro: '介绍库', price: '价格库' };
+/* 素材结构分类：组片的「钩子 → 介绍 → 价格」按这里的标记取料；
+   未分类素材也会按片段内容自动归类，标了分类则完全按标记取料 */
+const ROLE_OPTS = [['', '未分类'], ['hook', '钩子库'], ['intro', '介绍库'], ['price', '价格库']];
+
+function roleSelectHtml(role, attrs) {
+  const cur = role || '';
+  return `<select class="clip-role-sel" ${attrs}>` + ROLE_OPTS.map(([v, label]) =>
+    `<option value="${v}"${cur === v ? ' selected' : ''}>${esc(T(label))}</option>`).join('') + '</select>';
+}
 
 function renderClipFiles() {
   const wrap = $('#clip-files');
@@ -1100,7 +1109,7 @@ function renderClipFiles() {
       <div class="clip-file-row">
         <span class="clip-file-ic">${ic('film', 15)}</span>
         <span class="clip-file-name" title="${esc(f.path)}">${esc(f.name)}</span>
-        ${f.role ? `<span class="clip-tag tag-hit">${esc(T(ROLE_BADGE[f.role] || f.role))}</span>` : ''}
+        ${roleSelectHtml(f.role, `data-act="role-file" data-i="${i}" title="${T('素材分类（组片用）')}"`)}
         <span class="muted mono">${fmtBytes(f.size)}</span>
         <button class="btn tiny" data-act="remove-file" data-i="${i}">${ic('x', 13)}</button>
       </div>`).join('');
@@ -1108,7 +1117,7 @@ function renderClipFiles() {
       <div class="clip-file-row">
         <span class="clip-file-ic">${ic('checkCircle', 15)}</span>
         <span class="clip-file-name" title="${esc(s.path)}">${esc(s.name)}</span>
-        ${s.structureRole ? `<span class="clip-tag tag-hit">${esc(T(ROLE_BADGE[s.structureRole] || s.structureRole))}</span>` : ''}
+        ${roleSelectHtml(s.structureRole, `data-act="role-source" data-id="${s.id}" title="${T('素材分类（组片用）')}"`)}
         <span class="muted">${T('已分析')} · ${s.total} ${T('候选')}</span>
         <button class="btn tiny" data-act="remove-source" data-id="${s.id}" title="${T('删除素材库')}">${ic('x', 13)}</button>
       </div>`).join('');
@@ -1267,12 +1276,13 @@ async function loadClipSources() {
 }
 
 /* ---------------- 分析 / 导出 ---------------- */
+/** 批量分析。返回是否成功（取消/失败返回 false，供「一键生成」判断能否继续组片）。 */
 async function clipAnalyze() {
   let files = state.clips.files.slice();
   if (!files.length && state.clips.sources.length) {
     files = state.clips.sources.map((s) => ({ path: s.path, name: s.name, size: s.size }));
   }
-  if (!files.length) { toast(T('请先添加素材文件'), 'err'); return; }
+  if (!files.length) { toast(T('请先添加素材文件'), 'err'); return false; }
   const opts = collectClipCfg();
   state.clips.cfg = await api.clips.saveConfig(opts);
   state.clips.busy = 'analyze';
@@ -1286,10 +1296,12 @@ async function clipAnalyze() {
     renderClipFiles();
     await loadClipSources();
     toast(T('批量分析完成'), 'ok');
+    return true;
   } catch (e) {
     const msg = cleanIpcError(e);
     if (msg === '已取消') toast(T('任务已取消'), 'info');
     else toast(T('分析失败：{0}', msg), 'err');
+    return false;
   } finally {
     state.clips.busy = null;
     $('#clip-cancel-analyze').classList.add('hidden');
@@ -1302,6 +1314,11 @@ async function clipAnalyze() {
 }
 
 async function clipExport(composeMode = false) {
+  // 一键生成：列表里还有没分析过的素材时先自动分析，否则组片引擎拿不到片段，
+  // 用户点下去只会收到「组片失败」——先分析再组片才符合「一键」预期。
+  if (composeMode && state.clips.files.length) {
+    if (!(await clipAnalyze())) return;
+  }
   const opts = collectClipCfg();
   opts.batchName = $('#clip-batch-name').value.trim();
   if (composeMode) opts.compose = true;
@@ -1410,6 +1427,29 @@ function bindClips() {
       await api.clips.remove(b.dataset.id);
       await loadClipSources();
       toast(T('素材库已删除'), 'ok');
+    }
+  });
+
+  // 素材卡上的结构分类（组片取料依据）：未分析素材只记标记，已分析素材改分类会按新角色重算候选
+  $('#clip-files').addEventListener('change', async (e) => {
+    const sel = e.target.closest('select[data-act]');
+    if (!sel) return;
+    const role = sel.value || null;
+    if (sel.dataset.act === 'role-file') {
+      const f = state.clips.files[Number(sel.dataset.i)];
+      if (f) f.role = role;
+      return;
+    }
+    if (sel.dataset.act === 'role-source') {
+      sel.disabled = true;
+      try {
+        await api.clips.setSourceRole(sel.dataset.id, role);
+        await loadClipSources();
+        toast(T('素材分类已更新，候选已按新角色重算'), 'ok');
+      } catch (err) {
+        toast(T('更新分类失败：{0}', cleanIpcError(err)), 'err');
+        renderClipFiles();
+      }
     }
   });
 

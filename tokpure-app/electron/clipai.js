@@ -1004,13 +1004,16 @@ function buildCandidates(segments, silences, probe, cfg, skus) {
   // 回到时间顺序并编号；再按最低分/商品过滤
   kept.sort((a, b) => a.start - b.start);
   const isHookRole = cfg.structureRole === 'hook'; // 钩子库片段作开场用，不要求报价/CTA 锚点
-  return kept
+  const picked = kept
     .filter((w) => w.score >= cfg.minScore)
     // 成片必须有转化钩子（报价或 CTA）；只有商品名的讲解/故事段不切片，
     // 除非分极高（≥60，即多商品+多正向词的强种草段）。钩子库片段豁免。
     .filter((w) => isHookRole || w.prices.length || w.reasons.some((r) => r.c === 'cta') || w.score >= 60)
     .filter((w) => !(cfg.requireSku && !w.skuIds.length))
-    .filter((w) => !(w.negCount > 0 && !w.skuIds.length))
+    .filter((w) => !(w.negCount > 0 && !w.skuIds.length));
+  // 锚点候选为空时改用连续语音段兜底切段：否则导出必然失败（见 genericWindows 注释）
+  const final = picked.length ? picked : genericWindows(segments, silences, probe, cfg);
+  return final
     .slice(0, cfg.maxCandidates)
     .map((w, i) => ({
       id: `c${i + 1}`,
@@ -1027,6 +1030,53 @@ function buildCandidates(segments, silences, probe, cfg, skus) {
       status: cfg.autoApprove > 0 && w.score >= cfg.autoApprove ? 'approved' : 'candidate',
       output: null
     }));
+}
+
+/** 无锚点兜底切段：把连续语音段按目标时长聚成通用窗口（对齐静音边界），
+    只按语速/时长/正向词打分。用于整条素材没有任何 SKU/报价/CTA 锚点的场景
+    （无转化话术的口播、方言识别质量差、未配置商品库），保证有语音就能出片。 */
+function genericWindows(segments, silences, probe, cfg) {
+  const maxD = Math.max(10, Number(cfg.maxDuration) || 90);
+  const target = Math.min(maxD, Math.max(10, Number(cfg.targetDuration) || 35));
+  const groups = [];
+  let i = 0;
+  while (i < segments.length) {
+    let j = i;
+    while (j + 1 < segments.length && segments[j + 1].end - segments[i].start <= target) j += 1;
+    groups.push([i, j]);
+    i = j + 1;
+  }
+  // 尾部碎片过短时并回上一组（不超过最长时长）
+  if (groups.length > 1) {
+    const last = groups[groups.length - 1];
+    const prev = groups[groups.length - 2];
+    if (segments[last[1]].end - segments[last[0]].start < 6
+      && segments[last[1]].end - segments[prev[0]].start <= maxD) {
+      prev[1] = last[1];
+      groups.pop();
+    }
+  }
+  const out = [];
+  groups.forEach(([l, r]) => {
+    const winSegs = segments.slice(l, r + 1);
+    const lastSeg = winSegs[winSegs.length - 1];
+    if (lastSeg.end - winSegs[0].start < 4) return; // 短于 4s 无法成片
+    const rawStart = Math.max(0, winSegs[0].start - Number(cfg.leadPad || 0));
+    const rawEnd = Math.min(probe.duration || lastSeg.end, lastSeg.end + Number(cfg.trailPad || 0));
+    const start = snapBoundary(rawStart, silences, 'start', probe.duration);
+    const end = alignOutPoint(rawEnd, lastSeg.end, silences, probe.duration);
+    const text6 = winSegs.filter((s) => s.start < start + 6).map((s) => s.text).join(' ');
+    const hk = classifyHook(text6, cfg);
+    const sc = scoreWindow(winSegs, start, end, cfg, []);
+    out.push({
+      l, r, start, end,
+      score: Math.max(sc.score, Number(cfg.minScore) || 45),
+      reasons: [...(sc.reasons || []), { c: 'generic' }],
+      skuIds: [], skuNames: [], prices: [], negCount: sc.negCount || 0,
+      hookType: hk.type || 'normal', hookHit: hk.hit || '', generic: true
+    });
+  });
+  return out;
 }
 
 /* ---------------- 阶段1：批量分析 ---------------- */
@@ -1313,8 +1363,28 @@ const ASS_ANIM = {
   pop: '{\\fad(60,80)\\t(0,100,\\fscx112\\fscy112)\\t(100,200,\\fscx100\\fscy100)}',
   popBig: '{\\fad(40,80)\\t(0,90,\\fscx120\\fscy120)\\t(90,210,\\fscx100\\fscy100)}',
   fade: '{\\fad(160,120)}',
-  fadeSlow: '{\\fad(320,260)}'
+  fadeSlow: '{\\fad(320,260)}',
+  /* 从很小放大到满格（电影感/知识卡的开场重音） */
+  zoomIn: '{\\fad(140,110)\\fscx42\\fscy42\\t(0,220,\\fscx100\\fscy100)}',
+  /* 字距由松收敛到紧（干货/科技类「定格」感） */
+  expand: '{\\fad(150,120)\\fsp34\\t(0,280,\\fsp0)}',
+  /* 逐字卡拉OK填充（\kf 扫色，颜色由 Primary/Secondary 决定） */
+  karaoke: '{\\fad(50,70)}'
 };
+
+/** 逐字卡拉OK：把一句字幕拆成一字符一个 \kf 时长标签（中日韩按 1 份、西文 0.55 份分配时间） */
+function karaokeText(text, a, b) {
+  const lines = String(text || '').split('\\N').filter(Boolean);
+  const w = (ch) => (/[\x20-\x7e]/.test(ch) ? 0.55 : 1);
+  const items = [];
+  lines.forEach((ln, i) => {
+    if (i) items.push(null);
+    for (const ch of ln) items.push(ch);
+  });
+  const tot = items.reduce((s, c) => s + (c ? w(c) : 0), 0) || 1;
+  const cs = Math.max(10, Math.round((Math.max(0.1, b - a)) * 100));
+  return items.map((c) => (c === null ? '\\N' : `{\\kf${Math.max(4, Math.round(cs * w(c) / tot))}}${c}`)).join('');
+}
 
 function assTime(sec) {
   const t = Math.max(0, Number(sec) || 0);
@@ -1357,9 +1427,13 @@ function buildClipAss(segments, start, end, opts) {
   const re = emphRegex(cfg);
   const events = karaokeEvents(segments, start, end, maxChars);
   if (!events.length) return '';
+  // 卡拉OK：底色=未唱色（SecondaryColour）→ 强调色=已唱色（PrimaryColour），逐字扫色
+  const kara = anim === 'karaoke';
   const lines = events.map((e) => {
     let text = e.text;
-    if (emphHex && String(emphHex).toUpperCase() !== String(baseHex).toUpperCase()) {
+    if (kara) {
+      text = karaokeText(text, e.a, e.b);
+    } else if (emphHex && String(emphHex).toUpperCase() !== String(baseHex).toUpperCase()) {
       text = text.replace(re, (m0) => `{\\c${emph}}${m0}{\\c${base}}`);
     }
     const pre = ASS_ANIM[anim] || ASS_ANIM.fade;
@@ -1375,7 +1449,7 @@ function buildClipAss(segments, start, end, opts) {
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Default,${font},${fontsize},${base},&H000000FF,&H00000000,&HA0000000,${bold ? 1 : 0},0,0,0,100,100,0,0,1,${outline},2,2,40,40,${marginV},1`,
+    `Style: Default,${font},${fontsize},${kara ? emph : base},${kara ? base : '&H000000FF'},&H00000000,&HA0000000,${bold ? 1 : 0},0,0,0,100,100,0,0,1,${outline},2,2,40,40,${marginV},1`,
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
@@ -1510,10 +1584,12 @@ function stickerSize(text, shape) {
   let w = 30;
   for (const ch of text) w += /[\x20-\x7e]/.test(ch) ? fsPx * 0.62 : fsPx * 1.06;
   const band = shape === 'band' || shape === 'box';
-  return {
-    cw: Math.ceil(w + (band ? 92 : 56)),
-    chH: Math.ceil(fsPx * (band ? 2.0 : 1.72) + (band ? 80 : 48))
-  };
+  const tall = shape === 'underline';
+  const hollow = shape === 'hollow';
+  const chH = tall
+    ? Math.ceil(fsPx * 1.72 + 150)
+    : Math.ceil(fsPx * (band ? 2.0 : 1.72) + (band ? 80 : hollow ? 72 : 48));
+  return { cw: Math.ceil(w + (band ? 92 : hollow ? 84 : 56)), chH };
 }
 
 /* 贴片弹入动画（由风格模版选择）：pop=过冲回弹；zoom=从小放大；slide=自上滑入 */
@@ -1528,7 +1604,8 @@ function stickerAnim(anim, Ts) {
 }
 
 /* 用 ffmpeg 生成透明底花字 PNG。形状由风格模版决定：
-   burst = 外发光 + 粗描边（最抓眼）；band = 实心色带；box = 浅色底 + 彩字 */
+   burst = 外发光 + 粗描边（最抓眼）；band = 实心色带；box = 浅色底 + 彩字；
+   hollow = 空心描边大字（霓虹/赛博）；underline = 彩字 + 下方强调色条（知识卡/干货） */
 async function makeStickerPng(text, outPath, style) {
   const st = style || {};
   const shape = st.shape || 'burst';
@@ -1554,6 +1631,23 @@ async function makeStickerPng(text, outPath, style) {
       `format=rgba,colorchannelmixer=aa=0,drawtext=${common}:fontcolor=${border}@0.0:box=1:boxcolor=${border}:boxborderw=36`,
       `drawtext=${common}:fontcolor=${fill}@0.0:box=1:boxcolor=${fill}:boxborderw=28`,
       `drawtext=${common}:fontcolor=${textColor}:borderw=0`
+    ].join(',');
+  } else if (shape === 'hollow') {
+    // 空心描边：先铺一层柔光，再叠硬描边（字体本身不填充）
+    const ty = `x=(w-tw)/2:y=(h-th)/2`;
+    const hollow = `fontfile='${font}':textfile=fx.txt:fontsize=${fsPx}:${ty}`;
+    vf = [
+      `format=rgba,colorchannelmixer=aa=0,drawtext=${hollow}:fontcolor=${fill}@0.0:borderw=16:bordercolor=${glow}@0.5,boxblur=6:1`,
+      `drawtext=${hollow}:fontcolor=${fill}@0.0:borderw=6:bordercolor=${border}`,
+      `drawtext=${hollow}:fontcolor=${fill}@0.0:borderw=2:bordercolor=${textColor}`
+    ].join(',');
+  } else if (shape === 'underline') {
+    // 彩字 + 下方强调色条：文字上移，色条压在底部
+    const ty = `x=(w-tw)/2:y=(h-th)/2-26`;
+    const ul = `fontfile='${font}':textfile=fx.txt:fontsize=${fsPx}:${ty}`;
+    vf = [
+      `format=rgba,colorchannelmixer=aa=0,drawtext=${ul}:fontcolor=${textColor}:borderw=2:bordercolor=black@0.5:shadowcolor=black@0.45:shadowx=3:shadowy=4:box=1:boxcolor=${fill}@0.92:boxborderw=18`,
+      `drawbox=x=(iw-iw*0.86)/2:y=ih*0.63:w=iw*0.86:h=14:color=${border}@1:t=fill`
     ].join(',');
   } else {
     vf = [
@@ -1582,7 +1676,7 @@ function coverTitleText(c, moments) {
   return null;
 }
 
-async function makeCover(input, clipStart, clipDur, titleText, workDir, outPath, W, H, style) {
+async function makeCover(input, clipStart, clipDur, titleText, workDir, outPath, W, H, style, cfg) {
   try {
     // 1) 扫前 70% 片段（避开片头弹入与结尾淡出）选最佳帧：细节 × 亮度加权
     const scanDur = Math.min(Math.max(2, clipDur * 0.7), 24);
@@ -1602,21 +1696,22 @@ async function makeCover(input, clipStart, clipDur, titleText, workDir, outPath,
     await runFf(['-v', 'error', '-y', '-ss', t.toFixed(3), '-i', input,
       '-frames:v', '1', '-vf', `scale=${W}:${H}`, '-q:v', '2', frameJpg]);
     if (!fs.existsSync(frameJpg) || fs.statSync(frameJpg).size < 1000) return null;
-    if (!titleText || !fxFontFile()) {
+    if (!titleText || !String(titleText).trim()) {
+      // 没有可用标题文案 → 纯画面封面（画质最佳帧，不做任何叠字）
       fs.copyFileSync(frameJpg, outPath);
       return outPath;
     }
 
-    // 3) 叠标题花字（上方居中，比成片贴片更大）
-    const { cw } = stickerSize(titleText, style && style.shape);
-    const dim = await makeStickerPng(titleText, path.join(workDir, 'cover-fx.png'), style);
-    if (!dim) { fs.copyFileSync(frameJpg, outPath); return outPath; }
-    const bs = (W * 0.88 / cw).toFixed(4);
-    const yPx = Math.round(H * 0.13);
-    await runFf(['-v', 'error', '-y', '-i', frameJpg, '-i', path.join(workDir, 'cover-fx.png'),
+    // 3) 叠封面层：整幅压暗 + 超大描边花字标题（参考附件封面风格）+ 强调条
+    const cv = (style && style.cover) || {};
+    const plate = await makeCoverPlate(cfg || {}, style, titleText, W, H, workDir, path.join(workDir, 'cover-plate.png'));
+    if (!plate) { fs.copyFileSync(frameJpg, outPath); return outPath; }
+    const tint = Number(cv.tintAlpha);
+    const ta = Number.isFinite(tint) ? tint.toFixed(2) : '0.44';
+    await runFf(['-v', 'error', '-y', '-i', frameJpg, '-i', path.join(workDir, 'cover-plate.png'),
       '-filter_complex',
-      `[1:v]scale=w='trunc(iw*${bs}/2)*2':h=-2:flags=lanczos[fx];` +
-      `[0:v][fx]overlay=x=(W-w)/2:y=${yPx}:format=auto,format=yuvj420p`,
+      `[0:v]drawbox=x=0:y=0:w=iw:h=ih:color=${hexToFf(cv.tint)}@${ta}:t=fill[t];` +
+      `[t][1:v]overlay=0:0:format=auto,format=yuvj420p`,
       '-frames:v', '1', '-q:v', '2', outPath]);
     return fs.existsSync(outPath) && fs.statSync(outPath).size > 1000 ? outPath : null;
   } catch (_) {
@@ -1634,6 +1729,57 @@ async function attachCover(mp4Path, coverJpg) {
     '-movflags', '+faststart', tmp]);
   if (!fs.existsSync(tmp) || fs.statSync(tmp).size < 1000) throw new Error('cover remux failed');
   fs.renameSync(tmp, mp4Path);
+}
+
+/* ---------------- 短视频封面 2.0：叠色底 + 超大描边花字标题 + 强调条 ----------------
+   配色来自风格模版的 cover 字段；标题文案取自价格段报价/商品名/花字短语。 */
+
+/** 颜色归一：'#RRGGBB' / '0xRRGGBB' / 'black' → ffmpeg 可用色值 */
+function hexToFf(hex, fallback = '0xFFFFFF') {
+  const s = String(hex == null ? '' : hex).trim();
+  if (/^#?[0-9a-f]{6}$/i.test(s)) return `0x${s.replace(/^#/, '').toUpperCase()}`;
+  if (/^0x[0-9a-f]{6}$/i.test(s)) return `0x${s.slice(2).toUpperCase()}`;
+  if (/^[a-z]{3,20}$/i.test(s)) return s; // 具名色：black / white / red …
+  return fallback;
+}
+
+/** 按像素宽度折行（封面大字用；中文/全角≈字号宽，西文≈0.55 字号宽），最多两行 */
+function wrapByPixel(text, maxWidth, fs) {
+  const w = (ch) => (/[\u2E80-\uFFEF]/.test(ch) ? fs : fs * 0.55);
+  const out = [];
+  let line = '';
+  let acc = 0;
+  for (const ch of String(text)) {
+    const cw = w(ch);
+    if (acc + cw > maxWidth && line) { out.push(line); line = ''; acc = 0; }
+    line += ch;
+    acc += cw;
+  }
+  if (line) out.push(line);
+  return out.slice(0, 2);
+}
+
+/** 封面叠加层：透明底 PNG（超大描边花字标题 + 强调条），不含任何账号文案 */
+async function makeCoverPlate(cfg, style, titleText, W, H, workDir, outPath) {
+  const cv = (style && style.cover) || {};
+  const font = fxFontFile('heiti');
+  if (!font) return null;
+  const parts = [];
+  const FT = Math.round(H * 0.075);
+  const title = String(titleText || '').trim();
+  const lines = title ? wrapByPixel(title, W * 0.90, FT) : [];
+  let titleBottom = Math.round(H * 0.34);
+  if (lines.length) {
+    fs.writeFileSync(path.join(workDir, 'cv-title.txt'), lines.join('\n'), 'utf8');
+    parts.push(`drawtext=fontfile='${font}':textfile=cv-title.txt:fontsize=${FT}:line_spacing=${Math.round(FT * 0.22)}:fontcolor=${hexToFf(cv.title)}:borderw=${Math.round(FT * 0.11)}:bordercolor=${hexToFf(cv.stroke)}@0.92:x=(w-tw)/2:y=${titleBottom}:shadowcolor=black@0.55:shadowx=3:shadowy=5`);
+    titleBottom += FT + (lines.length - 1) * Math.round(FT * 1.22) + Math.round(H * 0.035);
+  }
+  parts.push(`drawbox=x=(iw-iw*0.20)/2:y=${titleBottom}:w=iw*0.20:h=${Math.round(H * 0.008)}:color=${hexToFf(cv.accent)}@0.95:t=fill`);
+  try {
+    await runFf(['-v', 'error', '-f', 'lavfi', '-i', `color=black:s=${W}x${H}:d=1`,
+      '-vf', `format=rgba,colorchannelmixer=aa=0,${parts.join(',')}`, '-frames:v', '1', '-y', outPath], () => {}, workDir);
+    return fs.existsSync(outPath) && fs.statSync(outPath).size > 0 ? { bw: W, bh: H } : null;
+  } catch (_) { return null; }
 }
 
 function tsName() {
@@ -1696,60 +1842,143 @@ function buildShotEvents(segments, c, cfg, shotPool, maxEvents) {
   return events;
 }
 
-/** 结构化组片：按「钩子 → 介绍 → 价格」拼装 30-90s 带货短视频（目标 targetShort 秒）。
-    同一批内钩子/介绍/价格候选互不重复，素材之间不撞车。 */
-function buildComposeJobs(cfg) {
-  const byRole = { hook: [], intro: [], price: [] };
+/** 组片候选池：已分类素材按分类入池；未分类素材按片段内容自动归类，
+    命中报价/CTA → 价格池，命中钩子题型 → 钩子池，其余 → 介绍池。
+    任何未分类素材都能参与组片（v3.0.0 删掉分类选择器后，未分类素材原本完全无法组片）。 */
+function buildComposePools() {
+  const pools = { hook: [], intro: [], price: [] };
+  const all = [];
   listSources().forEach((sum) => {
-    if (!sum.exists || !byRole[sum.structureRole]) return;
+    if (!sum.exists) return;
     const rec = readJsonSafe(sourcePath(sum.id), null);
     if (!rec) return;
+    const explicit = ROLES[sum.structureRole] ? sum.structureRole : null;
     (rec.candidates || []).forEach((c) => {
-      if (c.status !== 'rejected' && !(c.visual && c.visual.valid === false)) byRole[sum.structureRole].push({ rec, c });
+      if (c.status === 'rejected' || (c.visual && c.visual.valid === false)) return;
+      const item = { rec, c };
+      all.push(item);
+      if (explicit) { pools[explicit].push(item); return; }
+      const quote = (c.priceMatches && c.priceMatches.length) || (c.reasons || []).some((r) => r.c === 'cta');
+      const hooky = c.hookType && c.hookType !== 'normal';
+      if (hooky && !quote) pools.hook.push(item);
+      else if (quote) pools.price.push(item);   // 报价/CTA 段最适合收尾（兼作钩子的也归这里）
+      else pools.intro.push(item);
     });
   });
+  const byScore = (a, b) => (b.c.score || 0) - (a.c.score || 0);
+  ['hook', 'intro', 'price'].forEach((r) => pools[r].sort(byScore));
+  all.sort(byScore);
+  return { pools, all };
+}
+
+/** 覆盖窗口池：把每条素材整段 ASR 按短视频时长聚成通用窗口（对齐静音边界），
+    作为组片「介绍位」的补料。锚点候选稀疏时（整条直播只有结尾一处报价），
+    只靠评审候选拼不出多条成片，靠这些窗口补位。
+    质量闸门：窗口文本高度重复（Whisper 在纯音乐/静音段的循环幻觉）直接丢弃；
+    返回前按分数排序，优先含正向卖点话术的段。 */
+function buildCoverageWindows(cfg) {
+  const target = Math.min(90, Math.max(30, Number(cfg.targetShort) || 50));
+  const per = Math.min(30, Math.max(16, Math.round(target * 0.45)));
+  const out = [];
+  listSources().forEach((sum) => {
+    if (!sum.exists) return;
+    const rec = readJsonSafe(sourcePath(sum.id), null);
+    const segs = rec && rec.asr && rec.asr.segments;
+    if (!segs || !segs.length) return;
+    const wins = genericWindows(segs, rec.silences || [], rec.probe || {}, {
+      ...cfg, targetDuration: per, maxDuration: Math.min(60, per + 18)
+    });
+    wins.forEach((w) => {
+      const texts = segs.slice(w.l, w.r + 1).map((s) => normText(s.text || '')).filter((t) => t.length >= 2);
+      if (texts.length >= 4 && new Set(texts).size / texts.length < 0.5) return; // 循环幻觉段
+      out.push({
+        rec,
+        c: {
+          id: `g${w.l + 1}`,
+          start: Number(w.start.toFixed(2)),
+          end: Number(w.end.toFixed(2)),
+          text: segs.slice(w.l, w.r + 1).map((s) => s.text).join(' '),
+          score: w.score || 0,
+          reasons: w.reasons || [],
+          hookType: w.hookType || 'normal',
+          skuIds: [], skuNames: [], priceMatches: [],
+          status: 'approved', generic: true, output: null
+        }
+      });
+    });
+  });
+  return out;
+}
+
+/** 结构化组片：按「钩子 → 介绍 → 价格」拼装 30-90s 带货短视频（目标 targetShort 秒）。
+    多成片策略：成片条数由素材容量决定（上限 12、默认至少 5 条），候选顺序保持
+    「钩子池 > 介绍池 > 价格池 > 覆盖窗口」的优先级，同池内先挑「跨成片还没用过」
+    的片段，稀料时按使用次数最少的降级复用（配合去重变换让同素材的多条成片不撞车）。
+    介绍位在评审候选用尽后从覆盖窗口池补料，保证单条长素材也能拼出多条成片；
+    只有一条素材、素材未分类、或某类片段缺失时同样能拼出成片。 */
+function buildComposeJobs(cfg) {
+  const { pools, all } = buildComposePools();
+  if (!all.length) return { combos: [], jobs: [] };
+  const coverage = buildCoverageWindows(cfg);
+
   const key = (x) => `${x.rec.id}:${x.c.id}`;
   const dur = (x) => x.c.end - x.c.start;
-  const byScore = (a, b) => (b.c.score || 0) - (a.c.score || 0);
-  byRole.hook.sort(byScore);
-  byRole.intro.sort(byScore);
-  byRole.price.sort(byScore);
+  // 同一条成片内不允许出现「同一素材、时间重叠」的两个片段（避免同一段画面重复出现）
+  const clash = (a, b) => {
+    if (a.rec.id !== b.rec.id) return false;
+    const inter = Math.min(a.c.end, b.c.end) - Math.max(a.c.start, b.c.start);
+    return inter > Math.min(dur(a), dur(b)) * 0.4;
+  };
 
   const target = Math.min(90, Math.max(30, Number(cfg.targetShort) || 50));
-  const usedHook = new Set();
-  const usedIntro = new Set();
-  const usedPrice = new Set();
-  const usedHookTypes = new Set(); // 钩子类型多样化：同批成片优先不重复钩子类型（提问/价格/金句…）
+  const reviewed = pools.hook.length + pools.intro.length + pools.price.length;
+  const capacity = reviewed + coverage.length;
+  // 至少 5 条、丰料时按候选总数的三分之一放大，但不超过容量（避免凭空造片段）
+  const want = Math.max(1, Math.min(12, Math.min(Math.max(5, Math.floor(reviewed / 3)), capacity)));
+
+  const usage = new Map();                                  // 片段 → 跨成片使用次数（越少越优先）
+  const uses = (x) => usage.get(key(x)) || 0;
+  const take = (x) => usage.set(key(x), uses(x) + 1);
+  // 候选排序：先按列表给出的池优先级，同池内再按使用次数升序、分数降序；
+  // 已在本条成片出现或与已选片段时间撞车的直接剔除。
+  const rank = (lists, combo) => lists.flatMap((arr) => arr
+    .filter((x) => dur(x) >= 3.5 && !combo.some((y) => key(y) === key(x) || clash(y, x)))
+    .sort((a, b) => (uses(a) - uses(b)) || ((b.c.score || 0) - (a.c.score || 0))));
+
   const combos = [];
-  const maxCombos = Math.min(byRole.hook.length, byRole.price.length, Math.max(1, Math.floor(byRole.intro.length / 2)));
-  for (let n = 0; n < maxCombos; n += 1) {
-    const avail = (x) => !usedHook.has(key(x)) && dur(x) >= 3.5;
-    const hook = byRole.hook.find((x) => avail(x) && !usedHookTypes.has(x.c.hookType || 'normal'))
-      || byRole.hook.find(avail);
-    const price = byRole.price.find((x) => !usedPrice.has(key(x)));
-    if (!hook || !price) break;
-    const hookDur = Math.min(dur(hook), 9);           // 开场 4-9s
-    const priceDur = Math.min(Math.max(dur(price), 8), 25); // 价格/CTA 8-25s
+  for (let n = 0; n < want; n += 1) {
+    const combo = [];
+    // 开场：钩子池优先，其它池兜底（保住「开头必须有钩子」的结构）
+    const hook = rank([pools.hook, pools.intro, pools.price, coverage], combo)[0];
+    if (!hook) break;
+    combo.push(hook);
+    // 收尾：报价/CTA 池优先（保住转化收尾），稀料时降级复用（允许与开场同素材）
+    const price = rank([pools.price, pools.intro, pools.hook, coverage], combo)[0]
+      || rank([pools.price, pools.intro], []).find((x) => key(x) !== key(hook)) || null;
+    if (price) combo.push(price);
+
+    const hookDur = Math.min(dur(hook), 9);                 // 开场 4-9s
+    const priceDur = price ? Math.min(Math.max(dur(price), 8), 25) : 0; // 价格/CTA 8-25s
     const remaining = target - hookDur - priceDur;
-    const picks = [];
+    const intros = [];
     let acc = 0;
-    for (const x of byRole.intro) {                    // 介绍贪心凑时长：最多 2 段
-      if (picks.length >= 2) break;
-      const k = key(x);
-      if (usedIntro.has(k) || picks.some((p) => key(p) === k)) continue;
+    for (const x of rank([pools.intro, coverage], combo)) {  // 介绍贪心凑时长：最多 2 段
+      if (intros.length >= 2) break;
       const d = dur(x);
-      if (d >= 8 && acc + d <= remaining + 10) { picks.push(x); acc += d; }
+      if (d >= 8 && acc + d <= remaining + 8) { intros.push(x); combo.push(x); acc += d; }
     }
-    if (acc < remaining - 8) {                         // 不够就整段补上（宁可略长）
-      const extra = byRole.intro.find((x) => !usedIntro.has(key(x)) && !picks.some((p) => key(p) === key(x)));
-      if (extra) { picks.push(extra); acc += dur(extra); }
+    if (!intros.length) {                                    // 凑不够补一段（宁可略长）
+      const extra = rank([pools.intro, coverage], combo)[0];
+      if (extra) { intros.push(extra); combo.push(extra); acc += dur(extra); }
     }
-    if (!picks.length) break;
-    picks.forEach((x) => usedIntro.add(key(x)));
-    usedHook.add(key(hook));
-    usedHookTypes.add(hook.c.hookType || 'normal');
-    usedPrice.add(key(price));
-    combos.push({ hook, price, intros: picks, hookDur, priceDur, introDur: acc });
+
+    combo.forEach(take);
+    combos.push({ hook, price, intros, hookDur, priceDur, introDur: acc });
+  }
+  // 极简兜底：整批只有一条有效片段时，也按整段开场导出，不再因「结构凑不齐」直接失败
+  if (!combos.length && all.length) {
+    const only = all[0];
+    combos.push({ hook: only, price: null, intros: [], hookDur: Math.min(dur(only), 45), priceDur: 0, introDur: 0 });
   }
   const jobs = [];
   combos.forEach((combo, ci) => {
@@ -1758,9 +1987,11 @@ function buildComposeJobs(cfg) {
       if (durOverride) c2.end = Number((x.c.start + durOverride).toFixed(2));
       return { rec: x.rec, c: c2, compose: { combo: ci, role, part, isLast } };
     };
-    jobs.push(mkPart(combo.hook, 'hook', 0, false, combo.hookDur));
-    combo.intros.forEach((x, k) => jobs.push(mkPart(x, 'intro', 1 + k, false, null)));
-    jobs.push(mkPart(combo.price, 'price', combo.intros.length + 1, true, combo.priceDur));
+    let part = 0;
+    const hookOnly = !combo.intros.length && !combo.price; // 单段成片的收尾淡出落在开场段上
+    jobs.push(mkPart(combo.hook, 'hook', part++, hookOnly, combo.hookDur));
+    combo.intros.forEach((x) => jobs.push(mkPart(x, 'intro', part++, false, null)));
+    if (combo.price) jobs.push(mkPart(combo.price, 'price', part++, true, combo.priceDur));
   });
   return { combos, jobs };
 }
@@ -1779,7 +2010,16 @@ async function render(options = {}, onProgress) {
     const built = buildComposeJobs(cfg);
     combos = built.combos;
     jobs.push(...built.jobs);
-    if (!combos.length) throw new Error('组片失败：需要「钩子库」「产品介绍库」「价格库」三类已分析素材，且各类至少有一个有效片段（素材卡上可设置分类）');
+    if (!combos.length) {
+      const analyzed = listSources().filter((s) => s.exists);
+      if (!analyzed.length) {
+        throw new Error('组片失败：还没有已分析的素材，请先点「开始批量分析」');
+      }
+      const valid = analyzed.reduce((n, s) => n + Math.max(0, s.total - s.rejected), 0);
+      throw new Error(valid
+        ? '组片失败：素材分类与有效片段凑不齐成片，请在素材卡上检查分类后重试'
+        : '组片失败：素材里没有通过校验的有效片段（可在素材卡上设置分类，或调低「最低入选分」后重新分析）');
+    }
   } else {
     listSources().forEach((sum) => {
       if (options.sourceIds && options.sourceIds.length && !options.sourceIds.includes(sum.id)) return;
@@ -1808,10 +2048,11 @@ async function render(options = {}, onProgress) {
     // 组片统一走 polish 管线（跨素材拼接需要统一分辨率与滤镜链）
     cfg.polishStyle = true;
   }
-  // 风格模版只在整批导出前解析一次（贴片形状/滤镜/转场/BGM 闪避全批一致；
+  // 风格模版只在整批导出前解析一次（贴片形状/滤镜/转场/BGM 闪避/画面外框全批一致；
   // combo 封面在循环外生成，也依赖这里的 sStk）
   const style = resolveStyle(cfg.styleTemplate);
   const sStk = style.sticker || {};
+  const sFrame = style.frame || {};
 
   batch = { kind: 'render', canceled: false, child: null };
   const manifest = [];
@@ -1950,6 +2191,16 @@ async function render(options = {}, onProgress) {
           const zn = Math.max(2, Math.round(fps * 0.5));
           vchain.push(`zoompan=z='1+0.07*(1-min(1\\,on/${zn}))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${fps},setsar=1`);
         }
+        // 画面外框效果（风格模版决定）：暗角 / 胶片颗粒 / 电影黑边。
+        // 都放在字幕与贴片之前，保证文字与花字依旧锐利。
+        if (sFrame.vig) vchain.push(`vignette=${sFrame.vig}`);
+        if (sFrame.grain && Number(sFrame.grain) > 0) vchain.push(`noise=alls=${Math.round(Number(sFrame.grain))}:allf=t+u`);
+        if (sFrame.bars && Number(sFrame.bars) > 0) {
+          const barH = Math.min(0.2, Math.max(0, Number(sFrame.bars))).toFixed(4);
+          const bc = hexToFf(sFrame.barsColor || 'black');
+          vchain.push(`drawbox=x=0:y=0:w=iw:h=ih*${barH}:color=${bc}@1:t=fill`);
+          vchain.push(`drawbox=x=0:y=ih-ih*${barH}:w=iw:h=ih*${barH}:color=${bc}@1:t=fill`);
+        }
         if (useSub) vchain.push('ass=sub.ass');
         // 转场：组片中间段按模版加一个短闪（flash=白闪 / black=黑场缓切），
         // 与下段开头 whoosh 音效呼应；末段由 tailFade 收尾，不加片头闪
@@ -2005,7 +2256,16 @@ async function render(options = {}, onProgress) {
             fc.push(`[${cur}][pips${k}]overlay=x=W-w-24:y='H*0.08':enable='between(t\\,${Ts}\\,${Te})':eof_action=pass[px${k}]`);
             cur = `px${k}`;
           });
-          fc.push(`[${cur}]${tailFade || 'null'}[vout]`);
+          // 画面进度条（竖屏短视频「播放进度」质感）：随播放时间从左向右生长，压在最上层
+          const tail = [];
+          if (sFrame.bar && DUR > 0) {
+            const b = sFrame.bar;
+            const bh = Math.max(4, Math.round(H * (Number(b.h) || 0.007)));
+            const by = b.pos === 'bottom' ? `${H - bh}` : '0';
+            tail.push(`drawbox=x=0:y=${by}:w=iw*t/${DUR.toFixed(3)}:h=${bh}:color=${hexToFf(b.c)}@0.95:t=fill`);
+          }
+          if (tailFade) tail.push(tailFade);
+          fc.push(`[${cur}]${tail.length ? tail.join(',') : 'null'}[vout]`);
         }
 
         // BGM 音量：用户滑块为准（模版只负责切换模版时写入滑块初值）
@@ -2060,7 +2320,7 @@ async function render(options = {}, onProgress) {
       if (cfg.coverArt && !compose) {
         onProgress({ stage: `生成封面 ${i + 1}/${jobs.length}`, percent: span(0.985), index: i + 1, total: jobs.length, name: path.basename(outFile) });
         const coverPath = path.join(outDir, `cover-${String(i + 1).padStart(2, '0')}.jpg`);
-        const made = await makeCover(input, c.start, DUR, coverTitleText(c, moments), workDir, coverPath, W, H, sStk);
+        const made = await makeCover(input, c.start, DUR, coverTitleText(c, moments), workDir, coverPath, W, H, style, cfg);
         if (made) {
           coverFile = path.basename(made);
           try { await attachCover(outFile, made); } catch (_) { /* cover art 写入失败不影响成片 */ }
@@ -2099,10 +2359,12 @@ async function render(options = {}, onProgress) {
         const comboNo = comboIdxs[ci] + 1;
         const parts = comboParts[comboIdxs[ci]].sort((a, b) => a.part - b.part);
         const outFile = path.join(outDir, `combo-${String(comboNo).padStart(2, '0')}.mp4`);
-        const totalDur = parts.reduce((s, p) => s + p.duration, 0);
+        const bodyDur = parts.reduce((s, p) => s + p.duration, 0);
+        const totalDur = bodyDur;
         onProgress({ stage: `拼接成片 ${ci + 1}/${comboIdxs.length}`, percent: ((ci + 0.2) / comboIdxs.length) * 100, index: ci + 1, total: comboIdxs.length, name: path.basename(outFile) });
         const listPath = path.join(workDir, `combo-${comboNo}.txt`);
-        fs.writeFileSync(listPath, parts.map((p) => `file '${p.file.replace(/'/g, "'\\''")}'`).join('\n'), 'utf8');
+        const seq = parts.map((p) => `file '${p.file.replace(/'/g, "'\\''")}'`);
+        fs.writeFileSync(listPath, seq.join('\n'), 'utf8');
         await runFf(['-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', '-movflags', '+faststart', outFile]);
         checkCanceled();
 
@@ -2115,7 +2377,12 @@ async function render(options = {}, onProgress) {
           const cMoments = pickStickerMoments(priceSegs.map((s) => ({ ...s, text: applySubtitleFixes(s.text, cfg) })), pc.start, pc.end, pc.end - pc.start, { spacing: sStk.spacing, minGap: sStk.minGap });
           const title = coverTitleText(pc, cMoments) || (parts[0].c.skuNames || [])[0] || null;
           const coverPath = path.join(outDir, `cover-${String(comboNo).padStart(2, '0')}.jpg`);
-          const made = await makeCover(outFile, 0, totalDur, title, workDir, coverPath, 720, 1280, sStk);
+          // 封面帧优先取「价格段源素材原帧」（无烧录字幕/栏头，画面干净，更贴近参考封面）；失败再退回成片帧
+          const pLast = parts[parts.length - 1];
+          const srcPath = pLast.rec && pLast.rec.source ? pLast.rec.source.path : '';
+          const made = (srcPath && fs.existsSync(srcPath)
+            ? await makeCover(srcPath, pc.start, pLast.duration, title, workDir, coverPath, 720, 1280, style, cfg)
+            : null) || await makeCover(outFile, 0, bodyDur, title, workDir, coverPath, 720, 1280, style, cfg);
           if (made) {
             coverFile = path.basename(made);
             try { await attachCover(outFile, made); } catch (_) {}
