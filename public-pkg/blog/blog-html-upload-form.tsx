@@ -40,6 +40,7 @@ import {
   formatBlogDate,
   inferBlogCategory,
   parseBlogHtml,
+  resolveContentImages,
 } from './blog-model';
 
 /** 无封面时的中性渐变（与前台列表/详情一致）。 */
@@ -214,14 +215,26 @@ export function BlogHtmlUploadForm({
     }
   };
 
-  /** 即将保存的最终正文（含图集追加）。 */
-  const finalContent = React.useMemo(
-    () => appendImageGallery(content, gallery.map((item) => ({ url: item.url, alt: title }))),
-    [content, gallery, title],
-  );
-
-  /** 封面取用顺序：手传封面 → 第一张配图。 */
+  /**
+   * 封面取用顺序：手传封面 → 第一张配图。
+   * （提到 `finalContent` 之前：正文里与封面同一张的图片会被移除，避免重复展示。）
+   */
   const coverForSave = cover || gallery[0]?.url || '';
+
+  /**
+   * 即将保存的最终正文：
+   * 1. 把正文里相对路径的图片按文件名就地换成已上传的 URL（与封面重复的移除）；
+   * 2. 未被正文引用的「其他配图」再按上传顺序追加到文末。
+   */
+  const finalContent = React.useMemo(() => {
+    const items = gallery.map((item) => ({ url: item.url, name: item.name }));
+    const resolved = resolveContentImages(content, items, { coverUrl: coverForSave });
+    const pending = items
+      .filter((item) => item.url !== coverForSave && !resolved.includes(item.url))
+      .map((item) => ({ url: item.url, alt: title }));
+    return appendImageGallery(resolved, pending);
+  }, [content, gallery, coverForSave, title]);
+
   const coverForPreview =
     coverForSave || config.blog.defaultCoverFor?.(category) || '';
 

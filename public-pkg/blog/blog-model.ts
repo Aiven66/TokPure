@@ -249,6 +249,9 @@ export interface ParsedBlogHtml {
 /** 危险容器标签：成对时整段删除，落单时只删标签本身。 */
 const DANGEROUS_TAGS = 'script|style|iframe|object|embed|form|noscript|link|meta|base';
 
+/** 上传的独立 HTML 文档自带的站点外壳（顶栏 / 页脚 / 导航），正文里必须剥离。 */
+const CHROME_TAGS = 'header|footer|nav';
+
 /** 常见实体解码（与 `stripHtml` 保持一致的口径）。 */
 function decodeEntities(str: string): string {
   return str
@@ -304,7 +307,8 @@ function bodyInner(html: string): string {
 }
 
 /**
- * 内容安全清洗：删注释/doctype/xml 声明、整段删危险容器、删事件属性、
+ * 内容安全清洗：删注释/doctype/xml 声明、整段删危险容器、删上传文档自带的
+ * 站点外壳（header/footer/nav，避免与本站在页头页脚重复）、删事件属性、
  * 删 `javascript:`/`vbscript:`/`data:text/html` 协议、剔 CSS `expression(`。
  * 保留 `style` 属性（仅剔 expression）与 `img[src]`。
  */
@@ -321,6 +325,9 @@ export function sanitizeBlogHtml(html: string): string {
   );
   // 落单/自闭合同类标签
   out = out.replace(new RegExp(`<(${DANGEROUS_TAGS})\\b[^>]*\\/?>`, 'gi'), '');
+  // 站点外壳（成对 + 落单）
+  out = out.replace(new RegExp(`<(${CHROME_TAGS})\\b[\\s\\S]*?<\\/\\1\\s*>`, 'gi'), '');
+  out = out.replace(new RegExp(`<(${CHROME_TAGS})\\b[^>]*\\/?>`, 'gi'), '');
   // 事件属性（onclick / onerror / onload ...）
   out = out.replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
   // 危险协议
@@ -348,13 +355,18 @@ function countOccurrences(haystack: string, needle: string): number {
   return count;
 }
 
-/** 若正文首个 `<h1>` 的文本与标题一致，则删除该 h1（详情页已单独渲染标题）。 */
-function stripLeadingDuplicateH1(content: string, title: string): string {
-  if (!title) return content;
-  const match = content.match(/<h1\b[^>]*>([\s\S]*?)<\/h1\s*>/i);
-  if (!match || match.index === undefined) return content;
-  if (textOf(match[1]).toLowerCase() !== title.trim().toLowerCase()) return content;
-  return (content.slice(0, match.index) + content.slice(match.index + match[0].length)).trim();
+/**
+ * 删除正文里与标题重复的 `<h1>`（详情页已单独渲染标题，正文再出现一次即为重复）。
+ * 上传文档的 h1 常嵌在 `.hero` 之类的容器里，故按整篇匹配而非只看首个元素。
+ */
+export function stripDuplicateHeading(content: string, title: string): string {
+  const wanted = String(title || '').trim().toLowerCase();
+  if (!wanted) return content;
+  return content
+    .replace(/<h1\b[^>]*>([\s\S]*?)<\/h1\s*>/gi, (whole, inner: string) =>
+      textOf(inner).toLowerCase() === wanted ? '' : whole,
+    )
+    .trim();
 }
 
 /** 收集正文中相对路径的图片引用（绝对 URL / 根路径 / data: 除外）。 */
@@ -378,6 +390,13 @@ function collectRelativeImages(html: string): string[] {
   return found;
 }
 
+/** 剥离标题尾部的「 | 站点名 / - 站点名」后缀（上传文档常带自家站点名）。 */
+function stripSiteSuffix(raw: string): string {
+  return String(raw || '')
+    .replace(/\s+[|｜\-–—·]\s+[^|｜\-–—·]{1,40}$/, '')
+    .trim();
+}
+
 /**
  * 解析上传的 HTML 文件，抽出标题 / 分类 / 正文 / 摘要。
  *
@@ -392,20 +411,18 @@ export function parseBlogHtml(
   const meta = parseMetaTags(raw);
   const candidates = (opts.candidates || []).filter(Boolean);
 
-  // 标题：og/twitter → 首个 h1 → title（剥离「 | 站点」后缀）→ 首个 h2
+  // 标题：og/twitter → 首个 h1 → title → 首个 h2（一律剥离站点后缀）
   let title = '';
-  const ogTitle = (meta['og:title'] || meta['twitter:title'] || '').trim();
+  const ogTitle = stripSiteSuffix(meta['og:title'] || meta['twitter:title'] || '');
   if (ogTitle) {
     title = ogTitle;
   } else {
     const h1 = firstTagText(raw, 'h1');
     if (h1) {
-      title = h1;
+      title = stripSiteSuffix(h1);
     } else {
       const docTitle = firstTagText(raw, 'title');
-      title = docTitle
-        ? docTitle.replace(/\s+[|｜\-–—]\s+[^|｜\-–—]{1,40}$/, '').trim()
-        : firstTagText(raw, 'h2');
+      title = docTitle ? stripSiteSuffix(docTitle) : firstTagText(raw, 'h2');
     }
   }
 
@@ -428,9 +445,9 @@ export function parseBlogHtml(
     }
   }
 
-  // 正文：取 body 内层 → 清洗 → 去掉与标题重复的首个 h1
+  // 正文：取 body 内层 → 清洗 → 去掉与标题重复的 h1
   const body = bodyInner(raw);
-  const content = stripLeadingDuplicateH1(sanitizeBlogHtml(body), title);
+  const content = stripDuplicateHeading(sanitizeBlogHtml(body), title);
 
   // 摘要：meta description → 首个 p 截断
   let summary = (meta['description'] || meta['og:description'] || '').trim();
@@ -519,6 +536,83 @@ function escapeAttr(value: string): string {
     .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+/** 已上传的图片（正文里相对路径图片的就地替换来源）。 */
+export interface ContentImage {
+  url: string;
+  /** 上传时的原始文件名；缺省时从 URL 的文件名推断。 */
+  name?: string;
+}
+
+const IMG_TAG_RE = /<img\b[^>]*>/gi;
+const SRC_ATTR_RE = /\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i;
+const SRCSET_ATTR_RE = /\ssrcset\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+)/i;
+
+/** 图片地址的文件名（小写、去查询串）。 */
+function imageBaseName(value: string): string {
+  const clean = String(value || '').split(/[?#]/)[0];
+  const parts = clean.split(/[\\/]/).filter(Boolean);
+  return (parts[parts.length - 1] || '').toLowerCase();
+}
+
+/** 上传后的文件名带时间戳前缀（`1699-hash-hero.jpg`），按后缀判定同一张图。 */
+function isSameImage(relativeName: string, uploadedName: string): boolean {
+  if (!relativeName || !uploadedName) return false;
+  return relativeName === uploadedName || uploadedName.endsWith(`-${relativeName}`);
+}
+
+/** 是否已是可直接访问的地址（含协议 / 协议相对 / 站点根路径）。 */
+function isAbsoluteImageUrl(value: string): boolean {
+  return /^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(value);
+}
+
+/**
+ * 把正文里的相对路径图片就地换成已上传的公开 URL（按文件名匹配，见
+ * {@link isSameImage}），并处理两类重复：
+ *
+ * - 与封面同一张图：详情页封面已单独大幅展示，正文内不再重复；
+ * - 同一张图出现多次：只保留首次出现（上传表单末尾追加的图集亦由此去重）。
+ *
+ * 未匹配到上传记录、且非绝对地址的图片保持原样（由调用方提示运营改用配图上传）。
+ */
+export function resolveContentImages(
+  contentHtml: string,
+  images: ContentImage[] = [],
+  opts: { coverUrl?: string } = {},
+): string {
+  const base = String(contentHtml || '');
+  if (!base) return '';
+  const coverUrl = String(opts.coverUrl || '');
+  const coverName = imageBaseName(coverUrl);
+  const pool = (images || [])
+    .filter((img) => img && img.url)
+    .map((img) => ({ url: img.url, name: imageBaseName(img.name || img.url) }));
+  const seen = new Set<string>();
+
+  const out = base.replace(IMG_TAG_RE, (tag) => {
+    const attr = tag.match(SRC_ATTR_RE);
+    if (!attr) return tag;
+    const raw = String(attr[1] ?? attr[2] ?? attr[3] ?? '').trim();
+    if (!raw) return tag;
+
+    const matchesCover = !!coverUrl && isSameImage(imageBaseName(raw), coverName);
+    let src = raw;
+    if (!isAbsoluteImageUrl(src)) {
+      const hit = pool.find((item) => isSameImage(imageBaseName(src), item.name));
+      if (!hit) return matchesCover ? '' : tag;
+      src = hit.url;
+    }
+
+    // 与封面同一张 / 同一张图重复出现 → 正文内不再重复展示
+    if (matchesCover || src === coverUrl || seen.has(src)) return '';
+    seen.add(src);
+
+    const withoutSrcset = tag.replace(SRCSET_ATTR_RE, '');
+    return src === raw ? withoutSrcset : withoutSrcset.replace(attr[0], `src="${escapeAttr(src)}"`);
+  });
+
+  return out.replace(/<figure\b[^>]*>\s*<\/figure\s*>/gi, '').trim();
 }
 
 /**

@@ -36,7 +36,7 @@ import { Switch } from '../ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { Textarea } from '../ui/textarea';
 import { BlogHtmlUploadForm, type BlogHtmlUploadPayload } from './blog-html-upload-form';
-import { formatBlogDate, normalizeBlogRow, resolveBlogCover } from './blog-model';
+import { formatBlogDate, buildBlogUrl, normalizeBlogRow, resolveBlogCover } from './blog-model';
 
 const COVER_GRADIENT = 'bg-gradient-to-br from-primary/20 via-muted to-primary/10';
 
@@ -515,7 +515,21 @@ export function BlogEditor() {
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h3 className="mb-1 line-clamp-1 text-lg font-semibold">{post.title}</h3>
+                      <h3 className="mb-1 line-clamp-1 text-lg font-semibold">
+                        {/* 已发布的文章：点标题新开标签页查看线上详情页 */}
+                        {post.isPublished === false ? (
+                          post.title
+                        ) : (
+                          <a
+                            href={buildBlogUrl(config.blog.basePath, post)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="transition-colors hover:text-primary hover:underline"
+                          >
+                            {post.title}
+                          </a>
+                        )}
+                      </h3>
                       <div className="mb-2 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                         <Badge variant="secondary">{post.category}</Badge>
                         <span>{formatBlogDate(post.publishedAt, locale)}</span>

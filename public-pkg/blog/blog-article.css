@@ -14,7 +14,13 @@
   line-height: 1.85;
 }
 
-.blog-article-scope > * + * {
+/* 块间距：上传的独立 HTML 文档常把正文包在 <main>/<article>/<div> 里，
+   故除根层外还要覆盖这些容器，否则容器内的段落会挤在一起。 */
+.blog-article-scope > * + *,
+.blog-article-scope main > * + *,
+.blog-article-scope article > * + *,
+.blog-article-scope section > * + *,
+.blog-article-scope div > * + * {
   margin-top: 1rem;
 }
 
@@ -120,4 +126,41 @@
   margin: 2rem 0;
   border: 0;
   border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+/* FAQ 折叠块（上传文档常用 <details>/<summary> 写问答） */
+.blog-article-scope details {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-radius: 0.75rem;
+}
+
+.blog-article-scope details > * + * {
+  margin-top: 0.75rem;
+}
+
+.blog-article-scope summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.blog-article-scope summary::-webkit-details-marker {
+  display: none;
+}
+
+.blog-article-scope summary::after {
+  content: '＋';
+  flex-shrink: 0;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+.blog-article-scope details[open] summary::after {
+  content: '－';
 }

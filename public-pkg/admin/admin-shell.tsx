@@ -96,14 +96,18 @@ export function AdminShell({ currentPage, onPageChange, children, navItems }: Ad
         )}
       >
         <div className="flex flex-col h-full">
-          {/* Brand / Logo */}
-          <div className="flex items-center gap-2 h-16 px-4 border-b border-border">
+          {/* Brand / Logo → 点击回到站点首页 */}
+          <a
+            href={config.brand.homeHref}
+            aria-label={config.brand.name}
+            className="flex items-center gap-2 h-16 px-4 border-b border-border transition-colors hover:bg-accent"
+          >
             <LayoutDashboard className="w-6 h-6 text-primary" />
             <span className="font-semibold text-lg">{config.brand.name}</span>
             {config.brand.tagline ? (
               <span className="text-muted-foreground text-sm">{config.brand.tagline}</span>
             ) : null}
-          </div>
+          </a>
 
           {/* Navigation */}
           <nav className="flex-1 px-3 py-4">

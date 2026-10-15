@@ -163,11 +163,13 @@ export {
   sanitizeBlogHtml,
   inferBlogCategory,
   appendImageGallery,
+  resolveContentImages,
 } from './blog/blog-model';
 export type {
   ParsedBlogHtml,
   InferCategoryInput,
   InferCategoryOptions,
+  ContentImage,
 } from './blog/blog-model';
 export { buildBlogMetadata, buildBlogPostingJsonLd, buildBreadcrumbJsonLd } from './blog/blog-seo';
 export type { BlogSeoCtx, BlogMetadata } from './blog/blog-seo';
