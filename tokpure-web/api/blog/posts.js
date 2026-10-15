@@ -15,12 +15,32 @@
 
 const { requireAdmin, rest, configured } = require('../_lib');
 
+/**
+ * 正文最小清洗（三条底线）：`<script>` 整段删除、`on*` 事件属性删除、
+ * `javascript:` / `vbscript:` / `data:text/html` 协议删除。
+ * 完整清洗在前端 `sanitizeBlogHtml`（此处只兜住服务端入口）。
+ */
+function sanitizeContent(html) {
+  if (typeof html !== 'string' || !html) return html;
+  return html
+    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/<script\b[^>]*\/?>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(
+      /\s(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
+      (whole, dq, sq, bare) => {
+        const value = String(dq ?? sq ?? bare ?? '').toLowerCase();
+        return /^(?:javascript:|vbscript:|data:text\/html)/.test(value) ? '' : whole;
+      },
+    );
+}
+
 /** BlogPost（camelCase）→ blogs 行（snake_case）。 */
 function toRow(body = {}) {
   const row = {};
   if (body.title !== undefined) row.title = body.title;
   if (body.category !== undefined) row.category = body.category;
-  if (body.content !== undefined) row.content = body.content;
+  if (body.content !== undefined) row.content = sanitizeContent(body.content);
   if (body.summary !== undefined) row.summary = body.summary;
   if (body.coverImage !== undefined) row.cover_image = body.coverImage;
   if (body.author !== undefined) row.author = body.author;

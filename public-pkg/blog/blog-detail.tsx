@@ -24,6 +24,7 @@ import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Skeleton } from '../ui/skeleton';
 import { buildBreadcrumbJsonLd, buildBlogPostingJsonLd } from './blog-seo';
+import { BlogArticleBody } from './blog-article-body';
 import {
   buildBlogUrl,
   extractShortIdFromSlug,
@@ -244,7 +245,7 @@ export function BlogDetail({ id }: BlogDetailProps) {
         )}
       </div>
 
-      <div className="blog-article-scope max-w-none" dangerouslySetInnerHTML={{ __html: post.content }} />
+      <BlogArticleBody html={post.content} />
 
       <div className="mt-12 border-t border-border pt-8">
         <Button variant="outline" asChild>

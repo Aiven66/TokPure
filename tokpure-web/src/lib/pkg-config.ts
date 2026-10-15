@@ -121,12 +121,22 @@ export const pkgConfig = createDefaultConfig({
     basePath: '/blog',
     pageSize: 6,
     jsonLd: true,
-    defaultCategory: 'General',
+    defaultCategory: 'AI Video Clipping',
     defaultAuthor: 'TokPure',
+    categories: [
+      'AI Video Clipping',
+      'Watermark Removal',
+      'Tutorials',
+      'Product Updates',
+      'News',
+    ],
     editor: {
       enabled: true,
+      // 后台「博客管理」页签提供「传统编辑器 / HTML 上传模式」
+      htmlUpload: true,
       endpoints: {
         posts: '/api/blog/posts',
+        uploadImage: '/api/blog/upload',
         autoCategorize: '/api/blog/auto-categorize',
       },
     },

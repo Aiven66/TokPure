@@ -11,15 +11,19 @@
  * - 保存 / 删除优先 `config.adapters.blog.save|remove`，否则请求
  *   `config.blog.editor.endpoints.posts`（新建 POST、更新 PATCH、删除 `{posts}/{id}` DELETE），
  *   并从 `config.adapters.auth.getAccessToken` 取 Bearer token；
- * - 有意简化：省略源实现的富文本编辑器、HTML 文件上传、封面本地上传与一键多语言翻译，
- *   正文改为 HTML `<textarea>` 直填（见文末注）。
+ * - 编辑视图提供两种模式（`blog.editor.htmlUpload !== false` 时）：
+ *   「传统编辑器」= 表单直填、「HTML 上传模式」= 拖入 .html 自动解析 + 封面/配图上传，
+ *   见 `./blog-html-upload-form`；
+ * - 有意简化：省略源实现的富文本编辑器与一键多语言翻译，正文仍为 HTML 直填。
  */
 
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Code2, FileText } from 'lucide-react';
 
 import { getSupabaseClient } from '../adapters/supabase/client';
+import { readStoredTokens } from '../auth/session-storage';
 import type { BlogPost, BlogRow } from '../config/types';
 import { usePublicPkg } from '../config/provider';
 import { Badge } from '../ui/badge';
@@ -29,12 +33,20 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Skeleton } from '../ui/skeleton';
 import { Switch } from '../ui/switch';
+import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { Textarea } from '../ui/textarea';
+import { BlogHtmlUploadForm, type BlogHtmlUploadPayload } from './blog-html-upload-form';
 import { formatBlogDate, normalizeBlogRow, resolveBlogCover } from './blog-model';
 
 const COVER_GRADIENT = 'bg-gradient-to-br from-primary/20 via-muted to-primary/10';
 
+/** 与 `api/blog/upload.js` 的上限保持一致（3MB）。 */
+const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
+
 type EditorView = 'list' | 'new' | 'edit';
+
+/** 编辑视图的两种输入方式。 */
+type EditorMode = 'form' | 'html';
 
 interface BlogFormState {
   title: string;
@@ -60,6 +72,7 @@ export function BlogEditor() {
   const endpoints = config.blog.editor?.endpoints;
 
   const [view, setView] = useState<EditorView>('list');
+  const [mode, setMode] = useState<EditorMode>('form');
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +84,11 @@ export function BlogEditor() {
   const [status, setStatus] = useState<string | null>(null);
 
   const getToken = useCallback((): string | null => {
-    return config.adapters?.auth?.getAccessToken?.() ?? null;
+    // 宿主可注入 adapters.auth.getAccessToken；未注入时回退读取 public-pkg
+    // 自己持久化的会话 token（storageKeys.accessToken），避免后台写入 401。
+    const fromAdapter = config.adapters?.auth?.getAccessToken?.();
+    if (fromAdapter) return fromAdapter;
+    return readStoredTokens(config).access ?? null;
   }, [config]);
 
   const authHeaders = useCallback(
@@ -144,6 +161,7 @@ export function BlogEditor() {
     setEditingPost(null);
     setForm({ ...EMPTY_FORM, category: config.blog.defaultCategory ?? '' });
     setStatus(null);
+    setMode('form');
     setView('new');
   }
 
@@ -158,7 +176,105 @@ export function BlogEditor() {
       publish: post.isPublished !== false,
     });
     setStatus(null);
+    setMode('form');
     setView('edit');
+  }
+
+  /** 候选分类集合：config.blog.categories → 已加载文章聚合 → defaultCategory。 */
+  const categoryCandidates = useMemo(() => {
+    if (config.blog.categories && config.blog.categories.length > 0) {
+      return config.blog.categories;
+    }
+    const set = new Set<string>();
+    for (const post of posts) if (post.category) set.add(post.category);
+    const fallback = config.blog.defaultCategory;
+    if (set.size === 0 && fallback) set.add(fallback);
+    return Array.from(set);
+  }, [config.blog.categories, config.blog.defaultCategory, posts]);
+
+  /** 图片上传端点（`uploadImage` 优先，兼容旧的 `uploadCover`）。 */
+  const uploadEndpoint = endpoints?.uploadImage || endpoints?.uploadCover;
+  const uploadEnabled = Boolean(uploadEndpoint);
+
+  /** 上传单张图片并返回公开 URL（未配置端点 / 401 / 403 / 413 分别映射文案）。 */
+  const uploadImage = useCallback(
+    async (file: File, scope: 'cover' | 'gallery'): Promise<string> => {
+      if (!uploadEndpoint) throw new Error(t('blog.admin.uploadNotConfigured'));
+      if (file.size > MAX_UPLOAD_BYTES) throw new Error(t('blog.admin.fileTooLarge'));
+
+      const data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ''));
+        reader.onerror = () => reject(new Error(t('blog.admin.uploadFailed')));
+        reader.readAsDataURL(file);
+      });
+
+      const res = await fetch(uploadEndpoint, {
+        method: 'POST',
+        headers: authHeaders(true),
+        body: JSON.stringify({
+          data,
+          mimeType: file.type,
+          scope,
+          name: file.name,
+        }),
+      });
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(t('blog.admin.uploadUnauthorized'));
+      }
+      if (res.status === 413) throw new Error(t('blog.admin.fileTooLarge'));
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.error || t('blog.admin.uploadFailed'));
+      }
+      const json = await res.json().catch(() => ({}));
+      if (!json?.url) throw new Error(t('blog.admin.uploadFailed'));
+      return String(json.url);
+    },
+    [uploadEndpoint, authHeaders, t],
+  );
+
+  /** 落库：优先 `config.adapters.blog.save`，否则请求 `endpoints.posts`。 */
+  async function persistPost(payload: BlogHtmlUploadPayload) {
+    const adapter = config.adapters?.blog;
+    const basePayload = {
+      title: payload.title,
+      category: payload.category,
+      content: payload.content,
+      summary: payload.summary,
+      coverImage: payload.coverImage,
+      locale: editingPost?.locale ?? locale,
+    };
+
+    if (adapter?.save) {
+      const result = await adapter.save(
+        editingPost
+          ? { ...basePayload, isPublished: payload.publish, id: editingPost.id }
+          : { ...basePayload, isPublished: payload.publish },
+      );
+      if (result.error) throw new Error(result.error);
+      return;
+    }
+
+    if (!endpoints?.posts) throw new Error(t('blog.admin.saveFailed'));
+    const body = { ...basePayload, publish: payload.publish };
+    const res = await fetch(endpoints.posts, {
+      method: editingPost ? 'PATCH' : 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify(editingPost ? { id: editingPost.id, ...body } : body),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || res.statusText);
+    }
+  }
+
+  /** 关闭编辑视图并回到列表。 */
+  function finishEditing() {
+    setForm(EMPTY_FORM);
+    setEditingPost(null);
+    setMode('form');
+    setView('list');
   }
 
   async function savePost() {
@@ -172,42 +288,15 @@ export function BlogEditor() {
 
     setSaving(true);
     try {
-      const adapter = config.adapters?.blog;
-      const basePayload = {
+      await persistPost({
         title,
         category: form.category.trim() || config.blog.defaultCategory || '',
         content,
         summary: form.summary.trim(),
         coverImage: form.coverImage.trim(),
-        locale: editingPost?.locale ?? locale,
-      };
-
-      if (adapter?.save) {
-        // 适配器按 BlogPost（camelCase）入参
-        const result = await adapter.save(
-          editingPost
-            ? { ...basePayload, isPublished: form.publish, id: editingPost.id }
-            : { ...basePayload, isPublished: form.publish },
-        );
-        if (result.error) throw new Error(result.error);
-      } else {
-        if (!endpoints?.posts) throw new Error(t('blog.admin.saveFailed'));
-        // 服务端 API 使用 `publish` 字段
-        const body = { ...basePayload, publish: form.publish };
-        const res = await fetch(endpoints.posts, {
-          method: editingPost ? 'PATCH' : 'POST',
-          headers: authHeaders(true),
-          body: JSON.stringify(editingPost ? { id: editingPost.id, ...body } : body),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || res.statusText);
-        }
-      }
-
-      setForm(EMPTY_FORM);
-      setEditingPost(null);
-      setView('list');
+        publish: form.publish,
+      });
+      finishEditing();
     } catch (err) {
       setStatus(`${t('blog.admin.saveFailed')}: ${err instanceof Error ? err.message : ''}`);
     } finally {
@@ -243,17 +332,60 @@ export function BlogEditor() {
   // ── 编辑 / 新建视图 ──────────────────────────────────────────────
   if (view !== 'list') {
     const isEditing = view === 'edit';
+    const htmlUploadEnabled = config.blog.editor?.htmlUpload !== false;
     return (
       <div className="mx-auto max-w-3xl p-6">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-bold">
             {isEditing ? t('blog.admin.edit') : t('blog.admin.new')}
           </h1>
-          <Button variant="ghost" onClick={() => setView('list')}>
+          <Button variant="ghost" onClick={() => setView('list')} disabled={saving}>
             {t('common.back')}
           </Button>
         </div>
 
+        {htmlUploadEnabled ? (
+          <Tabs
+            value={mode}
+            onValueChange={(next) => setMode(next as EditorMode)}
+            className="mb-6"
+          >
+            <TabsList>
+              <TabsTrigger value="form">
+                <FileText />
+                {t('blog.admin.mode.traditional')}
+              </TabsTrigger>
+              <TabsTrigger value="html">
+                <Code2 />
+                {t('blog.admin.mode.html')}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        ) : null}
+
+        {htmlUploadEnabled && mode === 'html' ? (
+          <BlogHtmlUploadForm
+            onSubmit={async (payload) => {
+              await persistPost(payload);
+              finishEditing();
+            }}
+            uploadImage={uploadImage}
+            uploadEnabled={uploadEnabled}
+            categoryCandidates={categoryCandidates}
+            editing={isEditing}
+            initial={
+              isEditing
+                ? {
+                    title: form.title,
+                    category: form.category,
+                    coverImage: form.coverImage,
+                    content: form.content,
+                    summary: form.summary,
+                  }
+                : undefined
+            }
+          />
+        ) : (
         <Card>
           <CardContent className="space-y-5 pt-6">
             <div className="grid gap-2">
@@ -329,6 +461,7 @@ export function BlogEditor() {
             </div>
           </CardContent>
         </Card>
+        )}
       </div>
     );
   }
@@ -444,8 +577,9 @@ export function BlogEditor() {
 }
 
 /*
- * 注（有意简化）：源 `src/components/admin-blog.tsx` 内置了富文本编辑器、HTML 文件上传、
- * 封面本地压缩上传、`localStorage` 草稿、以及一键多语言翻译 / 自动分类等能力。这些能力
- * 依赖宿主私有接口（多语言翻译、自动分类、HTML 发布等）与内置种子数据，不适合放进可复用包，
- * 故本组件仅保留核心的 list/new/edit 三视图与标准 CRUD 端点。如需这些增强能力，可在宿主侧另行扩展或通过 `config.adapters.blog` 注入自定义实现。
+ * 注（有意简化）：源 `src/components/admin-blog.tsx` 还内置了富文本编辑器、`localStorage`
+ * 草稿与一键多语言翻译等能力。这些能力依赖宿主私有接口与内置种子数据，不适合放进可复用包，
+ * 故本组件保留 list/new/edit 三视图、标准 CRUD 端点，以及「传统编辑器 / HTML 上传模式」
+ * 两种输入方式（后者见 `./blog-html-upload-form`）。如需其余能力，可在宿主侧通过
+ * `config.adapters.blog` 注入自定义实现。
  */

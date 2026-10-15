@@ -168,6 +168,12 @@ export interface BlogRow {
 export interface BlogEndpoints {
   /** POST/PATCH 保存文章（服务端需校验管理员）。 */
   posts?: string;
+  /**
+   * POST 上传单张图片，返回 `{ url }`。入参约定为 base64 JSON
+   * （`{ data, mimeType, scope, name }`）。未配置时封面/配图拖拽区禁用。
+   */
+  uploadImage?: string;
+  /** @deprecated 旧版封面专用上传端点；未配置 `uploadImage` 时作为兼容回落。 */
   uploadCover?: string;
   autoCategorize?: string;
   translate?: string;
@@ -189,6 +195,8 @@ export interface BlogConfig {
   editor?: {
     /** 是否启用后台编辑器组件。 */
     enabled?: boolean;
+    /** 是否启用「HTML 上传模式」页签，默认 true。 */
+    htmlUpload?: boolean;
     endpoints?: BlogEndpoints;
   };
 }

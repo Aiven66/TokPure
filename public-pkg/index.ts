@@ -143,6 +143,10 @@ export { BlogList } from './blog/blog-list';
 export { BlogDetail } from './blog/blog-detail';
 export type { BlogDetailProps } from './blog/blog-detail';
 export { BlogEditor } from './blog/blog-editor';
+export { BlogArticleBody } from './blog/blog-article-body';
+export type { BlogArticleBodyProps } from './blog/blog-article-body';
+export { BlogHtmlUploadForm } from './blog/blog-html-upload-form';
+export type { BlogHtmlUploadFormProps, BlogHtmlUploadPayload } from './blog/blog-html-upload-form';
 export {
   normalizeLocale,
   stripHtml,
@@ -155,6 +159,15 @@ export {
   groupRowsByLocale,
   groupPostsByLocale,
   resolveBlogCover,
+  parseBlogHtml,
+  sanitizeBlogHtml,
+  inferBlogCategory,
+  appendImageGallery,
+} from './blog/blog-model';
+export type {
+  ParsedBlogHtml,
+  InferCategoryInput,
+  InferCategoryOptions,
 } from './blog/blog-model';
 export { buildBlogMetadata, buildBlogPostingJsonLd, buildBreadcrumbJsonLd } from './blog/blog-seo';
 export type { BlogSeoCtx, BlogMetadata } from './blog/blog-seo';
@@ -185,6 +198,7 @@ export * from './ui/card';
 export * from './ui/checkbox';
 export * from './ui/dialog';
 export * from './ui/dropdown-menu';
+export * from './ui/dropzone';
 export * from './ui/input';
 export * from './ui/label';
 export * from './ui/pagination';

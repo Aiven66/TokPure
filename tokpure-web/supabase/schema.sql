@@ -178,3 +178,21 @@ create policy blogs_admin_delete on public.blogs
 alter table public.subscriptions add column if not exists current_period_start timestamptz;
 alter table public.subscriptions add column if not exists current_period_end   timestamptz;
 alter table public.subscriptions add column if not exists updated_at timestamptz not null default now();
+
+-- ────────────────────────────────────────────────────────────
+-- 博客图片存储：公开 bucket（后台 HTML 上传模式用）
+-- 写入走 `/api/blog/upload` 的 service role，绕过 Storage RLS，
+-- 因此这里不需要编写任何 storage.objects 策略。
+-- ────────────────────────────────────────────────────────────
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'blog-images',
+  'blog-images',
+  true,
+  3145728,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']
+)
+on conflict (id) do update
+  set public = true,
+      file_size_limit = 3145728,
+      allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
