@@ -423,7 +423,7 @@ const HOOK_SOFT = /今天带大家|今天去|探店|打卡|去玩|逛一逛|逛�
 
 /** 对候选开头 6 秒内的文本判钩子类型；返回 {type, hit} */
 function classifyHook(text6, cfg) {
-  const t = String(text6 || '');
+  const t = matchText(text6, cfg); // 钩子词表按简体写，粤语繁体输出先归一再判型
   if (!t.trim()) return { type: 'normal', hit: '' };
   const quotes = String(cfg.funnyQuotes || '').split(/[;;\n]/).map((s) => s.trim()).filter((s) => s.length >= 2);
   for (const q of quotes) {
@@ -472,6 +472,7 @@ function pickHookStickerText(type, firstSegText) {
    绝对主流形态），其余形态误伤率高一律不动。 */
 const BUILTIN_FIXES = [
   ['沉皮', '陈皮'], ['成皮', '陈皮'], ['臣皮', '陈皮'], ['尘皮', '陈皮'], ['橙皮', '陈皮'],
+  ['陈皮', '陈皮'], ['沉培', '陈皮'], ['尘培', '陈皮'], ['陈培', '陈皮'], ['沉赔', '陈皮'],
   ['新汇', '新会'], ['新晖', '新会'], ['薪会', '新会'],
   ['三煲扎', '三宝扎'], ['三保扎', '三宝扎'], ['三宝渣', '三宝扎'],
   ['金保保', '金宝宝'], ['金抱抱', '金宝宝'], ['今宝宝', '金宝宝'],
@@ -662,13 +663,19 @@ const T2S_MAP = {
   場: '场', 鍾: '钟', 鐘: '钟', 動: '动', 夠: '够', 嚟: '来', 哋: '们',
   櫃: '柜', 飯: '饭', 曬: '晒', 產: '产',
   養: '养', 臘: '腊', 腸: '肠', 網: '网', 紅: '红', 標: '标', 準: '准',
-  過: '过', 還: '还', 這: '这', 講: '讲', 幫: '帮', 襯: '衬'
+  過: '过', 還: '还', 這: '这', 講: '讲', 幫: '帮', 襯: '衬', 塵: '尘', 噉: '的'
 };
 function t2s(s) {
   return String(s || '').replace(/[^\x00-\x7F]/g, (ch) => T2S_MAP[ch] || ch);
 }
 function normText(s) {
   return t2s(String(s || '')).toLowerCase();
+}
+/* 规则匹配专用文本：先跑「同音错字纠错表」（沉皮→陈皮 这类 ASR 错字），再做简繁归一。
+   纠错表原先只作用于字幕/花字，锚点识别走的是裸 ASR 文本，导致粤语把商品名识别成
+   同音错字时 matchSkus/报价/CTA 全部命中不到，候选稀疏到出不了片。 */
+function matchText(s, cfg) {
+  return normText(applySubtitleFixes(s, cfg));
 }
 
 /* 对比语境抑制：「其他直播间买的」「别的评论区看到的」里的直播间/评论区不是自家 CTA，
@@ -800,7 +807,7 @@ function countTerms(text, vocab) {
 /** 为一个候选窗口打分；返回分数与命中明细 */
 function scoreWindow(segs, winStart, winEnd, cfg, skus) {
   const text = segs.map((s) => s.text).join(' ');
-  const low = normText(text);
+  const low = matchText(text, cfg);
   const reasons = [];
 
   const skuHits = matchSkus(low, skus);
@@ -900,7 +907,7 @@ function buildCandidates(segments, silences, probe, cfg, skus) {
   const ctaVocab = buildVocab(cfg.ctaWords, PHRASE_BOOK.cta);
   const negVocab = buildVocab(cfg.negativeWords, PHRASE_BOOK.neg);
   const segFeat = segments.map((s) => {
-    const low = normText(s.text);
+    const low = matchText(s.text, cfg);
     const skuHits = matchSkus(low, skus);
     const prices = matchPrices(low);
     const cta = countTerms(ctaText(low), ctaVocab);
@@ -1910,16 +1917,42 @@ function buildCoverageWindows(cfg) {
   return out;
 }
 
+/** 覆盖窗口与「已通过/待审」评审候选时间重叠（超过 40%）时，本质是同一段画面
+    （同一时间段既当候选又当补料），直接剔除。否则「介绍位」补上的可能正是
+    另一条成片开场/收尾用的同一段画面，多条成片看起来就会一模一样。 */
+function dedupeCoverageWindows(windows) {
+  const cache = new Map();
+  const rangesOf = (rec) => {
+    if (!cache.has(rec.id)) {
+      cache.set(rec.id, (rec.candidates || [])
+        .filter((c) => c.status !== 'rejected' && (!c.visual || c.visual.valid !== false))
+        .map((c) => ({ start: c.start, end: c.end })));
+    }
+    return cache.get(rec.id);
+  };
+  return windows.filter((x) => !rangesOf(x.rec).some((r) => {
+    const inter = Math.min(r.end, x.c.end) - Math.max(r.start, x.c.start);
+    return inter > Math.min(r.end - r.start, x.c.end - x.c.start) * 0.4;
+  }));
+}
+
 /** 结构化组片：按「钩子 → 介绍 → 价格」拼装 30-90s 带货短视频（目标 targetShort 秒）。
-    多成片策略：成片条数由素材容量决定（上限 12、默认至少 5 条），候选顺序保持
-    「钩子池 > 介绍池 > 价格池 > 覆盖窗口」的优先级，同池内先挑「跨成片还没用过」
-    的片段，稀料时按使用次数最少的降级复用（配合去重变换让同素材的多条成片不撞车）。
-    介绍位在评审候选用尽后从覆盖窗口池补料，保证单条长素材也能拼出多条成片；
-    只有一条素材、素材未分类、或某类片段缺失时同样能拼出成片。 */
+    多成片策略（v3.4 重写，修复「多条成片内容雷同、毫无区别」）：
+    1. 片段全局唯一——同一素材的同一片段（评审候选或覆盖窗口）只能被一条成片占用，
+       废掉原来「按使用次数降级复用」的凑条数逻辑（同一段画面反复出现在多条成片里
+       正是成片雷同的根因）；
+    2. 条数由素材容量推导——只要能再拼出一条合格成片就继续，上限 12 条；素材只够
+       一条时只出 1 条，绝不复刻同一条成片；
+    3. 覆盖窗口与评审候选时间重叠的（同一段画面既是候选又是补料）直接剔除，
+       避免「介绍位」用的其实正是另一条成片开场/收尾的同一段画面；
+    4. 纯覆盖窗口开场时沿同一素材顺延紧邻窗口，拼成一段连续画面而非无关碎片。
+    全批只剩一段有效片段时按整段开场导出，保证有素材就有成片。 */
 function buildComposeJobs(cfg) {
   const { pools, all } = buildComposePools();
   if (!all.length) return { combos: [], jobs: [] };
-  const coverage = buildCoverageWindows(cfg);
+  const coverage = dedupeCoverageWindows(buildCoverageWindows(cfg));
+  // 覆盖窗口按「素材 → 时间」排序：纯窗口开场时要顺延紧邻窗口拼成连续画面
+  coverage.sort((a, b) => (a.rec.id < b.rec.id ? -1 : a.rec.id > b.rec.id ? 1 : a.c.start - b.c.start));
 
   const key = (x) => `${x.rec.id}:${x.c.id}`;
   const dur = (x) => x.c.end - x.c.start;
@@ -1931,48 +1964,83 @@ function buildComposeJobs(cfg) {
   };
 
   const target = Math.min(90, Math.max(30, Number(cfg.targetShort) || 50));
-  const reviewed = pools.hook.length + pools.intro.length + pools.price.length;
-  const capacity = reviewed + coverage.length;
-  // 至少 5 条、丰料时按候选总数的三分之一放大，但不超过容量（避免凭空造片段）
-  const want = Math.max(1, Math.min(12, Math.min(Math.max(5, Math.floor(reviewed / 3)), capacity)));
+  const MAX_CLIPS = 12;      // 单批成片上限：素材再多也不超过
+  const MIN_CLIP_SECS = 30;  // 成片最短时长（30-90s 带货区间）：剩余素材凑不够就收工，宁缺毋滥
 
-  const usage = new Map();                                  // 片段 → 跨成片使用次数（越少越优先）
-  const uses = (x) => usage.get(key(x)) || 0;
-  const take = (x) => usage.set(key(x), uses(x) + 1);
-  // 候选排序：先按列表给出的池优先级，同池内再按使用次数升序、分数降序；
-  // 已在本条成片出现或与已选片段时间撞车的直接剔除。
+  // 全局片段台账：任一片段（评审候选或覆盖窗口）只允许被一条成片占用；
+  // usedRanges 再兜一层「画面区间」——覆盖窗口带前后留白，相邻窗口会各重叠零点几秒，
+  // 只按片段 id 去重仍会让两条成片在头尾露出同一画面。seenSets 记下已出成片的片段集合，
+  // 杜绝「同一组片段换个顺序再出一遍」。
+  const usedKeys = new Set();
+  const usedRanges = new Map(); // rec.id → [{ start, end }]：已出成片占用的画面区间
+  const seenSets = new Set();
+  const busyRange = (x) => (usedRanges.get(x.rec.id) || [])
+    .some((r) => Math.min(r.end, x.c.end) - Math.max(r.start, x.c.start) > 0.5);
+  // 候选排序：先按列表给出的池优先级，同池内按分数降序；
+  // 已被其它成片占用画面、或与本条已选片段时间撞车的直接剔除。
   const rank = (lists, combo) => lists.flatMap((arr) => arr
-    .filter((x) => dur(x) >= 3.5 && !combo.some((y) => key(y) === key(x) || clash(y, x)))
-    .sort((a, b) => (uses(a) - uses(b)) || ((b.c.score || 0) - (a.c.score || 0))));
+    .filter((x) => dur(x) >= 3.5 && !usedKeys.has(key(x)) && !busyRange(x)
+      && !combo.some((y) => key(y) === key(x) || clash(y, x)))
+    .sort((a, b) => (b.c.score || 0) - (a.c.score || 0)));
 
   const combos = [];
-  for (let n = 0; n < want; n += 1) {
+  // 有几条出几条：每轮占用一批全新片段，素材用尽（或凑不出合格成片）即停
+  while (combos.length < MAX_CLIPS) {
     const combo = [];
     // 开场：钩子池优先，其它池兜底（保住「开头必须有钩子」的结构）
     const hook = rank([pools.hook, pools.intro, pools.price, coverage], combo)[0];
-    if (!hook) break;
+    if (!hook) break; // 已无可用开场片段 = 素材用尽
     combo.push(hook);
-    // 收尾：报价/CTA 池优先（保住转化收尾），稀料时降级复用（允许与开场同素材）
-    const price = rank([pools.price, pools.intro, pools.hook, coverage], combo)[0]
-      || rank([pools.price, pools.intro], []).find((x) => key(x) !== key(hook)) || null;
-    if (price) combo.push(price);
+    const isGeneric = !!hook.c.generic; // 覆盖窗口开场：无报价/CTA 结构，走「连续画面」路线
 
-    const hookDur = Math.min(dur(hook), 9);                 // 开场 4-9s
-    const priceDur = price ? Math.min(Math.max(dur(price), 8), 25) : 0; // 价格/CTA 8-25s
-    const remaining = target - hookDur - priceDur;
     const intros = [];
     let acc = 0;
-    for (const x of rank([pools.intro, coverage], combo)) {  // 介绍贪心凑时长：最多 2 段
-      if (intros.length >= 2) break;
-      const d = dur(x);
-      if (d >= 8 && acc + d <= remaining + 8) { intros.push(x); combo.push(x); acc += d; }
-    }
-    if (!intros.length) {                                    // 凑不够补一段（宁可略长）
-      const extra = rank([pools.intro, coverage], combo)[0];
-      if (extra) { intros.push(extra); combo.push(extra); acc += dur(extra); }
+    if (isGeneric) {
+      // 沿同一素材顺延紧邻窗口，拼成一段连续画面（而不是几个互不相干的碎片）
+      let prev = hook;
+      let cont = 0;
+      while (dur(hook) + cont < target) {
+        const nxt = coverage.find((x) => x.rec.id === hook.rec.id && !usedKeys.has(key(x))
+          && !busyRange(x) && x.c.start >= prev.c.end - 1.5 && x.c.start <= prev.c.end + 3);
+        if (!nxt) break;
+        combo.push(nxt);
+        intros.push(nxt);
+        prev = nxt;
+        cont += dur(nxt);
+      }
+      acc += cont;
     }
 
-    combo.forEach(take);
+    let price = null;
+    if (!isGeneric) { // 收尾：报价/CTA 池优先（保住转化收尾）；片段不复用，故无降级兜底
+      price = rank([pools.price, pools.intro, pools.hook, coverage], combo)[0] || null;
+      if (price) combo.push(price);
+    }
+    // 评审候选开场裁成 4-9s 短钩子；覆盖窗口本身已是短视频长度，整段用（不拦腰截断句子）
+    const hookDur = isGeneric ? dur(hook) : Math.min(dur(hook), 9);
+    const priceDur = price ? Math.min(Math.max(dur(price), 8), 25) : 0; // 价格/CTA 8-25s
+    if (!isGeneric) {
+      const remaining = target - hookDur - priceDur;
+      for (const x of rank([pools.intro, coverage], combo)) { // 介绍贪心凑时长：最多 2 段
+        if (intros.length >= 2) break;
+        const d = dur(x);
+        if (d >= 8 && acc + d <= remaining + 8) { intros.push(x); combo.push(x); acc += d; }
+      }
+    }
+
+    let total = hookDur + priceDur + acc;
+    if (!intros.length && total < MIN_CLIP_SECS) {            // 太短时补一段（宁可略长）
+      const extra = rank([pools.intro, coverage], combo)[0];
+      if (extra) { intros.push(extra); combo.push(extra); acc += dur(extra); total += dur(extra); }
+    }
+    const setKey = combo.map(key).sort().join('|');
+    // 拼不出合格成片，或与已出成片片段集合完全相同 → 不再凑数，直接收工
+    if (total < MIN_CLIP_SECS || seenSets.has(setKey)) break;
+    combo.forEach((x) => {
+      usedKeys.add(key(x));
+      usedRanges.set(x.rec.id, [...(usedRanges.get(x.rec.id) || []), { start: x.c.start, end: x.c.end }]);
+    });
+    seenSets.add(setKey);
     combos.push({ hook, price, intros, hookDur, priceDur, introDur: acc });
   }
   // 极简兜底：整批只有一条有效片段时，也按整段开场导出，不再因「结构凑不齐」直接失败
@@ -1990,7 +2058,9 @@ function buildComposeJobs(cfg) {
     let part = 0;
     const hookOnly = !combo.intros.length && !combo.price; // 单段成片的收尾淡出落在开场段上
     jobs.push(mkPart(combo.hook, 'hook', part++, hookOnly, combo.hookDur));
-    combo.intros.forEach((x) => jobs.push(mkPart(x, 'intro', part++, false, null)));
+    // 无报价收尾时（纯覆盖窗口拼的成片）收尾淡出落在最后一段介绍位，保证结尾不硬截断
+    const lastIntro = !combo.price && combo.intros.length > 0;
+    combo.intros.forEach((x, k) => jobs.push(mkPart(x, 'intro', part++, lastIntro && k === combo.intros.length - 1, null)));
     if (combo.price) jobs.push(mkPart(combo.price, 'price', part++, true, combo.priceDur));
   });
   return { combos, jobs };
