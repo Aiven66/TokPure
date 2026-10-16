@@ -172,6 +172,7 @@ const EN: Dictionary = {
   'blog.pageOf': 'Page {page} of {total}',
   'blog.notFound': 'Article not found.',
   'blog.related': 'Related articles',
+  'blog.recommended': 'Recommended for you',
   'blog.filterByCategory': 'Filter by Category',
   'blog.pageInfo': 'Page {page} of {total} · {count} articles',
 
@@ -407,6 +408,7 @@ const ZH: Dictionary = {
   'blog.pageOf': '第 {page} / {total} 页',
   'blog.notFound': '未找到该文章。',
   'blog.related': '相关文章',
+  'blog.recommended': '推荐阅读',
   'blog.filterByCategory': '分类筛选',
   'blog.pageInfo': '第 {page}/{total} 页 · 共 {count} 篇',
 
@@ -582,6 +584,8 @@ const ZH_HANT: Dictionary = {
   'blog.prev': '上一頁',
   'blog.next': '下一頁',
   'blog.notFound': '未找到該文章。',
+  'blog.related': '相關文章',
+  'blog.recommended': '推薦閱讀',
   'blog.filterByCategory': '分類篩選',
   'blog.pageInfo': '第 {page}/{total} 頁 · 共 {count} 篇',
   'blog.admin.title': '部落格管理',
