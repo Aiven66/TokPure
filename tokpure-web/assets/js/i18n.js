@@ -97,6 +97,11 @@
       var key = norm(core);
       if (!key) continue;
       nodes.push({ node: node, prefix: lead, core: core, suffix: tail, key: key });
+      // 快照节点交给 apply() 的静态循环统一处理。必须打标记：否则 MutationObserver
+      // 会把「已被翻译成英文/繁中」的节点当新节点登记，其 core 变成译文；之后切换到
+      // 其他语言时，动态循环会用这段旧译文覆盖静态循环刚写好的正确译文——表现为
+      // 「切到繁体后再切西/法/德/日，界面仍停在繁体」。
+      node.__tpStatic = true;
     }
 
     attrSlots = [];
@@ -140,7 +145,7 @@
     if (!key) return;
     // 登记动态节点；若 React 改写了已登记节点（当前值 ≠ 我们上次写入的值），
     // 用新的中文原文刷新记录，保证语言切换时按最新原文重译
-    if (dynSeen) {
+    if (dynSeen && !node.__tpStatic) {
       if (!dynSeen.has(node)) {
         dynSeen.add(node);
         var rec = { node: node, prefix: lead, core: core, suffix: tail, key: key };
@@ -226,6 +231,7 @@
       var di = dynNodes[d];
       var connected = di.node.isConnected === undefined ? document.contains(di.node) : di.node.isConnected;
       if (!connected) { dynNodes.splice(d, 1); continue; }
+      if (di.node.__tpStatic) { dynNodes.splice(d, 1); continue; }
       var dHit = table && table[di.key];
       var dNext = di.prefix + (dHit || di.core) + di.suffix;
       if (di.node.nodeValue !== dNext) {

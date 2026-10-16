@@ -456,5 +456,14 @@
   "高达 32 线程": "Bis zu 32 Threads",
   "，支持自动化脚本调用。": ", unterstützt Aufrufe durch Automatisierungsskripte.",
   "，无权扫描其他用户资产。": ", kein Zugriff zum Scannen von Assets anderer Nutzer.",
-  "🔒 256 位 SSL 加密 · 支付完成后权益立即生效": "🔒 256-Bit-SSL-Verschlüsselung · Vorteile werden direkt nach der Zahlung aktiv"
+  "🔒 256 位 SSL 加密 · 支付完成后权益立即生效": "🔒 256-Bit-SSL-Verschlüsselung · Vorteile werden direkt nach der Zahlung aktiv",
+  "TokPure · 页面不存在 (404)": "TokPure · Seite nicht gefunden (404)",
+  "你访问的页面不存在。回到首页看看本地无水印下载与 AI 修复功能。": "Die gesuchte Seite existiert nicht. Zurück zur Startseite, um lokale Downloads ohne Wasserzeichen und KI-Wiederherstellung zu entdecken.",
+  "这个页面走丢了": "Diese Seite hat sich verlaufen",
+  "链接可能被剪掉了，也可能它从未存在过。别急，好内容还在首页等你。": "Vielleicht wurde der Link gekürzt – oder er hat nie existiert. Keine Sorge, das Gute wartet noch auf der Startseite.",
+  "（也可能，是被顺手去水印了）": "(Oder ihm wurde einfach das Wasserzeichen entfernt)",
+  "错误码": "Fehlercode",
+  "请求路径": "Angeforderter Pfad",
+  "随便逛逛": "Überrasch mich",
+  "从这里继续": "Hier weitermachen"
 }

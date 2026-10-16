@@ -456,5 +456,14 @@
   "高达 32 线程": "Up to 32 threads",
   "，支持自动化脚本调用。": ", with automated script call support.",
   "，无权扫描其他用户资产。": ", with no permission to scan other users' assets.",
-  "🔒 256 位 SSL 加密 · 支付完成后权益立即生效": "🔒 256-bit SSL encryption · Benefits activate right after payment"
+  "🔒 256 位 SSL 加密 · 支付完成后权益立即生效": "🔒 256-bit SSL encryption · Benefits activate right after payment",
+  "TokPure · 页面不存在 (404)": "TokPure · Page not found (404)",
+  "你访问的页面不存在。回到首页看看本地无水印下载与 AI 修复功能。": "The page you're looking for doesn't exist. Head back home to explore local watermark-free downloads and AI restoration.",
+  "这个页面走丢了": "This page wandered off",
+  "链接可能被剪掉了，也可能它从未存在过。别急，好内容还在首页等你。": "The link may have been trimmed, or it never existed at all. No worries — the good stuff is still waiting on the home page.",
+  "（也可能，是被顺手去水印了）": "(Or maybe it just got de-watermarked)",
+  "错误码": "Error code",
+  "请求路径": "Request path",
+  "随便逛逛": "Surprise me",
+  "从这里继续": "Continue from here"
 }

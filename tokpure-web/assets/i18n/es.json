@@ -456,5 +456,14 @@
   "高达 32 线程": "Hasta 32 hilos",
   "，支持自动化脚本调用。": ", compatible con la invocación de scripts automatizados.",
   "，无权扫描其他用户资产。": ", sin permiso para escanear los recursos de otros usuarios.",
-  "🔒 256 位 SSL 加密 · 支付完成后权益立即生效": "🔒 Cifrado SSL de 256 bits · Las ventajas se activan al completar el pago"
+  "🔒 256 位 SSL 加密 · 支付完成后权益立即生效": "🔒 Cifrado SSL de 256 bits · Las ventajas se activan al completar el pago",
+  "TokPure · 页面不存在 (404)": "TokPure · Página no encontrada (404)",
+  "你访问的页面不存在。回到首页看看本地无水印下载与 AI 修复功能。": "La página que buscas no existe. Vuelve al inicio para descubrir las descargas locales sin marca de agua y la restauración con IA.",
+  "这个页面走丢了": "Esta página se perdió",
+  "链接可能被剪掉了，也可能它从未存在过。别急，好内容还在首页等你。": "Puede que el enlace se haya recortado, o que nunca haya existido. Tranquilo, lo bueno te espera en la página de inicio.",
+  "（也可能，是被顺手去水印了）": "(O quizá solo le quitaron la marca de agua)",
+  "错误码": "Código de error",
+  "请求路径": "Ruta solicitada",
+  "随便逛逛": "Sorpréndeme",
+  "从这里继续": "Continúa desde aquí"
 }
