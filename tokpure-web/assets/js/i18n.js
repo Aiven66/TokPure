@@ -24,6 +24,10 @@
   var SOURCE = 'zh-CN';
   var FALLBACK = 'en';
   var STORE_KEY = 'tokpure.lang';
+  // 只有用户「主动点选语言」时才写入的标记。历史版本在自动判定浏览器语言时也把
+  // 结果写进了 STORE_KEY，这类残留值会把中文浏览器永久锁死在简体中文（默认语言
+  // 已改为英文后依然如此），因此必须靠这个标记区分「用户偏好」与「旧版残留」。
+  var MANUAL_KEY = 'tokpure.lang.manual';
   var ATTRS = ['placeholder', 'title', 'alt', 'aria-label', 'content'];
   var CJK = /[\u4e00-\u9fff]/;
 
@@ -49,15 +53,27 @@
     return (idx >= 0 ? src.slice(0, idx) + '/assets/' : 'assets/') + 'i18n/';
   }
 
-  // 默认语言固定为英文：仅在用户手动切换过（localStorage 有记录）时才沿用其偏好，
-  // 不再依据浏览器语言自动判定，避免中文浏览器首次访问直接落到简体中文。
+  // 默认语言固定为英文：仅当用户「手动切换过」时才沿用其偏好，不再依据浏览器语言
+  // 自动判定，避免中文浏览器首次访问直接落到简体中文。
+  // 同时清理旧版残留：早期版本会把自动判定的结果写进 STORE_KEY，没有 MANUAL_KEY，
+  // 若不清理，受影响的用户（含曾访问过的中文浏览器）会一直停在简体中文。
   function detect() {
     var saved = null;
-    try { saved = window.localStorage.getItem(STORE_KEY); } catch (e) { saved = null; }
+    var manual = null;
+    try {
+      saved = window.localStorage.getItem(STORE_KEY);
+      manual = window.localStorage.getItem(MANUAL_KEY);
+    } catch (e) { saved = null; manual = null; }
     if (saved) {
       for (var i = 0; i < LANGS.length; i++) {
-        if (LANGS[i].code === saved) return saved;
+        if (LANGS[i].code !== saved) continue;
+        if (manual === '1') return saved;
+        break;
       }
+      try {
+        window.localStorage.removeItem(STORE_KEY);
+        window.localStorage.removeItem(MANUAL_KEY);
+      } catch (e) { /* ignore */ }
     }
     return FALLBACK;
   }
@@ -242,7 +258,6 @@
 
     document.documentElement.setAttribute('lang', lang);
     document.documentElement.setAttribute('data-lang', lang);
-    try { window.localStorage.setItem(STORE_KEY, lang); } catch (e) { /* ignore */ }
 
     syncSwitcher();
 
@@ -370,6 +385,11 @@
   var reqSeq = 0;
   function switchTo(lang) {
     var my = ++reqSeq;
+    // 偏好只在用户主动选择时落盘（默认渲染不再写 STORE_KEY，避免产生「非用户偏好」的残留值）
+    try {
+      window.localStorage.setItem(STORE_KEY, lang);
+      window.localStorage.setItem(MANUAL_KEY, '1');
+    } catch (e) { /* ignore */ }
     load(lang).then(function () { if (my === reqSeq) apply(lang); });
   }
 
