@@ -258,6 +258,9 @@
 
     document.documentElement.setAttribute('lang', lang);
     document.documentElement.setAttribute('data-lang', lang);
+    // 释放首帧遮罩（见各页 <head> 的语言引导脚本）：译文已在本函数内同步写入，
+    // 此刻显示出来即最终语言，因此不会出现「先中文后译文」的闪动。
+    document.documentElement.removeAttribute('data-tp-pending');
 
     syncSwitcher();
 

@@ -1,6 +1,30 @@
 <!DOCTYPE html>
 
 <html class="dark" lang="zh-CN"><head>
+<script>
+  /* 首帧语言引导（防 FOUC）：站点源码是简体中文，译文在运行时才覆盖；不干预的话首帧会先渲染中文
+     再被替换（首页首屏、点击导航切页时都会「闪一下中文」）。这里在解析 <head> 时就把语言定下来
+     并隐藏正文，等 i18n.js 完成覆盖后再显示（i18n.js 会在 apply() 内移除 data-tp-pending）。 */
+  (function () {
+    var d = document.documentElement;
+    var lang = 'en';
+    try {
+      if (window.localStorage.getItem('tokpure.lang.manual') === '1') {
+        var saved = window.localStorage.getItem('tokpure.lang') || '';
+        if (/^(en|zh-CN|zh-TW|es|pt|fr|de|ja)$/.test(saved)) lang = saved;
+      }
+    } catch (e) { /* 存储不可用（隐私模式）时按默认英文 */ }
+    d.setAttribute('lang', lang);
+    d.setAttribute('data-lang', lang);
+    if (lang === 'zh-CN') return; /* 简体中文即源码本身，无需遮罩 */
+    d.setAttribute('data-tp-pending', '1');
+    var st = document.createElement('style');
+    st.textContent = 'html[data-tp-pending] body{visibility:hidden!important}';
+    (document.head || d).appendChild(st);
+    /* 兜底：词典请求失败或脚本异常时也要让页面显示出来，避免长时间空白 */
+    setTimeout(function () { d.removeAttribute('data-tp-pending'); }, 1500);
+  })();
+</script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-3X58L0VT9F"></script>
 <script>
