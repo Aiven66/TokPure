@@ -1812,3 +1812,32 @@ details.adv[open] > summary { margin-bottom: 10px; }
 @media (max-width: 1280px) {
   .clip-review { grid-template-columns: 300px 1fr; }
 }
+
+/* ---------------- TikTok 梗图贴纸 ---------------- */
+a.nav-item[data-view="stickers"] .nav-badge {
+  background: rgba(255, 122, 60, .18);
+  color: #ff9a5c;
+}
+#view-stickers .preview { aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; }
+#view-stickers #stk-image,
+#view-stickers #stk-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+#view-stickers .stk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px; }
+.stk-item {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px; border-radius: var(--radius-md);
+  background: var(--fill); border: 1px solid var(--hairline-strong);
+}
+.stk-item .stk-thumb {
+  width: 100%; aspect-ratio: 1 / 1; object-fit: cover;
+  border-radius: var(--radius-sm); background: #000; border: 1px solid var(--hairline);
+}
+.stk-item .stk-tpl { font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.stk-item .stk-cap { font-size: 11px; color: var(--text-muted); word-break: break-all; }
+.stk-item .stk-acts { display: flex; gap: 6px; }
+.stk-item .stk-acts .btn { flex: 1; justify-content: center; }
+.stk-item.err { border-color: rgba(255, 180, 171, .5); }
+.stk-item.err .stk-cap { color: var(--error-bright, #ffb4ab); }
+.stk-empty {
+  grid-column: 1 / -1; padding: 26px 0; text-align: center;
+  font-size: 12px; border: 1px dashed var(--hairline-strong); border-radius: var(--radius-md);
+}

@@ -31,6 +31,12 @@ const state = {
   enhFile: null,
   enhEngine: 'realsr',
   enhOutput: null,
+  stkFile: null,
+  stkResults: [],
+  stkTemplates: null,
+  stkPicked: null,
+  stkInited: false,
+  stkBusy: false,
   tasks: [],
   paused: false,
   platform: '',
@@ -111,6 +117,7 @@ function switchView(name) {
     if (!state.hub) loadHub().then(updateClipModelSelect);
     else updateClipModelSelect();
   }
+  if (name === 'stickers') initStickers();
 }
 
 /* ---------------- sidebar collapse / expand ----------------
@@ -1534,6 +1541,312 @@ function bindAiProgress() {
   api.hub.onProgress((p) => setHubProgress(p));
 }
 
+/* ---------------- TikTok 梗图贴纸 ---------------- */
+const STK_MAX = 4;
+
+function stkSelectedIds() {
+  return Array.from(state.stkPicked || []);
+}
+
+function stkTemplateById(id) {
+  return (state.stkTemplates || []).find((t) => t.id === id);
+}
+
+async function initStickers() {
+  if (state.stkInited) return;
+  state.stkInited = true;
+  try {
+    state.stkTemplates = await api.stickers.templates();
+  } catch (_) {
+    state.stkTemplates = [];
+  }
+  // 默认勾选前 3 套（既通用又有梗的组合）
+  state.stkPicked = new Set((state.stkTemplates || []).slice(0, 3).map((t) => t.id));
+  renderStkTemplates();
+  renderStkPresets();
+  renderStkResults();
+  updateStkGenerateState();
+}
+
+function renderStkTemplates() {
+  const box = $('#stk-templates');
+  if (!box) return;
+  box.innerHTML = (state.stkTemplates || [])
+    .map((t) => {
+      const on = state.stkPicked.has(t.id) ? ' on' : '';
+      return `<div class="panel-item${on}" data-tpl="${esc(t.id)}">
+        <span class="pi-ic" data-ic="${esc(t.icon || 'sticker')}" data-size="16"></span>
+        <div><div class="pi-t">${esc(T(t.name))}</div><div class="pi-d">${esc(T(t.tip))}</div></div>
+      </div>`;
+    })
+    .join('');
+  hydrateIcons(box);
+}
+
+function renderStkPresets() {
+  const box = $('#stk-presets');
+  if (!box) return;
+  const pool = [];
+  stkSelectedIds().forEach((id) => {
+    const t = stkTemplateById(id);
+    if (t) (t.captions || []).forEach((c) => { if (!pool.includes(c)) pool.push(c); });
+  });
+  if (!pool.length) {
+    (state.stkTemplates || []).slice(0, 3).forEach((t) => (t.captions || []).forEach((c) => { if (!pool.includes(c)) pool.push(c); }));
+  }
+  box.innerHTML = pool
+    .slice(0, 12)
+    .map((c) => `<button class="btn tiny ghost" data-cap="${esc(T(c))}">${esc(T(c))}</button>`)
+    .join('');
+}
+
+function updateStkGenerateState() {
+  const has = !!state.stkFile;
+  const n = stkSelectedIds().length;
+  $('#stk-generate').disabled = !has || !n || state.stkBusy;
+  $('#stk-share-all').disabled = state.stkBusy || !(state.stkResults || []).some((r) => r.ok);
+  if (state.stkBusy) $('#stk-hint').textContent = T('本地生成中，请稍候…');
+  else if (!has) $('#stk-hint').textContent = T('请先导入图片或视频');
+  else if (!n) $('#stk-hint').textContent = T('请至少选择一套梗图模板');
+  else $('#stk-hint').textContent = T('已选 {0} 套模板，点击生成', n);
+}
+
+function applyStkFile(f) {
+  if (!f || !f.path) return;
+  state.stkFile = f;
+  state.stkResults = [];
+  $('#stk-name').textContent = `${f.name} · ${fmtBytes(f.size)}`;
+  const img = $('#stk-image');
+  const vid = $('#stk-video');
+  const url = toFileUrl(f.path);
+  if (f.kind === 'image') {
+    img.src = url;
+    img.classList.remove('hidden');
+    vid.classList.add('hidden');
+    vid.removeAttribute('src');
+    vid.load();
+  } else {
+    vid.src = url;
+    vid.classList.remove('hidden');
+    img.classList.add('hidden');
+    img.removeAttribute('src');
+    vid.load();
+  }
+  const drop = $('#stk-drop');
+  if (drop) drop.classList.add('hidden');
+  $('#stk-reveal').disabled = true;
+  renderStkResults();
+  updateStkGenerateState();
+}
+
+async function stkPick() {
+  try {
+    const f = await api.stickers.pick();
+    if (!f) return;
+    applyStkFile(f);
+    toast(T('已导入 {0}', f.name), 'ok');
+  } catch (e) {
+    toast(T('导入失败：{0}', cleanIpcError(e)), 'err');
+  }
+}
+
+async function stkOpenPath(p) {
+  try {
+    const f = await api.stickers.openPath(p);
+    if (f) {
+      applyStkFile(f);
+      toast(T('已导入 {0}', f.name), 'ok');
+    }
+  } catch (e) {
+    toast(T('导入失败：{0}', cleanIpcError(e)), 'err');
+  }
+}
+
+function renderStkResults() {
+  const box = $('#stk-results');
+  if (!box) return;
+  const items = state.stkResults || [];
+  const count = $('#stk-count');
+  if (count) count.textContent = String(items.filter((x) => x.ok).length);
+  if (!items.length) {
+    box.innerHTML = `<div class="stk-empty muted">${esc(T('还没有生成贴纸，导入素材并选择模板后点击「一键生成梗图贴纸」'))}</div>`;
+    return;
+  }
+  box.innerHTML = items
+    .map((r, i) => {
+      if (!r.ok) {
+        return `<div class="stk-item err">
+          <div class="stk-tpl"><span>${esc(T(r.name))}</span></div>
+          <div class="stk-cap">${esc(r.error || T('生成失败'))}</div>
+        </div>`;
+      }
+      return `<div class="stk-item">
+        <img class="stk-thumb" src="${toFileUrl(r.file)}" alt="${esc(r.caption)}" loading="lazy" />
+        <div class="stk-tpl"><span>${esc(T(r.name))}</span><span class="pill square">GIF</span></div>
+        <div class="stk-cap">${esc(r.caption)}</div>
+        <div class="stk-acts">
+          <button class="btn tiny" data-stk-save="${i}"><span data-ic="save" data-size="13"></span>${esc(T('保存'))}</button>
+          <button class="btn tiny primary" data-stk-share="${i}"><span data-ic="share" data-size="13"></span>${esc(T('分享'))}</button>
+        </div>
+      </div>`;
+    })
+    .join('');
+  hydrateIcons(box);
+}
+
+async function stkGenerate() {
+  if (!state.stkFile || state.stkBusy) return;
+  const ids = stkSelectedIds();
+  if (!ids.length) { toast(T('请至少选择一套梗图模板'), 'err'); return; }
+  state.stkBusy = true;
+  state.stkResults = [];
+  renderStkResults();
+  $('#stk-cancel').classList.remove('hidden');
+  $('#stk-meter-wrap').classList.remove('hidden');
+  $('#stk-meter').style.width = '0%';
+  updateStkGenerateState();
+  try {
+    const typed = ($('#stk-caption').value || '').trim();
+    // 未填写自定义文案时，各模板使用自身的默认有梗台词，并按当前界面语言本地化
+    const captions = {};
+    ids.forEach((id) => {
+      const t = stkTemplateById(id) || {};
+      captions[id] = T((t.captions || [])[0] || '');
+    });
+    const res = await api.stickers.generate({
+      input: state.stkFile.path,
+      templates: ids,
+      caption: typed ? T(typed) : '',
+      captions
+    });
+    state.stkResults = res.items || [];
+    if (state.stkResults.some((r) => r.ok)) {
+      toast(T('已生成 {0} 张贴纸', state.stkResults.filter((r) => r.ok).length), 'ok');
+    } else {
+      toast(T('生成失败，可更换素材或模板重试'), 'err');
+    }
+  } catch (e) {
+    toast(T('生成失败：{0}', cleanIpcError(e)), 'err');
+  } finally {
+    state.stkBusy = false;
+    $('#stk-cancel').classList.add('hidden');
+    $('#stk-meter-wrap').classList.add('hidden');
+    renderStkResults();
+    updateStkGenerateState();
+  }
+}
+
+async function stkSave(idx) {
+  const r = (state.stkResults || [])[idx];
+  if (!r || !r.ok) return;
+  try {
+    const name = String(r.file).split('/').pop();
+    const res = await api.stickers.save({ src: r.file, name });
+    if (res && res.saved) toast(T('已保存到 {0}', res.saved), 'ok');
+  } catch (e) {
+    toast(T('保存失败：{0}', cleanIpcError(e)), 'err');
+  }
+}
+
+function stkShareToast(opened) {
+  if (opened === 'app') return T('已唤起 TikTok 并复制文案，把 GIF 拖进好友聊天即可发送');
+  if (opened === 'web') return T('已打开 TikTok 网页版私信并复制文案，上传 GIF 即可发送');
+  return T('文案已复制，GIF 已在文件管理器中高亮，拖进 TikTok 好友聊天即可发送');
+}
+
+async function stkShare(idx) {
+  const r = (state.stkResults || [])[idx];
+  if (!r || !r.ok) return;
+  try {
+    const res = await api.stickers.share({ file: r.file, caption: r.caption });
+    toast(stkShareToast(res && res.opened), 'ok');
+  } catch (e) {
+    toast(T('分享失败：{0}', cleanIpcError(e)), 'err');
+  }
+}
+
+async function stkShareAll() {
+  const ok = (state.stkResults || []).filter((r) => r.ok);
+  if (!ok.length) return;
+  try {
+    const res = await api.stickers.share({ file: ok[0].file, caption: ok[0].caption });
+    toast(`${stkShareToast(res && res.opened)} · ${T('已分享 {0} 张贴纸到 TikTok 好友，文件已保存在同一文件夹', ok.length)}`, 'ok');
+  } catch (e) {
+    toast(T('分享失败：{0}', cleanIpcError(e)), 'err');
+  }
+}
+
+function bindStickers() {
+  const pick = $('#stk-pick');
+  if (!pick) return;
+  pick.onclick = stkPick;
+  $('#stk-pick-2').onclick = (e) => { e.stopPropagation(); stkPick(); };
+  $('#stk-drop').onclick = stkPick;
+  $('#stk-generate').onclick = stkGenerate;
+  $('#stk-cancel').onclick = async () => { await api.stickers.cancel(); toast(T('已停止生成'), 'info'); };
+  $('#stk-reveal').onclick = () => {
+    const r = (state.stkResults || []).find((x) => x.ok);
+    if (r) api.fs.reveal(r.file);
+  };
+  $('#stk-share-all').onclick = stkShareAll;
+
+  $('#stk-templates').addEventListener('click', (e) => {
+    const el = e.target.closest('[data-tpl]');
+    if (!el) return;
+    const id = el.dataset.tpl;
+    if (state.stkPicked.has(id)) state.stkPicked.delete(id);
+    else if (state.stkPicked.size >= STK_MAX) { toast(T('最多选择 {0} 套模板', STK_MAX), 'info'); return; }
+    else state.stkPicked.add(id);
+    renderStkTemplates();
+    renderStkPresets();
+    updateStkGenerateState();
+  });
+
+  $('#stk-presets').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cap]');
+    if (b) $('#stk-caption').value = b.dataset.cap;
+  });
+
+  $('#stk-results').addEventListener('click', (e) => {
+    const s = e.target.closest('[data-stk-share]');
+    if (s) { stkShare(Number(s.dataset.stkShare)); return; }
+    const v = e.target.closest('[data-stk-save]');
+    if (v) stkSave(Number(v.dataset.stkSave));
+  });
+
+  // 拖拽导入（与去水印实验室同一套 webUtils 路径还原逻辑）
+  const preview = $('#stk-preview');
+  const drop = $('#stk-drop');
+  ['dragenter', 'dragover'].forEach((ev) =>
+    preview.addEventListener(ev, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      drop.classList.add('over');
+    })
+  );
+  preview.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    drop.classList.remove('over');
+  });
+  preview.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    drop.classList.remove('over');
+    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file) return;
+    let p = '';
+    try { p = api.fs.pathForFile(file) || ''; } catch (_) { p = ''; }
+    if (!p) p = file.path || '';
+    if (!p) { toast(T('无法读取文件路径，请改用「导入图片 / 视频」按钮选择'), 'err'); return; }
+    await stkOpenPath(p);
+  });
+
+  api.stickers.onProgress((p) => {
+    const m = $('#stk-meter');
+    if (m) m.style.width = `${Math.max(0, Math.min(100, p.pct || 0))}%`;
+  });
+}
+
 /* ---------------- account / auth ---------------- */
 function cleanIpcError(e) {
   const msg = e && e.message ? String(e.message) : '';
@@ -1604,6 +1917,12 @@ function wireUi() {
       renderSkus();
       renderClipFiles();
       loadClipSources();
+    }
+    if (state.stkInited) {
+      renderStkTemplates();
+      renderStkPresets();
+      renderStkResults();
+      updateStkGenerateState();
     }
   });
 
@@ -1814,6 +2133,7 @@ function wireUi() {
   bindSubtitle();
   bindEnhance();
   bindClips();
+  bindStickers();
   bindAiProgress();
   setEnhEngine('realsr');
   setLabMode('crop');

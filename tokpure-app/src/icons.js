@@ -71,7 +71,10 @@
     inbox: '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.5 5.5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.5A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.5z"/>',
     tags: '<path d="M9 5H2v7l6.3 6.3a2 2 0 0 0 2.8 0l5.2-5.2a2 2 0 0 0 0-2.8L9 5z"/><circle cx="6.5" cy="9.5" r="1.2"/>',
     skip: '<polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>',
-    keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M8 14h8"/>'
+    keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M8 14h8"/>',
+    sticker: '<path d="M13 3H6a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h7l8-8V9"/><path d="M13 21v-5a3 3 0 0 1 3-3h5"/><path d="M8.5 9.5h.01"/><path d="M12 12h.01"/>',
+    palette: '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="9" r="1.1"/><circle cx="15" cy="9" r="1.1"/><circle cx="9.5" cy="15" r="1.1"/>',
+    share: '<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M12 15V3"/><path d="M8 7.5 12 3.5l4 4"/>'
   };
 
   const FILL = {

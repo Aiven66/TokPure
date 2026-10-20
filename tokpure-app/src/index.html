@@ -41,6 +41,10 @@
             <span class="nav-left"><span data-ic="scissors"></span><span class="nav-label">AI 批量切片</span></span>
             <span class="nav-badge">NEW</span>
           </a>
+          <a class="nav-item" data-view="stickers" aria-label="TikTok 梗图贴纸">
+            <span class="nav-left"><span data-ic="sticker"></span><span class="nav-label">TikTok 梗图贴纸</span></span>
+            <span class="nav-badge">GIF</span>
+          </a>
           <a class="nav-item" data-view="enhance" aria-label="画质增强">
             <span class="nav-left"><span data-ic="zap"></span><span class="nav-label">画质增强</span></span>
           </a>
@@ -714,6 +718,84 @@
                 <span class="muted mono" id="clip-export-pct" style="font-size:11px">0%</span>
               </div>
               <div class="meter"><i id="clip-export-bar" style="width:0%"></i></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ VIEW: STICKERS (TikTok 梗图贴纸) ============ -->
+        <section class="view" id="view-stickers">
+          <div class="card">
+            <div class="card-head" style="margin-bottom:0">
+              <div>
+                <div class="gap-row">
+                  <span class="card-title"><span data-ic="sticker" data-size="17" style="color:var(--primary)"></span>TikTok 梗图贴纸生成器</span>
+                  <span class="pill square" id="stk-engine-badge">GIF Sticker · On-Device</span>
+                </div>
+                <p class="card-sub" id="stk-sub">导入一张图片或一段视频，一键生成有梗有趣的 GIF 动图贴纸，可直接分享到 TikTok 好友</p>
+              </div>
+              <div class="gap-row">
+                <button class="btn primary" id="stk-pick"><span data-ic="image" data-size="16"></span>导入图片 / 视频</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="lab-grid">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="preview" id="stk-preview">
+                <img id="stk-image" class="hidden" alt="" />
+                <video id="stk-video" controls playsinline muted></video>
+                <!-- 空态导入入口：无文件时显示，点击或拖拽均可导入 -->
+                <div class="lab-drop" id="stk-drop">
+                  <div class="ld-ic" data-ic="sticker" data-size="34"></div>
+                  <div class="ld-title">把图片或视频拖到这里，或点击导入</div>
+                  <div class="ld-sub">支持 JPG / PNG / WEBP / GIF / MP4 / MOV · 全程本地运算，不上传云端</div>
+                  <button class="btn primary" id="stk-pick-2"><span data-ic="image" data-size="16"></span>选择图片 / 视频</button>
+                </div>
+                <div class="p-top">
+                  <span class="overlay-chip mono" id="stk-name">未导入素材</span>
+                  <span class="overlay-chip emerald" style="color:var(--tertiary-bright)"><span data-ic="activity" data-size="13"></span>本地生成</span>
+                </div>
+              </div>
+
+              <div class="bar">
+                <div class="left">
+                  <button class="btn primary" id="stk-generate" disabled><span data-ic="sparkles" data-size="16"></span>一键生成梗图贴纸</button>
+                  <button class="btn hidden" id="stk-cancel"><span data-ic="stop" data-size="15"></span>停止生成</button>
+                  <button class="btn" id="stk-reveal" disabled><span data-ic="folderOpen" data-size="15"></span>在访达中显示</button>
+                </div>
+                <span class="muted mono" id="stk-hint" style="font-size:11px">选择模板与文案后生成</span>
+              </div>
+              <div class="meter hidden" id="stk-meter-wrap"><i id="stk-meter" style="width:0%"></i></div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="card">
+                <div class="card-title" style="font-size:13px;margin-bottom:10px"><span data-ic="sparkles" data-size="16" style="color:var(--secondary)"></span>梗图模板 <span class="pill square" style="margin-left:auto">最多选 4 套</span></div>
+                <div class="panel-list" id="stk-templates"></div>
+              </div>
+
+              <div class="card">
+                <div class="card-title" style="font-size:13px;margin-bottom:10px"><span data-ic="pen" data-size="16" style="color:var(--secondary)"></span>贴纸文案</div>
+                <div class="field" style="padding:8px 11px"><input id="stk-caption" placeholder="留空则自动匹配模板的默认有梗台词" /></div>
+                <div class="gap-row" id="stk-presets" style="flex-wrap:wrap;margin-top:10px"></div>
+              </div>
+
+              <div class="notice"><span data-ic="info" data-size="15"></span><span>生成的 GIF 动图贴纸保存在下载目录下的 TokPure-Stickers 文件夹，可随时拖进 TikTok 好友聊天发送。</span></div>
+            </div>
+          </div>
+
+          <div class="card" id="stk-results-card">
+            <div class="card-head" style="margin-bottom:10px">
+              <div class="gap-row">
+                <span class="card-title" style="font-size:13px"><span data-ic="sticker" data-size="16" style="color:var(--secondary)"></span>生成结果</span>
+                <span class="pill square" id="stk-count">0</span>
+              </div>
+              <div class="gap-row">
+                <button class="btn small" id="stk-share-all" disabled><span data-ic="share" data-size="14"></span>分享全部到 TikTok 好友</button>
+              </div>
+            </div>
+            <div class="stk-grid" id="stk-results">
+              <div class="stk-empty muted">还没有生成贴纸，导入素材并选择模板后点击「一键生成梗图贴纸」</div>
             </div>
           </div>
         </section>

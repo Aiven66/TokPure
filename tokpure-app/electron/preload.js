@@ -107,5 +107,15 @@ contextBridge.exposeInMainWorld('tokpure', {
     render: (opts) => invoke('clip:render', opts),
     cancel: () => invoke('clip:cancel'),
     onProgress: (cb) => ipcRenderer.on('clip:progress', (_e, p) => cb(p))
+  },
+  stickers: {
+    templates: () => invoke('stk:templates'),
+    pick: () => invoke('stk:pick'),
+    openPath: (p) => invoke('stk:openPath', p),
+    generate: (payload) => invoke('stk:generate', payload),
+    save: (payload) => invoke('stk:save', payload),
+    share: (payload) => invoke('stk:share', payload),
+    cancel: () => invoke('stk:cancel'),
+    onProgress: (cb) => ipcRenderer.on('stk:progress', (_e, p) => cb(p))
   }
 });

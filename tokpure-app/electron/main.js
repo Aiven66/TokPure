@@ -13,6 +13,7 @@ const enginehub = require('./enginehub');
 const hardware = require('./hardware');
 const aijobs = require('./aijobs');
 const clipai = require('./clipai');
+const stickers = require('./stickers');
 
 let mainWindow = null;
 const isMac = process.platform === 'darwin';
@@ -446,6 +447,16 @@ function registerIpc() {
   ipcMain.handle('clip:remove', (_e, id) => clipai.removeSource(id));
   ipcMain.handle('clip:render', (_e, opts) => clipai.render(opts || {}, (p) => sendToRenderer('clip:progress', p)));
   ipcMain.handle('clip:cancel', () => clipai.cancel());
+
+  // ===================== TikTok 梗图贴纸 =====================
+  ipcMain.handle('stk:templates', () => stickers.listTemplates());
+  ipcMain.handle('stk:pick', () => stickers.pick(mainWindow));
+  ipcMain.handle('stk:openPath', (_e, p) => stickers.describe(p));
+  ipcMain.handle('stk:generate', (_e, payload) =>
+    stickers.generate(payload || {}, (p) => sendToRenderer('stk:progress', p)));
+  ipcMain.handle('stk:save', (_e, payload) => stickers.save(mainWindow, payload || {}));
+  ipcMain.handle('stk:share', (_e, payload) => stickers.share(payload || {}));
+  ipcMain.handle('stk:cancel', () => stickers.cancel());
 }
 
 app.whenReady().then(async () => {
