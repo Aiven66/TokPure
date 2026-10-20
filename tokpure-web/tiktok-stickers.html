@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head>
+<script>
+  /* 首帧语言引导（防 FOUC）：站点源码是简体中文，译文在运行时才覆盖；不干预的话首帧会先渲染中文
+     再被替换（首页首屏、点击导航切页时都会「闪一下中文」）。这里在解析 <head> 时就把语言定下来
+     并隐藏正文，等 i18n.js 完成覆盖后再显示（i18n.js 会在 apply() 内移除 data-tp-pending）。 */
+  (function () {
+    var d = document.documentElement;
+    var lang = 'en';
+    try {
+      if (window.localStorage.getItem('tokpure.lang.manual') === '1') {
+        var saved = window.localStorage.getItem('tokpure.lang') || '';
+        if (/^(en|zh-CN|zh-TW|es|pt|fr|de|ja)$/.test(saved)) lang = saved;
+      }
+    } catch (e) { /* 存储不可用（隐私模式）时按默认英文 */ }
+    d.setAttribute('lang', lang);
+    d.setAttribute('data-lang', lang);
+    if (lang === 'zh-CN') return; /* 简体中文即源码本身，无需遮罩 */
+    d.setAttribute('data-tp-pending', '1');
+    var st = document.createElement('style');
+    st.textContent = 'html[data-tp-pending] body{visibility:hidden!important}';
+    (document.head || d).appendChild(st);
+    /* 兜底：词典请求失败或脚本异常时也要让页面显示出来，避免长时间空白 */
+    setTimeout(function () { d.removeAttribute('data-tp-pending'); }, 1500);
+  })();
+</script>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-3X58L0VT9F"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-3X58L0VT9F');
+</script><meta charset="utf-8"/><link rel="icon" href="assets/img/favicon.ico" sizes="any"/><link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png"/><link rel="icon" type="image/png" sizes="16x16" href="assets/img/favicon-16.png"/><link rel="apple-touch-icon" sizes="180x180" href="assets/img/apple-touch-icon.png"/>
+<title>TikTok Stickers 生成器 · 本地 GIF 梗图贴纸一键分享 · TokPure</title><meta name="description" content="用 TokPure 桌面端把图片和视频变成有梗有趣的 TikTok Stickers：8 套梗图模板、花字自动压顶、本地离线生成 GIF，一键分享给 TikTok 好友，零上传、零水印、零订阅。"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><link rel="stylesheet" href="assets/css/fonts.css"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="assets/vendor/tailwind.js"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"secondary-fixed":"#35fbf5","surface-container-highest":"#333539","on-background":"#e2e2e8","outline-variant":"#5d3f40","on-tertiary-fixed-variant":"#005236","surface-container-low":"#1a1c20","primary-fixed-dim":"#ffb3b6","error-container":"#93000a","on-tertiary":"#003824","secondary-container":"#05ece7","background":"#111317","surface-container-lowest":"#0c0e12","secondary":"#affffb","on-error-container":"#ffdad6","primary-fixed":"#ffdada","on-error":"#690005","surface-variant":"#333539","error":"#ffb4ab","on-primary-fixed-variant":"#920027","on-surface-variant":"#e6bcbd","on-tertiary-container":"#00311f","surface-container":"#1e2024","secondary-fixed-dim":"#00ddd8","on-secondary-fixed-variant":"#00504d","surface-container-high":"#282a2e","tertiary-fixed":"#6ffbbe","on-primary-fixed":"#40000c","surface-tint":"#ffb3b6","primary":"#ffb3b6","inverse-on-surface":"#2f3035","primary-container":"#ff5168","tertiary":"#4edea3","on-secondary-container":"#006764","on-primary-container":"#5b0015","inverse-primary":"#be0036","outline":"#ad8889","on-secondary":"#003735","inverse-surface":"#e2e2e8","surface-bright":"#37393e","surface-dim":"#111317","tertiary-fixed-dim":"#4edea3","on-primary":"#680019","surface":"#111317","on-secondary-fixed":"#00201f","on-surface":"#e2e2e8","on-tertiary-fixed":"#002113","tertiary-container":"#00a572"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"spacing":{"margin":"1.25rem","space-sm":"0.5rem","space-xs":"0.25rem","gutter":"1rem","space-xl":"1.75rem","space-lg":"1.25rem","space-md":"0.75rem"},"fontFamily":{"headline-xl":["Plus Jakarta Sans"],"headline-sm":["Plus Jakarta Sans"],"body-sm":["Plus Jakarta Sans"],"body-md":["Plus Jakarta Sans"],"label-md":["JetBrains Mono"],"headline-md":["Plus Jakarta Sans"],"label-sm":["JetBrains Mono"],"body-lg":["Plus Jakarta Sans"],"headline-lg":["Plus Jakarta Sans"]},"fontSize":{"headline-xl":["28px",{"lineHeight":"34px","letterSpacing":"-0.02em","fontWeight":"700"}],"headline-sm":["14px",{"lineHeight":"18px","letterSpacing":"-0.05em","fontWeight":"600"}],"body-sm":["11px",{"lineHeight":"15px","fontWeight":"400"}],"body-md":["13px",{"lineHeight":"18px","fontWeight":"400"}],"label-md":["12px",{"lineHeight":"16px","letterSpacing":"0.02em","fontWeight":"500"}],"headline-md":["16px",{"lineHeight":"22px","letterSpacing":"-0.01em","fontWeight":"600"}],"label-sm":["10px",{"lineHeight":"14px","letterSpacing":"0.04em","fontWeight":"500"}],"body-lg":["14px",{"lineHeight":"20px","fontWeight":"400"}],"headline-lg":["20px",{"lineHeight":"26px","letterSpacing":"-0.015em","fontWeight":"600"}]}}}}</script><link rel="stylesheet" href="assets/css/site.css"/><script defer src="assets/js/i18n.js"></script><script type="module" src="/src/entries/site-header.tsx"></script><meta name="keywords" content="TikTok stickers,TikTok 贴纸,TikTok 梗图生成器,GIF 贴纸,表情包制作,TikTok 表情包,meme sticker,一键分享 TikTok 好友,本地离线生成 GIF,TokPure"/><link rel="canonical" href="https://tokpure.clipopai.com/tiktok-stickers.html"/><meta property="og:type" content="website"/><meta property="og:site_name" content="TokPure"/><meta property="og:title" content="TikTok Stickers 生成器 · 本地 GIF 梗图贴纸一键分享 · TokPure"/><meta property="og:description" content="用 TokPure 桌面端把图片和视频变成有梗有趣的 TikTok Stickers：8 套梗图模板、花字自动压顶、本地离线生成 GIF，一键分享给 TikTok 好友，零上传、零水印、零订阅。"/><meta property="og:url" content="https://tokpure.clipopai.com/tiktok-stickers.html"/><meta property="og:image" content="https://tokpure.clipopai.com/assets/img/logo.png"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="TikTok Stickers 生成器 · 本地 GIF 梗图贴纸一键分享 · TokPure"/><meta name="twitter:description" content="用 TokPure 桌面端把图片和视频变成有梗有趣的 TikTok Stickers：8 套梗图模板、花字自动压顶、本地离线生成 GIF，一键分享给 TikTok 好友，零上传、零水印、零订阅。"/><meta name="twitter:image" content="https://tokpure.clipopai.com/assets/img/logo.png"/><script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"SoftwareApplication","name":"TokPure TikTok Stickers 生成器","applicationCategory":"MultimediaApplication","operatingSystem":"macOS, Windows","description":"用 TokPure 桌面端把图片和视频变成有梗有趣的 TikTok Stickers：8 套梗图模板、花字自动压顶、本地离线生成 GIF，一键分享给 TikTok 好友，零上传、零水印、零订阅。","url":"https://tokpure.clipopai.com/tiktok-stickers.html","offers":{"@type":"Offer","price":"0","priceCurrency":"USD","description":"免费下载体验"},"featureList":["8 套梗图模板","花字自动压顶","图片视频通吃","本地离线生成","一键分享到好友","体积与清晰度兼顾","震惊体","笑不活了","蹦迪","转圈圈","绝了","闪爆","彩虹病","破防"]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"生成的 TikTok Stickers 会上传到云端吗？","acceptedAnswer":{"@type":"Answer","text":"不会。贴纸全部由本地 FFmpeg 在你自己的电脑上渲染，原始图片与视频不会离开本机，也不消耗任何云端积分。"}},{"@type":"Question","name":"支持哪些素材格式？","acceptedAnswer":{"@type":"Answer","text":"图片支持 JPG、PNG、WEBP、GIF、BMP、HEIC，视频支持 MP4、MOV、WEBM、MKV、M4V，导入后会自动裁成正方形画布。"}},{"@type":"Question","name":"一次可以生成几张贴纸？","acceptedAnswer":{"@type":"Answer","text":"一次最多勾选 4 套模板，同时产出 4 张不同风格的 GIF 贴纸，每张都会保存到本地文件夹。"}},{"@type":"Question","name":"输出是 GIF 还是视频？","acceptedAnswer":{"@type":"Answer","text":"输出为无限循环的 GIF 动图，可以直接在 TikTok 私信、微信、Telegram 等聊天工具里发送。"}},{"@type":"Question","name":"可以自己写台词吗？","acceptedAnswer":{"@type":"Answer","text":"可以。台词框留空时使用模板默认的有梗台词；填入任何中英文文案都会自动居中排版并按当前模板压成花字。"}}]},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"首页","item":"https://tokpure.clipopai.com/"},{"@type":"ListItem","position":2,"name":"TikTok Stickers","item":"https://tokpure.clipopai.com/tiktok-stickers.html"}]}]}</script></head><body class="bg-background font-body-md text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container"><header class="fixed top-0 left-0 right-0 z-50 bg-surface/75 backdrop-blur-2xl shadow-[0_1px_16px_rgba(0,0,0,0.45)]"><div class="h-16 max-w-7xl mx-auto px-6 lg:px-12 flex items-center justify-between gap-space-md"><div class="flex items-center gap-space-md"><a class="flex items-center gap-space-sm group" data-path="home" href="index.html"><img alt="Brand logo. - Primary color: #fe2c55
+- Font: plusJakartaSans
+- Mode: dark
+- Roundness: rounded-md
+" class="h-8 w-auto object-contain" src="assets/img/logo.png"/><span class="font-headline-lg text-headline-lg tracking-tight text-on-surface font-bold">TokPure</span></a><div class="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-high"><span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span><span class="font-label-sm text-label-sm text-tertiary-fixed">v3.3 macOS / Win</span></div></div><nav class="hidden lg:flex items-center gap-1" data-active-classes="text-on-surface bg-surface-container font-headline-sm rounded-lg shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]"><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="home" href="index.html">首页</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="download" href="download.html">下载客户端</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="pricing" href="pricing.html">价格方案</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="about-us" href="about.html">关于我们</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="blog" href="blog.html">博客</a><a aria-current="page" class="px-3 py-1.5 transition-colors text-on-surface bg-surface-container font-headline-sm rounded-lg shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]" data-path="stickers" href="tiktok-stickers.html">TikTok 贴纸</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="documentation" href="download.html">文档/API</a></nav><div class="flex items-center gap-space-md"><div class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-lowest"><span class="w-2 h-2 rounded-full bg-tertiary"></span><span class="font-label-sm text-label-sm text-on-surface">100% LOCAL COMPUTE</span></div><div id="site-header-auth" class="flex items-center"></div><a class="hidden sm:inline-block font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface transition-colors px-2" data-path="login" href="login.html">登录</a><a class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25)] hover:bg-primary transition-all" data-path="download" href="download.html">免费下载体验</a><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center" data-header-avatar><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-16 bg-background min-h-screen"><div class="flex flex-col w-full selection:bg-primary-container selection:text-on-primary-container">
+<div class="relative w-full overflow-hidden">
+<div class="absolute -top-32 left-1/2 -translate-x-1/2 w-[720px] h-[340px] bg-gradient-to-r from-primary-container/20 via-secondary-container/15 to-transparent blur-[120px] pointer-events-none -z-10"></div>
+<section class="max-w-7xl mx-auto px-6 lg:px-12 pt-8 pb-16 flex flex-col items-center text-center">
+<div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-surface-container-high shadow-sm">
+<span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span>
+<span class="font-label-sm text-label-sm text-on-surface tracking-wide">TikTok Stickers · GIF 梗图贴纸生成器</span>
+<span class="font-label-sm text-label-sm text-secondary-fixed bg-surface-container-low px-1.5 py-0.5 rounded font-bold">On-Device</span>
+</div>
+<h1 class="mt-6 max-w-4xl font-headline-xl text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-on-surface leading-[1.15]">把一张图或一段视频，变成会动的 <span class="bg-gradient-to-r from-on-surface via-primary to-secondary bg-clip-text text-transparent">TikTok Stickers</span></h1>
+<p class="mt-5 max-w-2xl font-body-lg text-body-lg text-on-surface-variant leading-relaxed">8 套梗图模板 · 花字自动压顶 · 本地离线生成 GIF，一键分享给 TikTok 好友。不注册、不上传、不加水印。</p>
+<div class="mt-8 flex flex-col sm:flex-row items-center gap-3">
+<a class="inline-flex items-center justify-center px-5 py-2.5 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25)] hover:bg-primary transition-all" data-path="download" href="download.html">免费下载体验</a>
+<a class="inline-flex items-center justify-center px-5 py-2.5 rounded-lg bg-surface-container text-on-surface font-headline-sm text-headline-sm hover:bg-surface-container-high transition-all" href="#templates">看看有哪些模板</a>
+</div>
+<p class="mt-4 font-label-sm text-label-sm text-on-surface-variant">100% 本地运算 · 零遥测上传</p>
+</section>
+<section class="max-w-7xl mx-auto px-6 lg:px-12 pb-20">
+<h2 class="font-headline-lg text-headline-lg lg:text-3xl font-bold text-on-surface tracking-tight">为什么用 TokPure 做 TikTok Stickers</h2>
+<div class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <h3 class="font-headline-md text-headline-md text-on-surface">8 套梗图模板</h3>
+            <p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">震惊体、笑不活了、蹦迪、转圈圈、绝了、闪爆、彩虹病、破防，覆盖主流吐槽与情绪场景。</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <h3 class="font-headline-md text-headline-md text-on-surface">花字自动压顶</h3>
+            <p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">黄、粉、青、橙等配色花字自带描边与投影，中英文都能自动居中排版，一眼就抓人。</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <h3 class="font-headline-md text-headline-md text-on-surface">图片视频通吃</h3>
+            <p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">JPG、PNG、WEBP、GIF、MP4、MOV 拖进来即可，自动裁成正方形画布并模糊填充背景，不留黑边。</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <h3 class="font-headline-md text-headline-md text-on-surface">本地离线生成</h3>
+            <p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">全部渲染在你自己的电脑上完成，原始素材不出本机，没有上传、没有排队、没有云端积分。</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <h3 class="font-headline-md text-headline-md text-on-surface">一键分享到好友</h3>
+            <p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">生成后自动复制文案、唤起 TikTok 客户端并在访达中高亮 GIF，拖进聊天框就能发送。</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <h3 class="font-headline-md text-headline-md text-on-surface">体积与清晰度兼顾</h3>
+            <p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">360 像素正方形画布、12 帧循环，单张贴纸体积可控，聊天里加载快、不糊图。</p>
+          </div>
+</div>
+</section>
+<section class="max-w-7xl mx-auto px-6 lg:px-12 pb-20" id="templates">
+<h2 class="font-headline-lg text-headline-lg lg:text-3xl font-bold text-on-surface tracking-tight">内置 8 套梗图模板</h2>
+<p class="mt-3 max-w-3xl font-body-md text-body-md text-on-surface-variant leading-relaxed">每套模板都自带默认的有梗台词，也可以改成任何想说的话，一次最多同时生成 4 张。</p>
+<div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-primary-container"></span>
+              <h3 class="font-headline-md text-headline-md text-on-surface">震惊体</h3>
+            </div>
+            <p class="mt-2 font-body-sm text-body-sm text-on-surface-variant leading-relaxed">急速推近加剧烈抖动，配黄色震惊大字</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-primary-container"></span>
+              <h3 class="font-headline-md text-headline-md text-on-surface">笑不活了</h3>
+            </div>
+            <p class="mt-2 font-body-sm text-body-sm text-on-surface-variant leading-relaxed">左右猛抖，粉字狂笑，适合哈哈哈哈类素材</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-primary-container"></span>
+              <h3 class="font-headline-md text-headline-md text-on-surface">蹦迪</h3>
+            </div>
+            <p class="mt-2 font-body-sm text-body-sm text-on-surface-variant leading-relaxed">上下弹跳，青字蹦跶，节奏感拉满</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-primary-container"></span>
+              <h3 class="font-headline-md text-headline-md text-on-surface">转圈圈</h3>
+            </div>
+            <p class="mt-2 font-body-sm text-body-sm text-on-surface-variant leading-relaxed">整幅画面摇摆旋转，绿字鬼畜感十足</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-primary-container"></span>
+              <h3 class="font-headline-md text-headline-md text-on-surface">绝了</h3>
+            </div>
+            <p class="mt-2 font-body-sm text-body-sm text-on-surface-variant leading-relaxed">呼吸式缩放，橙字稳中带骚，最通用的一套</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-primary-container"></span>
+              <h3 class="font-headline-md text-headline-md text-on-surface">闪爆</h3>
+            </div>
+            <p class="mt-2 font-body-sm text-body-sm text-on-surface-variant leading-relaxed">高频闪白，白字黑描边，冲击力最强</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-primary-container"></span>
+              <h3 class="font-headline-md text-headline-md text-on-surface">彩虹病</h3>
+            </div>
+            <p class="mt-2 font-body-sm text-body-sm text-on-surface-variant leading-relaxed">色相循环流动，抽象又上头</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-primary-container"></span>
+              <h3 class="font-headline-md text-headline-md text-on-surface">破防</h3>
+            </div>
+            <p class="mt-2 font-body-sm text-body-sm text-on-surface-variant leading-relaxed">去色加颗粒噪点，蓝字低落，呜呜呜专用</p>
+          </div>
+</div>
+</section>
+<section class="max-w-7xl mx-auto px-6 lg:px-12 pb-20">
+<h2 class="font-headline-lg text-headline-lg lg:text-3xl font-bold text-on-surface tracking-tight">三步做完一张贴纸</h2>
+<div class="mt-8 grid gap-5 lg:grid-cols-3">
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm font-bold">1</span>
+            <h3 class="mt-3 font-headline-md text-headline-md text-on-surface">导入图片或视频</h3>
+            <p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">点「导入图片 / 视频」或直接把文件拖进窗口，支持常见图片与视频格式。</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm font-bold">2</span>
+            <h3 class="mt-3 font-headline-md text-headline-md text-on-surface">勾选模板、改台词</h3>
+            <p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">一次最多勾选 4 套模板；台词留空就用模板自带的默认有梗台词，也可以自己写一句。</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm font-bold">3</span>
+            <h3 class="mt-3 font-headline-md text-headline-md text-on-surface">生成并分享</h3>
+            <p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">点「生成贴纸」等几秒出图，预览满意后一键保存，或直接分享到 TikTok 好友。</p>
+          </div>
+</div>
+</section>
+<section class="max-w-7xl mx-auto px-6 lg:px-12 pb-20">
+<div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-8 lg:p-10">
+<h2 class="font-headline-lg text-headline-lg lg:text-3xl font-bold text-on-surface tracking-tight">一键分享到 TikTok 好友</h2>
+<p class="mt-3 max-w-3xl font-body-md text-body-md text-on-surface-variant leading-relaxed">TikTok 目前没有开放「分享贴纸」的接口，所以 TokPure 把整条链路做成一步到位：</p>
+<ul class="mt-6 grid gap-4 lg:grid-cols-3">
+<li class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+<h3 class="font-headline-md text-headline-md text-on-surface">文案自动进剪贴板</h3>
+<p class="mt-2 font-body-sm text-body-sm text-on-surface-variant leading-relaxed">有梗台词直接写入剪贴板，粘贴到对话框即可发送。</p>
+</li>
+<li class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+<h3 class="font-headline-md text-headline-md text-on-surface">自动唤起 TikTok</h3>
+<p class="mt-2 font-body-sm text-body-sm text-on-surface-variant leading-relaxed">优先唤起 TikTok 桌面客户端，未安装时打开网页版私信页。</p>
+</li>
+<li class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+<h3 class="font-headline-md text-headline-md text-on-surface">文件已在访达高亮</h3>
+<p class="mt-2 font-body-sm text-body-sm text-on-surface-variant leading-relaxed">GIF 会自动在访达或资源管理器中高亮，直接拖进聊天框即可。</p>
+</li>
+</ul>
+</div>
+</section>
+<section class="max-w-4xl mx-auto px-6 lg:px-12 pb-20">
+<h2 class="font-headline-lg text-headline-lg lg:text-3xl font-bold text-on-surface tracking-tight">常见问题</h2>
+<div class="mt-8 space-y-4">
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <h3 class="font-headline-md text-headline-md text-on-surface">生成的 TikTok Stickers 会上传到云端吗？</h3>
+            <p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">不会。贴纸全部由本地 FFmpeg 在你自己的电脑上渲染，原始图片与视频不会离开本机，也不消耗任何云端积分。</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <h3 class="font-headline-md text-headline-md text-on-surface">支持哪些素材格式？</h3>
+            <p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">图片支持 JPG、PNG、WEBP、GIF、BMP、HEIC，视频支持 MP4、MOV、WEBM、MKV、M4V，导入后会自动裁成正方形画布。</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <h3 class="font-headline-md text-headline-md text-on-surface">一次可以生成几张贴纸？</h3>
+            <p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">一次最多勾选 4 套模板，同时产出 4 张不同风格的 GIF 贴纸，每张都会保存到本地文件夹。</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <h3 class="font-headline-md text-headline-md text-on-surface">输出是 GIF 还是视频？</h3>
+            <p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">输出为无限循环的 GIF 动图，可以直接在 TikTok 私信、微信、Telegram 等聊天工具里发送。</p>
+          </div>
+          <div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-6 hover:border-primary-container/60 transition-colors">
+            <h3 class="font-headline-md text-headline-md text-on-surface">可以自己写台词吗？</h3>
+            <p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">可以。台词框留空时使用模板默认的有梗台词；填入任何中英文文案都会自动居中排版并按当前模板压成花字。</p>
+          </div>
+</div>
+</section>
+<section class="max-w-7xl mx-auto px-6 lg:px-12 pb-24">
+<div class="rounded-2xl bg-surface-container-low border border-outline-variant/40 p-10 text-center">
+<h2 class="font-headline-lg text-headline-lg lg:text-3xl font-bold text-on-surface tracking-tight">现在就把你的第一张贴纸做出来</h2>
+<p class="mt-3 mx-auto max-w-2xl font-body-md text-body-md text-on-surface-variant leading-relaxed">下载 TokPure 桌面客户端，导入一张图或一段视频，几秒钟就能拿到会动的 TikTok Stickers。</p>
+<a class="mt-6 inline-flex items-center justify-center px-6 py-3 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25)] hover:bg-primary transition-all" data-path="download" href="download.html">免费下载客户端 (macOS / Windows)</a>
+</div>
+</section>
+</div>
+</div></main><footer class="w-full bg-surface-container-lowest"><div class="max-w-7xl mx-auto px-6 lg:px-12 pt-16 pb-12"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-space-xl mb-12"><div class="lg:col-span-2 space-y-space-md"><div class="flex items-center gap-space-sm"><img alt="Brand logo. - Primary color: #fe2c55
+- Font: plusJakartaSans
+- Mode: dark
+- Roundness: rounded-md
+" class="h-8 w-auto object-contain" src="assets/img/logo.png"/><span class="font-headline-lg text-headline-lg text-on-surface font-bold">TokPure</span></div><p class="font-body-md text-body-md text-on-surface-variant max-w-sm">基于本地离线引擎的下一代 macOS / Windows 桌面极速无水印视频下载与 AI 超分无损重构套件。零云端留存，零隐私泄露风险。</p><div class="flex items-center gap-2 p-2.5 rounded-lg bg-surface-container-low"><span class="material-symbols-outlined text-tertiary text-lg">verified_user</span><div class="font-label-sm text-label-sm text-on-surface-variant"><span class="text-tertiary font-bold">Zero-Cloud-Leak:</span> 本地离线执行智能修复</div></div></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">产品矩阵</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="home" href="index.html">核心架构</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">macOS / Windows 客户端</a></li><li><a class="hover:text-on-surface transition-colors" data-path="stickers" href="tiktok-stickers.html">TikTok 贴纸</a></li><li><a class="hover:text-on-surface transition-colors" data-path="pricing" href="pricing.html">Pro 终身许可</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">更新日志 (v2.4)</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">开发者 &amp; 支持</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">文档中心</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">CLI 命令行工具</a></li><li><a class="hover:text-on-surface transition-colors" data-path="about-us" href="about.html">关于团队</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私审计报告</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">运行状态</h4><div class="p-3 rounded-lg bg-surface-container-low space-y-2"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span><span class="font-label-sm text-label-sm text-on-surface">全线引擎正常运行</span></div><p class="font-body-sm text-body-sm text-on-surface-variant">Local Offline Engine v4.2 Ready</p></div><div class="mt-4"><div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant font-label-sm text-label-sm"><span class="material-symbols-outlined text-[16px]">language</span><span>简体中文 (中国)</span></div></div></div></div><div class="pt-8 space-y-4"><p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed text-center lg:text-left">免责声明：TokPure 属于独立研发的高性能本地音视频分析工程软件，与 TikTok、ByteDance 或任何第三方社交网络服务无关且未获得其官方赞助或背书。请在遵守当地版权法律与合理使用协议的前提下处理属于您个人所有的创作内容。</p><div class="flex flex-col sm:flex-row items-center justify-between gap-4 font-body-sm text-body-sm text-on-surface-variant"><div>© 2024 TokPure Studio Inc. 专为 macOS 与 Windows 打造。保留所有权利。</div><div class="flex items-center gap-6 font-label-sm text-label-sm"><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">服务条款</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私政策</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">安全白皮书</a></div></div></div></div></footer></body></html>
