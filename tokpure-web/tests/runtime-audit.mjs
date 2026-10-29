@@ -98,6 +98,11 @@ async function inspectPage(browser, path, { mobile = false, expectStatus = 200 }
   const title = await page.title();
   if (!title || title.length < 5) record('fail', `${label} 标题为空`);
 
+  // 标题层级：岛屿渲染完成后，公开页面应恰好一个 h1（静态兜底标题必须已被移除）
+  const h1Count = await page.locator('h1').count();
+  if (h1Count === 0) record('fail', `${label} 没有 h1`, '缺少一级标题');
+  else if (h1Count > 1) record('fail', `${label} 出现多个 h1`, `共 ${h1Count} 个`);
+
   // 性能指标
   const perf = await page.evaluate(() => {
     const nav = performance.getEntriesByType('navigation')[0] || {};

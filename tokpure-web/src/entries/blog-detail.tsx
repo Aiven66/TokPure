@@ -14,7 +14,7 @@
 
 import { BlogDetail } from '@pkg';
 import { PkgRoot } from '@/components/PkgRoot';
-import { mount, readSiteLocale } from '@/lib/mount';
+import { mount, readSiteLocale, dropStaticFallback } from '@/lib/mount';
 
 const BASE_PATH = '/blog';
 const SITE_URL = 'https://tokpure.clipopai.com';
@@ -83,6 +83,8 @@ function applyArticleSeo(): boolean {
   upsertMeta('name', 'twitter:description', description);
   upsertMeta('name', 'twitter:image', image);
 
+  // 文章标题已渲染，移除静态兜底 h1，避免页面出现两个 h1
+  dropStaticFallback();
   return true;
 }
 

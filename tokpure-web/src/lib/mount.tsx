@@ -72,3 +72,14 @@ export function hide(selector: string): void {
     el.style.display = 'none';
   });
 }
+
+/**
+ * 移除静态兜底标题（`[data-tp-fallback]`）。
+ *
+ * 博客列表/详情是纯客户端渲染，静态 HTML 里放了一份 sr-only 的 h1/h2 供不执行 JS 的
+ * 爬虫（含 LLM 抓取器）读到标题；岛屿渲染后自己会输出 h1，若不删掉这份兜底就会变成
+ * 一个页面两个 h1。这里在挂载完成后由入口主动清理。
+ */
+export function dropStaticFallback(): void {
+  document.querySelectorAll('[data-tp-fallback]').forEach((el) => el.remove());
+}
