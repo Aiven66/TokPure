@@ -33,3 +33,10 @@ npm-debug.log*
 .vscode/
 *.swp
 .vercel
+
+# Python 引擎脚本缓存
+__pycache__/
+*.pyc
+
+# 与仓库无关的本地工具产物
+.trae-html-share-packages/

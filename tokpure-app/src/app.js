@@ -37,6 +37,8 @@ const state = {
   stkPicked: null,
   stkInited: false,
   stkBusy: false,
+  stkProgress: null,
+  stkTick: null,
   tasks: [],
   paused: false,
   platform: '',
@@ -118,6 +120,7 @@ function switchView(name) {
     else updateClipModelSelect();
   }
   if (name === 'stickers') initStickers();
+  if (name === 'localize' && window.LingoCast) window.LingoCast.init();
 }
 
 /* ---------------- sidebar collapse / expand ----------------
@@ -795,7 +798,7 @@ function renderHub() {
   $('#hub-gpu').textContent = hw.gpuLabel;
   $('#hub-disk').textContent = fmtBytes(hw.freeDisk) + ' / 已用 ' + fmtBytes(state.hub.totalUsed);
 
-  const featIcon = { subtitle: 'captions', enhance: 'zap' };
+  const featIcon = { subtitle: 'captions', enhance: 'zap', localize: 'languages' };
   $('#hub-engines').innerHTML = state.hub.engines.map((en) => {
     const status = !en.supported
       ? `<span class="hub-pct hub-unsupported">当前平台不支持</span>`
@@ -1605,7 +1608,8 @@ function updateStkGenerateState() {
   const n = stkSelectedIds().length;
   $('#stk-generate').disabled = !has || !n || state.stkBusy;
   $('#stk-share-all').disabled = state.stkBusy || !(state.stkResults || []).some((r) => r.ok);
-  if (state.stkBusy) $('#stk-hint').textContent = T('本地生成中，请稍候…');
+  // 生成期间的状态交给进度区（阶段文案 + 百分比），这里不再重复「请稍候」这类无信息量文案
+  if (state.stkBusy) $('#stk-hint').textContent = '';
   else if (!has) $('#stk-hint').textContent = T('请先导入图片或视频');
   else if (!n) $('#stk-hint').textContent = T('请至少选择一套梗图模板');
   else $('#stk-hint').textContent = T('已选 {0} 套模板，点击生成', n);
@@ -1674,6 +1678,13 @@ function renderStkResults() {
   }
   box.innerHTML = items
     .map((r, i) => {
+      if (r.pending) {
+        return `<div class="stk-item pending" data-stk-pend="${esc(r.id)}">
+          <div class="stk-skel"></div>
+          <div class="stk-tpl"><span>${esc(T(r.name))}</span><span class="pill square">GIF</span></div>
+          <div class="stk-state"><span class="dot"></span><span data-stk-state>${esc(r.stateText || T('排队中…'))}</span></div>
+        </div>`;
+      }
       if (!r.ok) {
         return `<div class="stk-item err">
           <div class="stk-tpl"><span>${esc(T(r.name))}</span></div>
@@ -1694,16 +1705,93 @@ function renderStkResults() {
   hydrateIcons(box);
 }
 
+/* ---------------- 生成进度 ----------------
+   引擎按「归一化 15% + 每模板均分 85%」上报进度，模板内部再细分到帧。
+   这里把上报值做平滑推进（显示值只会单调前进，且不越过当前阶段的终点），
+   避免进度条出现「停住 → 突然跳到下一格」的观感。 */
+function stkProgressStart(ids) {
+  state.stkProgress = { shown: 0, target: 0, ceil: 15, done: false };
+  const wrap = $('#stk-meter-wrap');
+  if (wrap) wrap.classList.remove('hidden', 'idle');
+  const box = $('#stk-progress');
+  if (box) box.classList.remove('hidden');
+  const stage = $('#stk-stage');
+  if (stage) stage.textContent = T('正在准备素材…');
+  stkProgressPaint();
+  if (state.stkTick) clearInterval(state.stkTick);
+  state.stkTick = setInterval(() => {
+    const s = state.stkProgress;
+    if (!s) return;
+    // 未收到新上报时按缓动向当前阶段终点逼近，真值到达后再抬高上限
+    const cap = s.done ? 100 : Math.max(s.target, s.ceil - 1);
+    if (s.shown < cap) s.shown = Math.min(cap, s.shown + Math.max(0.4, (cap - s.shown) * 0.16));
+    stkProgressPaint();
+  }, 100);
+}
+
+function stkProgressPaint() {
+  const s = state.stkProgress || { shown: 0 };
+  const v = Math.max(0, Math.min(100, s.shown));
+  const bar = $('#stk-meter');
+  if (bar) bar.style.width = `${v.toFixed(1)}%`;
+  const pct = $('#stk-pct');
+  if (pct) pct.textContent = `${Math.round(v)}%`;
+}
+
+function stkProgressStop() {
+  if (state.stkTick) clearInterval(state.stkTick);
+  state.stkTick = null;
+  state.stkProgress = null;
+  const wrap = $('#stk-meter-wrap');
+  if (wrap) wrap.classList.add('hidden');
+  const box = $('#stk-progress');
+  if (box) box.classList.add('hidden');
+}
+
+function stkApplyProgress(p) {
+  const s = state.stkProgress;
+  if (!s || !p) return;
+  if (typeof p.pct === 'number') {
+    s.target = Math.max(s.target, p.pct);
+    s.shown = Math.max(s.shown, Math.min(p.pct, 99));
+  }
+  if (p.stage === 'base') s.ceil = Math.max(s.ceil, 15);
+  if ((p.stage === 'start' || p.stage === 'render' || p.stage === 'item-done') && p.total) {
+    s.ceil = Math.max(s.ceil, 15 + (85 / p.total) * p.index);
+  }
+  if (p.stage === 'done') { s.done = true; s.shown = 100; }
+
+  const stage = $('#stk-stage');
+  if (stage) {
+    const tpl = p.id ? stkTemplateById(p.id) : null;
+    const name = tpl ? T(tpl.name) : '';
+    if (p.stage === 'base') stage.textContent = T('正在归一化素材…');
+    else if (p.stage === 'start') stage.textContent = T('正在生成 {0}（{1}/{2}）', name, p.index, p.total);
+    else if (p.stage === 'render') {
+      stage.textContent = T('正在生成 {0}（{1}/{2}）', name, p.index, p.total);
+      const cell = document.querySelector(`[data-stk-pend="${p.id}"] [data-stk-state]`);
+      if (cell) cell.textContent = T('压花字并压缩中 {0}%', Math.round((p.frac || 0) * 100));
+    } else if (p.stage === 'item-done') {
+      const cell = document.querySelector(`[data-stk-pend="${p.id}"] [data-stk-state]`);
+      if (cell) cell.textContent = T('已完成');
+    } else if (p.stage === 'done') stage.textContent = T('全部完成');
+  }
+  stkProgressPaint();
+}
+
 async function stkGenerate() {
   if (!state.stkFile || state.stkBusy) return;
   const ids = stkSelectedIds();
   if (!ids.length) { toast(T('请至少选择一套梗图模板'), 'err'); return; }
   state.stkBusy = true;
-  state.stkResults = [];
+  // 先按已选模板铺出占位卡，生成过程中逐张变成真结果，让等待有明确对象
+  state.stkResults = ids.map((id) => {
+    const t = stkTemplateById(id) || {};
+    return { id, name: t.name || id, pending: true, stateText: T('排队中…') };
+  });
   renderStkResults();
   $('#stk-cancel').classList.remove('hidden');
-  $('#stk-meter-wrap').classList.remove('hidden');
-  $('#stk-meter').style.width = '0%';
+  stkProgressStart(ids);
   updateStkGenerateState();
   try {
     const typed = ($('#stk-caption').value || '').trim();
@@ -1730,7 +1818,7 @@ async function stkGenerate() {
   } finally {
     state.stkBusy = false;
     $('#stk-cancel').classList.add('hidden');
-    $('#stk-meter-wrap').classList.add('hidden');
+    stkProgressStop();
     renderStkResults();
     updateStkGenerateState();
   }
@@ -1841,10 +1929,7 @@ function bindStickers() {
     await stkOpenPath(p);
   });
 
-  api.stickers.onProgress((p) => {
-    const m = $('#stk-meter');
-    if (m) m.style.width = `${Math.max(0, Math.min(100, p.pct || 0))}%`;
-  });
+  api.stickers.onProgress((p) => stkApplyProgress(p));
 }
 
 /* ---------------- account / auth ---------------- */

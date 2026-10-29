@@ -83,8 +83,10 @@ class HttpResponse {
  * time out), which made blocked routes hang far longer than intended.
  */
 function requestStream(url, opts = {}) {
-  const { headers = {}, proxy, timeout = 30000, method = 'GET', maxRedirects = 6 } = opts;
+  const { headers = {}, proxy, timeout = 30000, method = 'GET', maxRedirects = 6, body = null } = opts;
   const agent = buildAgent(proxy);
+  // 需要提交请求体时补上 Content-Length（multipart 与 JSON 都走这里）
+  if (body) headers['Content-Length'] = Buffer.byteLength(body);
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -136,7 +138,8 @@ function requestStream(url, opts = {}) {
         finish(resolve, new HttpResponse(res, { statusCode: status, headers: res.headers, url: target }));
       });
       req.on('error', (e) => finish(reject, e));
-      req.end();
+      // 重定向时只对原始请求提交一次请求体（克隆/合成接口不会返回 307 到别的主机）
+      req.end(body && redirects === 0 ? body : undefined);
       if (opts.abortSignal) {
         opts.abortSignal.addEventListener('abort', () => {
           finish(reject, new Error('已取消'));

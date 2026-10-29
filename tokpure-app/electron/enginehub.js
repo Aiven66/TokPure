@@ -141,6 +141,29 @@ const ENGINES = [
         size: 411 * 1024 * 1024
       }
     }
+  },
+  {
+    id: 'llamacpp',
+    name: 'Llama.cpp 本地翻译引擎',
+    version: 'b11851',
+    license: 'MIT',
+    feature: 'localize',
+    summary: '本地大模型推理，驱动「AI多语切片」的离线翻译；不上传任何字幕文本。',
+    bin: () => exe('llama-cli'),
+    assets: {
+      'darwin-arm64': {
+        url: 'https://github.com/ggml-org/llama.cpp/releases/download/b11851/llama-b11851-bin-macos-arm64.tar.gz',
+        size: 0
+      },
+      'darwin-x64': {
+        url: 'https://github.com/ggml-org/llama.cpp/releases/download/b11851/llama-b11851-bin-macos-x64.tar.gz',
+        size: 0
+      },
+      'win32-x64': {
+        url: 'https://github.com/ggml-org/llama.cpp/releases/download/b11851/llama-b11851-bin-win-cpu-x64.zip',
+        size: 0
+      }
+    }
   }
 ];
 
@@ -187,6 +210,26 @@ const MODELS = [
     rel: path.join('whisper', 'ggml-large-v3-turbo-q5_0.bin'),
     urls: mirrors(HF_WHISPER + 'ggml-large-v3-turbo-q5_0.bin'),
     note: '575MB · large-v3-turbo 量化版，唯一支持粤语(yue)原生解码的模型，配合粤语提示词实测错误率比 tiny 降约 60%，普通话/英语同样更准，M 芯片 Metal 加速'
+  },
+  {
+    id: 'qwen-translate-lite',
+    engine: 'llamacpp',
+    name: 'Qwen2.5 0.5B 轻量翻译模型',
+    lang: '中 / 英 / 日 / 韩 / 西 / 法 / 德 / 葡',
+    size: 397 * 1024 * 1024,
+    rel: path.join('llamacpp', 'qwen2.5-0.5b-instruct-q4_k_m.gguf'),
+    urls: mirrors('https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf'),
+    note: '约 400MB · Apache-2.0 商用许可，Q4_K_M 量化；体积小、速度快，但字幕翻译质量有限'
+  },
+  {
+    id: 'qwen-translate',
+    engine: 'llamacpp',
+    name: 'Qwen2.5 1.5B 高质量翻译模型',
+    lang: '中 / 英 / 日 / 韩 / 西 / 法 / 德 / 葡',
+    size: 1066 * 1024 * 1024,
+    rel: path.join('llamacpp', 'qwen2.5-1.5b-instruct-q4_k_m.gguf'),
+    urls: mirrors('https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf'),
+    note: '1.1GB · Apache-2.0 商用许可，Q4_K_M 量化，8GB 内存可跑；译制推荐使用这一档'
   }
 ];
 

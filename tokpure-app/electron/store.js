@@ -31,7 +31,12 @@ const DEFAULTS = {
   extractMp3: false,
   removeLogo: false, // FFmpeg local cleanup fallback
   cookie: '',
-  parseApi: '' // optional user supplied parse endpoint
+  parseApi: '', // optional user supplied parse endpoint
+  // AI多语切片「原声克隆」：默认走本地引擎，完全离线；云端仅作可选增强
+  voiceClone: {
+    provider: 'local', // 'local' | 'elevenlabs' | 'fishaudio'
+    keys: { elevenlabs: '', fishaudio: '' }
+  }
 };
 
 let cache = null;
@@ -73,6 +78,12 @@ function ensureLoaded() {
     } catch (_) {
       /* ignore */
     }
+  }
+  // migration: 老配置里选了云端克隆但没填 Key 的，直接切到本地引擎（离线可用）
+  if (cache.voiceClone && cache.voiceClone.provider && cache.voiceClone.provider !== 'local') {
+    const p = cache.voiceClone.provider;
+    const k = (cache.voiceClone.keys || {})[p];
+    if (!k) cache.voiceClone.provider = 'local';
   }
   if (cache.downloadDir) {
     try {

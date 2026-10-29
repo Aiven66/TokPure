@@ -117,5 +117,18 @@ contextBridge.exposeInMainWorld('tokpure', {
     share: (payload) => invoke('stk:share', payload),
     cancel: () => invoke('stk:cancel'),
     onProgress: (cb) => ipcRenderer.on('stk:progress', (_e, p) => cb(p))
+  },
+  loc: {
+    status: () => invoke('loc:status'),
+    voices: () => invoke('loc:voices'),
+    cloneTest: (payload) => invoke('loc:cloneTest', payload),
+    preview: (payload) => invoke('loc:preview', payload),
+    pickFile: () => invoke('loc:pickFile'),
+    openPath: (p) => invoke('loc:openPath', p),
+    reveal: (p) => invoke('loc:reveal', p),
+    open: (p) => invoke('loc:open', p),
+    start: (payload) => invoke('loc:start', payload),
+    cancel: () => invoke('loc:cancel'),
+    onProgress: (cb) => ipcRenderer.on('loc:progress', (_e, p) => cb(p))
   }
 });

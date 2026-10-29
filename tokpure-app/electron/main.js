@@ -14,6 +14,7 @@ const hardware = require('./hardware');
 const aijobs = require('./aijobs');
 const clipai = require('./clipai');
 const stickers = require('./stickers');
+const localize = require('./localize');
 
 let mainWindow = null;
 const isMac = process.platform === 'darwin';
@@ -457,6 +458,21 @@ function registerIpc() {
   ipcMain.handle('stk:save', (_e, payload) => stickers.save(mainWindow, payload || {}));
   ipcMain.handle('stk:share', (_e, payload) => stickers.share(payload || {}));
   ipcMain.handle('stk:cancel', () => stickers.cancel());
+
+  // ===================== AI多语切片（长片多语译制） =====================
+  ipcMain.handle('loc:status', () => localize.status());
+  ipcMain.handle('loc:voices', () => localize.voices());
+  ipcMain.handle('loc:cloneTest', (_e, payload) => localize.testClone(payload || {}, networkSettings().proxy));
+  ipcMain.handle('loc:preview', (_e, payload) => localize.preview(payload || {}));
+  ipcMain.handle('loc:pickFile', () => localize.pickFile(mainWindow));
+  ipcMain.handle('loc:openPath', (_e, p) => localize.describe(p));
+  ipcMain.handle('loc:reveal', (_e, p) => localize.reveal(p));
+  ipcMain.handle('loc:open', (_e, p) => localize.openFile(p));
+  ipcMain.handle('loc:cancel', () => localize.cancel());
+  ipcMain.handle('loc:start', (_e, payload) => {
+    const proxy = networkSettings().proxy;
+    return localize.start(payload || {}, proxy, (p) => sendToRenderer('loc:progress', p));
+  });
 }
 
 app.whenReady().then(async () => {
@@ -476,6 +492,12 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+// 退出前把常驻的本地克隆 worker 全部回收：它们是独立的 Python 进程，
+// 不主动掐掉会留在后台继续占 2GB 以上内存（重开应用后就是「内存越用越多」）。
+app.on('will-quit', () => {
+  try { require('./voicelocal').closeAll(); } catch (_) {}
 });
 
 module.exports = { downloader };
