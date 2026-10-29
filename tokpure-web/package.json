@@ -5,9 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "predev": "npm run build:css",
+    "build": "npm run build:css && vite build",
+    "build:css": "node tools/build-tailwind.mjs",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "NODE_PATH=$(npm root -g) node tests/run-all.mjs",
+    "test:build": "NODE_PATH=$(npm root -g) node tests/run-all.mjs --build",
+    "audit:static": "node tests/static-audit.mjs",
+    "icons:subset": "python3.11 tools/subset-icon-font.py tools/fonts/material-symbols-outlined.full.woff2 tools/icons.txt assets/fonts/material-symbols-outlined.woff2",
+    "images:webp": "bash tools/webp.sh"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.1",
@@ -35,6 +42,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
+    "tailwindcss": "^3.4.17",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
   }

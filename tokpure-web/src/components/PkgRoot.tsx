@@ -13,19 +13,30 @@
  *   无需刷新（修复「切到 English 后登录按钮/登录页仍是中文」）。
  */
 
-import { useEffect, type ReactNode } from 'react';
+import { useCallback, useEffect, type ReactNode } from 'react';
 import { AuthProvider, PublicPkgProvider, usePublicPkg } from '@pkg';
 import type { Locale } from '@pkg';
 import { pkgConfig } from '@/lib/pkg-config';
-import { readSiteLocale, siteLangToPkg } from '@/lib/mount';
+import { readSiteLocale, siteLangToPkg, syncHtmlLang } from '@/lib/mount';
 
 function LocaleBridge() {
   const { locale, setLocale } = usePublicPkg();
 
+  // public-pkg 的 setLocale 会把 <html lang> 写成 3 值语言（en/zh/zh-Hant），
+  // 在 8 语站点上会覆盖 i18n.js 的正确值，所以每次改完都校正回来。
+  const applyLocale = useCallback(
+    (next: Locale) => {
+      setLocale(next);
+      syncHtmlLang();
+    },
+    [setLocale],
+  );
+
   // 挂载校正：以站点语言为准（readSiteLocale 的唯一真源是 tokpure.lang）
   useEffect(() => {
     const site = readSiteLocale();
-    if (site !== locale) setLocale(site);
+    if (site !== locale) applyLocale(site);
+    else syncHtmlLang();
     // 仅在挂载时校正一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -34,11 +45,11 @@ function LocaleBridge() {
   useEffect(() => {
     const onLangChange = (event: Event) => {
       const lang = (event as CustomEvent<{ lang?: string }>).detail?.lang;
-      if (lang) setLocale(siteLangToPkg(lang));
+      if (lang) applyLocale(siteLangToPkg(lang));
     };
     window.addEventListener('tokpure:langchange', onLangChange);
     return () => window.removeEventListener('tokpure:langchange', onLangChange);
-  }, [setLocale]);
+  }, [applyLocale]);
 
   return null;
 }

@@ -1,1 +1,4 @@
 .vercel
+
+# 构建期生成（npm run build:css / npm run build 会自动重建）
+assets/css/tailwind.build.css

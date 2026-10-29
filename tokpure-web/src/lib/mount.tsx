@@ -16,22 +16,45 @@ export function siteLangToPkg(code: string): Locale {
   return 'en';
 }
 
+/** 站点支持的语言代码（与 assets/js/i18n.js 的 LANGS 一致）。 */
+export const SITE_LANGS = ['en', 'zh-CN', 'zh-TW', 'es', 'pt', 'fr', 'de', 'ja'] as const;
+
 /**
- * 读取官网当前语言。
+ * 读取官网当前语言代码（8 种之一）。
  *
- * 唯一真源是 assets/js/i18n.js 写入的 localStorage `tokpure.lang`（站点切换器写的就是它）。
- * 早期版本误读 `locale` 键（public-pkg 自己的存储），两套系统永远对不上，
- * 导致站点切到 English 后 React 岛屿（登录按钮、登录页表单）仍渲染中文。
- * 站点默认语言是英文（用户未手动切换过时 i18n.js 也按 en 渲染），这里保持一致。
+ * 唯一真源是 assets/js/i18n.js 写入的 localStorage `tokpure.lang`，且必须带
+ * `tokpure.lang.manual=1` 标记才算「用户主动选择」；否则按站点默认英文处理
+ * （与 i18n.js 的 detect() 完全同一套规则）。
  */
-export function readSiteLocale(): Locale {
+export function readSiteLang(): string {
   try {
-    const site = (localStorage.getItem('tokpure.lang') || '').trim();
-    if (site) return siteLangToPkg(site);
+    const manual = localStorage.getItem('tokpure.lang.manual');
+    const saved = (localStorage.getItem('tokpure.lang') || '').trim();
+    if (manual === '1' && (SITE_LANGS as readonly string[]).includes(saved)) return saved;
   } catch {
     /* 存储不可用时按站点默认（en）处理 */
   }
   return 'en';
+}
+
+/** 读取官网当前语言，映射为 public-pkg 的 3 值语言（岛屿文案只有 en/zh/zh-Hant）。 */
+export function readSiteLocale(): Locale {
+  return siteLangToPkg(readSiteLang());
+}
+
+/**
+ * 把 <html lang> 校正为站点语言。
+ *
+ * public-pkg 的 `setLocale()` 会写 `document.documentElement.lang`，但它只认
+ * en / zh / zh-Hant 三种语言：切到日本語时 `siteLangToPkg('ja')` 得到 `'en'`，
+ * 于是岛屿更新语言后会把 i18n.js 写好的 `lang="ja"` 覆盖成 `lang="en"`
+ * （无障碍朗读与搜索引擎语言判定都因此出错）。岛屿改语言后必须调一次本函数。
+ */
+export function syncHtmlLang(): void {
+  const lang = readSiteLang();
+  const d = document.documentElement;
+  if (d.getAttribute('lang') !== lang) d.setAttribute('lang', lang);
+  if (d.getAttribute('data-lang') !== lang) d.setAttribute('data-lang', lang);
 }
 
 export function mount(rootId: string, node: ReactElement): void {
