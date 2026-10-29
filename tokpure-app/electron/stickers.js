@@ -150,6 +150,39 @@ function runFf(args, cwd, onLine) {
   });
 }
 
+/**
+ * 带进度回调的 ffmpeg 调用。
+ * 依赖 `-progress pipe:1 -nostats`：ffmpeg 会把 `frame=` 等统计逐行写到 stdout，
+ * 这里解析出已写出的帧数，回调里换算成 0-1 的完成度，供界面渲染真实进度条。
+ */
+function runFfProgress(args, cwd, onFrac) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(ffmpegMod.getFfmpegPath(), args, { cwd, windowsHide: true });
+    activeChild = child;
+    let stderr = '';
+    let pending = '';
+    child.stdout.on('data', (d) => {
+      pending += d.toString();
+      const lines = pending.split(/\r|\n/);
+      pending = lines.pop() || '';
+      for (const line of lines) {
+        const m = /^frame=(\d+)/.exec(line.trim());
+        if (m && onFrac) onFrac(Number(m[1]));
+      }
+    });
+    child.stderr.on('data', (d) => {
+      stderr += d.toString();
+      if (stderr.length > 60000) stderr = stderr.slice(-30000);
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (activeChild === child) activeChild = null;
+      if (code === 0) resolve();
+      else reject(new Error(`FFmpeg 退出码 ${code}\n${stderr.slice(-500)}`));
+    });
+  });
+}
+
 function cancel() {
   if (activeChild) {
     try { activeChild.kill('SIGKILL'); } catch (_) {}
@@ -299,16 +332,54 @@ function drawTextFilter(text, tpl, workDir) {
 }
 
 /* ---------------- 单张贴纸生成 ---------------- */
-async function renderOne(base, tpl, caption, workDir, outPath) {
+
+/** 一粘贴纸的帧数（调色板阶段用来把帧计数换算成完成度） */
+const CLIP_FRAMES = Math.round(CLIP_SEC * FPS);
+
+/**
+ * 把模板的逐帧动效预算成中间视频 mid.mp4。
+ *
+ * 为什么必须分两步：zoompan 这类逐帧滤镜若和 `split + palettegen + paletteuse`
+ * 挤在同一个 filtergraph 里，ffmpeg 的帧调度会退化成反复重算同一帧 ——
+ * 实测单模板 79~113 秒；拆成「动效先落盘 → 再单独套调色板」后约 0.36 秒。
+ * 中间件不含花字，调色板统计更准，GIF 体积也更小。
+ * 按「素材指纹目录 + 模板动效哈希」缓存，同素材重复生成不重算。
+ */
+async function buildMotion(base, tpl, workDir) {
+  const sig = crypto.createHash('md5').update(String(tpl.motion)).digest('hex').slice(0, 8);
+  const out = path.join(workDir, `mid-${tpl.id}-${sig}.mp4`);
+  if (fs.existsSync(out) && fs.statSync(out).size > 2000) return out;
+  await runFf([
+    '-v', 'error', '-y', '-i', base,
+    '-vf', tpl.motion,
+    '-an', '-r', String(FPS),
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '16',
+    '-pix_fmt', 'yuv420p', out
+  ], workDir);
+  if (!fs.existsSync(out) || fs.statSync(out).size < 2000) throw new Error('动效预渲染失败');
+  return out;
+}
+
+/**
+ * 在动效中间件上压花字并套调色板出 GIF。
+ * onFrac：调色板阶段的真实完成度（0-1，来自 ffmpeg `-progress` 的帧计数）。
+ */
+async function renderOne(base, tpl, caption, workDir, outPath, onFrac) {
+  const mid = await buildMotion(base, tpl, workDir);
   const dt = drawTextFilter(caption, tpl, workDir);
-  const chain = [tpl.motion, dt, `fps=${FPS}`].filter(Boolean).join(',');
+  const chain = [dt, `fps=${FPS}`].filter(Boolean).join(',');
   // 两段式调色板：先 palettegen 统计全片最具代表性的 96 色，再 paletteuse 套色；
   // dither 用 bayer（scale 4 偏少噪点），diff_mode=rectangle 只重绘变化区域以压体积
   const graph =
     `${chain},split[s0][s1];` +
     `[s0]palettegen=max_colors=${GIF_COLORS}:stats_mode=diff[p];` +
     '[s1][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle';
-  await runFf(['-v', 'error', '-y', '-i', base, '-vf', graph, '-loop', '0', outPath], workDir);
+  const args = ['-v', 'error', '-y'];
+  if (onFrac) args.push('-progress', 'pipe:1', '-nostats');
+  args.push('-i', mid, '-vf', graph, '-loop', '0', outPath);
+  await runFfProgress(args, workDir, (frame) => {
+    if (onFrac) onFrac(Math.max(0, Math.min(1, frame / CLIP_FRAMES)));
+  });
   if (!fs.existsSync(outPath) || fs.statSync(outPath).size < 1500) {
     throw new Error('贴纸生成失败（输出为空）');
   }
@@ -372,26 +443,44 @@ async function generate(payload, onProgress) {
   const cacheDir = path.join(workRoot(), hash);
   fs.mkdirSync(cacheDir, { recursive: true });
 
-  onProgress && onProgress({ stage: 'base', pct: 8 });
+  const emit = (p) => onProgress && onProgress(p);
+
+  // 进度分配：素材归一化占前 15%，其余 85% 按模板数均分；
+  // 每个模板内部再拆成「动效预渲染 30% + 调色板出图 70%」，让进度条连续推进而不是跳格。
+  emit({ stage: 'base', pct: 2 });
   const base = await buildBase(meta.path, meta.kind, cacheDir);
+  emit({ stage: 'base', pct: 15 });
 
   const stamp = Date.now().toString().slice(-6);
   const prefix = baseName(meta.path);
   const items = [];
-  for (let i = 0; i < ids.length; i++) {
+  const total = ids.length;
+  const span = 85 / Math.max(1, total);
+  for (let i = 0; i < total; i++) {
     const tpl = TEMPLATES.find((t) => t.id === ids[i]);
     if (!tpl) continue;
     const text = (caption && String(caption).trim()) || captionMap[tpl.id] || tpl.captions[0];
     const out = path.join(outRoot(), `${prefix}-${tpl.id}-${stamp}.gif`);
-    onProgress && onProgress({ stage: 'render', id: tpl.id, index: i + 1, total: ids.length, pct: 15 + Math.round((i / ids.length) * 80) });
+    const from = 15 + span * i;
+    emit({ stage: 'start', id: tpl.id, index: i + 1, total, pct: from });
     try {
-      await renderOne(base, tpl, text, cacheDir, out);
+      await renderOne(base, tpl, text, cacheDir, out, (frac) => {
+        emit({
+          stage: 'render',
+          id: tpl.id,
+          index: i + 1,
+          total,
+          frac: Number(frac.toFixed(3)),
+          pct: from + span * (0.3 + 0.7 * frac)
+        });
+      });
       items.push({ id: tpl.id, name: tpl.name, caption: text, file: out, ok: true });
     } catch (e) {
       items.push({ id: tpl.id, name: tpl.name, caption: text, file: '', ok: false, error: String((e && e.message) || e) });
     }
+    emit({ stage: 'item-done', id: tpl.id, index: i + 1, total, pct: from + span });
   }
-  onProgress && onProgress({ stage: 'done', pct: 100 });
+  emit({ stage: 'done', pct: 100 });
   const outputs = items.filter((x) => x.ok).map((x) => x.file);
   return { items, outputs, dir: outRoot() };
 }
