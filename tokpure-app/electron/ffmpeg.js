@@ -70,6 +70,21 @@ async function verifyFfmpeg() {
   });
 }
 
+/** 当前 ffmpeg 是否带某个编码器（结果缓存，避免每次渲染都探测） */
+const encoderCache = new Map();
+function hasEncoder(name) {
+  if (encoderCache.has(name)) return Promise.resolve(encoderCache.get(name));
+  const bin = getFfmpegPath();
+  return new Promise((resolve) => {
+    execFile(bin, ['-hide_banner', '-encoders'], SPAWN_OPTS, (err, stdout) => {
+      // 硬件编码在 Mac 上可把竖版渲染从 5 分钟压到几十秒
+      const ok = !err && String(stdout).includes(name);
+      encoderCache.set(name, ok);
+      resolve(ok);
+    });
+  });
+}
+
 function run(bin, args, onStderr) {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, SPAWN_OPTS);
@@ -119,11 +134,46 @@ async function remuxToMp4(input, output) {
   return output;
 }
 
+/* 探测媒体文件里到底有没有音轨 / 视频轨。
+   ffmpeg -i 无输出文件时必然以非 0 退出，流信息只在 stderr，所以这里单独解析。 */
+function probe(file) {
+  const bin = getFfmpegPath();
+  return new Promise((resolve) => {
+    execFile(bin, ['-hide_banner', '-i', file], SPAWN_OPTS, (err, stdout, stderr) => {
+      const text = `${stderr || ''}${stdout || ''}`;
+      const dur = text.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      resolve({
+        hasAudio: /Stream #\d+:\d+.*?: Audio:/.test(text),
+        hasVideo: /Stream #\d+:\d+.*?: Video:/.test(text),
+        duration: dur ? Number(dur[1]) * 3600 + Number(dur[2]) * 60 + Number(dur[3]) : 0
+      });
+    });
+  });
+}
+
+/* 把独立音轨并进无声视频，视频流直接 copy，不重编码。
+   音轨统一转成 AAC：TikTok 的原声轨是 mp3，mp3-in-mp4 在 QuickTime / 预览里
+   会「有音轨但播不出声」，必须转码成 AAC 才能被 macOS 原生播放器识别。 */
+async function muxAudio(video, audio, output) {
+  const bin = getFfmpegPath();
+  await run(bin, [
+    '-y', '-i', video, '-i', audio,
+    '-map', '0:v:0', '-map', '1:a:0',
+    '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-ac', '2',
+    // 原声轨常比画面短几百毫秒到几秒，apad 补静音再 -shortest，避免画面尾部被截掉
+    '-af', 'apad', '-movflags', '+faststart', '-shortest', output
+  ]);
+  return output;
+}
+
 module.exports = {
   getFfmpegPath,
   hasFfmpeg,
   verifyFfmpeg,
+  hasEncoder,
   extractAudio,
   cleanupWatermark,
-  remuxToMp4
+  remuxToMp4,
+  probe,
+  muxAudio
 };

@@ -172,6 +172,8 @@ function normalizeMobile(aweme) {
     },
     video: {
       noWatermark: dedupe(noWatermark),
+      // 移动端 play_addr 的流是音视频合轨的，网页端 bitrateInfo 的地址可能只有视频轨
+      muxed: dedupe((video.play_addr && video.play_addr.url_list) || []),
       watermarked: dedupe(watermarked),
       cover,
       dynamicCover: pickFirst(video.dynamic_cover && video.dynamic_cover.url_list),
@@ -494,4 +496,4 @@ function finalize(item, canonicalUrl, awemeId) {
   return item;
 }
 
-module.exports = { parse, extractShareUrl, extractAwemeId, normalizeUrl, isShortLink };
+module.exports = { parse, extractShareUrl, extractAwemeId, normalizeUrl, isShortLink, mobileMeta: tryMobileApi };

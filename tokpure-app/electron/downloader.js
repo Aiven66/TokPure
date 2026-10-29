@@ -177,12 +177,28 @@ class Downloader extends EventEmitter {
       // 2. choose source (prefer no-watermark)
       // TikTok returns several candidate streams; some CDN hosts reject requests with
       // HTTP 403 depending on region/anti-bot, so try them in order until one downloads.
+      let muxedList = Array.isArray(meta.video.muxed) ? meta.video.muxed : [];
+      // 网页解析出来的高清地址往往是 DASH 视频轨（没有声音），
+      // 这里再向移动端接口要一次合轨流，优先下载带音轨的地址
+      if (!muxedList.length && meta.id) {
+        try {
+          const m = await tiktok.mobileMeta(meta.id, settings);
+          muxedList = (m && m.video && m.video.muxed) || [];
+          if (muxedList.length) {
+            this.update(task, { stage: '解析中 · 已获取带音轨线路' });
+          }
+        } catch (_) {
+          /* 移动端被限流时继续用网页地址，下载后再补齐音轨 */
+        }
+      }
       const candidates = dedupeUrls([
+        ...muxedList,
         ...(meta.video.noWatermark || []),
         ...(meta.video.watermarked || [])
       ]);
       if (!candidates.length) throw new Error('未找到可下载的视频地址');
-      const noWatermarkSet = new Set(meta.video.noWatermark || []);
+      // 合轨流本身也是无水印源，不能因为不在原列表里就被当成带水印
+      const noWatermarkSet = new Set([...(meta.video.noWatermark || []), ...muxedList]);
 
       const base = sanitize(`${author} - ${title}`) || `tiktok_${meta.id}`;
       const rawPath = uniquePath(dir, `${base} [${meta.id || 'na'}]`, '.mp4');
@@ -227,6 +243,22 @@ class Downloader extends EventEmitter {
 
       let finalPath = rawPath;
 
+      // 3.5 音轨校验：网页端返回的高清地址可能只有视频轨（HEVC/AV1 DASH），
+      // 直接落盘就是静音成片，所以下载后必须验证，缺音轨立刻补齐。
+      if (ffmpeg.hasFfmpeg()) {
+        const info = await ffmpeg.probe(rawPath);
+        if (!info.hasAudio) {
+          this.update(task, { status: 'downloading', stage: '补齐音轨' });
+          const fixed = await this._repairAudio(task, meta, settings, rawPath, dir, base, controller, proxy);
+          if (fixed) {
+            try { fs.unlinkSync(rawPath); } catch (_) {}
+            finalPath = fixed;
+          } else {
+            this.update(task, { note: '该视频线路不含音轨，且补齐失败，成片可能没有声音' });
+          }
+        }
+      }
+
       // 4. local watermark cleanup fallback
       const needCleanup = (usedWatermark || settings.removeLogo) && ffmpeg.hasFfmpeg();
       if (needCleanup) {
@@ -260,6 +292,8 @@ class Downloader extends EventEmitter {
       // 6. mp3 extraction
       if (task.options.extraction && ffmpeg.hasFfmpeg()) {
         try {
+          const info = await ffmpeg.probe(finalPath);
+          if (!info.hasAudio) throw new Error('视频不含音轨');
           this.update(task, { status: 'extracting', stage: '提取 MP3 音频' });
           const audioPath = uniquePath(dir, `${base} [${meta.id || 'na'}]`, '.mp3');
           await ffmpeg.extractAudio(finalPath, audioPath, { bitrate: '320k' });
@@ -284,6 +318,58 @@ class Downloader extends EventEmitter {
       } else {
         this.update(task, { status: 'error', stage: '失败', error: e.message || String(e), finishedAt: Date.now() });
       }
+    }
+  }
+
+  /* 缺音轨时补齐：优先取移动端合轨流里的音轨（原视频画面不重编码、画质不降），
+     拿不到再退回音乐原声轨。返回补齐后的文件路径，失败返回 null。 */
+  async _repairAudio(task, meta, settings, videoPath, dir, base, controller, proxy) {
+    const tmp = path.join(dir, `.${base}.fix`);
+    fs.mkdirSync(tmp, { recursive: true });
+    const headers = {
+      'User-Agent': net.resolveUA(settings),
+      Referer: 'https://www.tiktok.com/'
+    };
+    const out = uniquePath(dir, `${base} [${meta.id || 'na'}] - audio`, '.mp4');
+    try {
+      const muxed = [];
+      let mobile = null;
+      if (meta.id) {
+        try {
+          const m = await tiktok.mobileMeta(meta.id, settings);
+          mobile = m || null;
+          if (m && m.video) {
+            [...(m.video.muxed || []), ...(m.video.noWatermark || [])].forEach((u) => u && muxed.push(u));
+          }
+        } catch (_) {
+          /* 接口限流时继续尝试音乐轨 */
+        }
+      }
+      for (const u of dedupeUrls(muxed)) {
+        if (controller.signal.aborted) throw new Error('已取消');
+        const src = path.join(tmp, 'muxed.mp4');
+        try {
+          await net.downloadToFile(u, src, { proxy, headers, abortSignal: controller.signal });
+          if (!(await ffmpeg.probe(src)).hasAudio) continue;
+          await ffmpeg.muxAudio(videoPath, src, out);
+          if ((await ffmpeg.probe(out)).hasAudio) return out;
+        } catch (_) {
+          /* 换下一个地址 */
+        }
+      }
+      // 只接受「原声」轨：TikTok 的 music 是单独的音轨，配乐类视频并进去
+      // 会丢掉人声，所以有 original sound 标记才敢用
+      const music = (mobile && mobile.music) || meta.music || {};
+      const musicUrl = music.url || (meta.music && meta.music.url) || '';
+      if (musicUrl && /original sound/i.test(music.title || '')) {
+        const audio = path.join(tmp, 'music.m4a');
+        await net.downloadToFile(musicUrl, audio, { proxy, headers, abortSignal: controller.signal });
+        await ffmpeg.muxAudio(videoPath, audio, out);
+        if ((await ffmpeg.probe(out)).hasAudio) return out;
+      }
+      return null;
+    } finally {
+      try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (_) {}
     }
   }
 
