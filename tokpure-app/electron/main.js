@@ -473,6 +473,24 @@ function registerIpc() {
     const proxy = networkSettings().proxy;
     return localize.start(payload || {}, proxy, (p) => sendToRenderer('loc:progress', p));
   });
+
+  // ===================== AI多语口播（原声克隆 + 口型同步） =====================
+  ipcMain.handle('oral:status', () => localize.oralStatus());
+  // 依赖探测要起 python，单独走一次「深度」查询，避免首屏等待
+  ipcMain.handle('oral:statusDeep', () => localize.oralStatus({ deep: true }));
+  ipcMain.handle('oral:install', async () => {
+    await localize.ensureOralReady(networkSettings().proxy, (p) => sendToRenderer('oral:progress', p), 0, 100);
+    return localize.oralStatus();
+  });
+  ipcMain.handle('oral:pickFile', () => localize.pickFile(mainWindow, { title: '选择口播短视频' }));
+  ipcMain.handle('oral:openPath', (_e, p) => localize.describe(p));
+  ipcMain.handle('oral:reveal', (_e, p) => localize.reveal(p));
+  ipcMain.handle('oral:open', (_e, p) => localize.openFile(p));
+  ipcMain.handle('oral:cancel', () => localize.cancel());
+  ipcMain.handle('oral:start', (_e, payload) => {
+    const proxy = networkSettings().proxy;
+    return localize.startOral(payload || {}, proxy, (p) => sendToRenderer('oral:progress', p));
+  });
 }
 
 app.whenReady().then(async () => {

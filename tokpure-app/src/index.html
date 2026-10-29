@@ -41,6 +41,10 @@
             <span class="nav-left"><span data-ic="languages"></span><span class="nav-label">AI多语切片</span></span>
             <span class="nav-badge">NEW</span>
           </a>
+          <a class="nav-item" data-view="oralcast" aria-label="AI多语口播">
+            <span class="nav-left"><span data-ic="user"></span><span class="nav-label">AI多语口播</span></span>
+            <span class="nav-badge">NEW</span>
+          </a>
           <a class="nav-item" data-view="clips" aria-label="AI 批量切片">
             <span class="nav-left"><span data-ic="scissors"></span><span class="nav-label">AI 批量切片</span></span>
             <span class="nav-badge">NEW</span>
@@ -725,6 +729,157 @@
           </div>
         </section>
 
+        <!-- ============ VIEW: ORALCAST (AI多语口播) ============ -->
+        <section class="view" id="view-oralcast">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <div class="gap-row">
+                  <span class="card-title"><span data-ic="user" data-size="17" style="color:var(--secondary)"></span>AI多语口播</span>
+                  <span class="pill square">原声克隆 · 音色不变</span>
+                  <span class="pill emerald square">口型对齐目标语言</span>
+                </div>
+                <p class="card-sub">上传一条口播短视频，选目标语言：本地识别原话、用原片说话人的嗓音朗读译文，再把嘴型逐帧重绘成与译文同步。景别、手势、背景与头像动作原样保留，只换语言和嘴型。</p>
+              </div>
+              <button class="btn primary" id="oc-pick"><span data-ic="film" data-size="16"></span>选择口播短视频</button>
+            </div>
+            <div class="gap-row" id="oc-filebar" style="margin-top:10px;display:none">
+              <span class="pill square" id="oc-file-name">—</span>
+              <span class="muted mono" id="oc-file-meta" style="font-size:11px"></span>
+              <button class="btn tiny ghost" id="oc-clear"><span data-ic="x" data-size="13"></span>移除</button>
+            </div>
+            <div class="lc-vhint muted" id="oc-drag-hint" style="margin-top:10px">支持 MP4 / MOV / WEBM / MKV，也可以直接把视频拖进来；建议 1 分钟以内的正面单人画面（最长 2 分钟）。</div>
+          </div>
+
+          <div class="two-col">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="card">
+                <div class="card-title" style="font-size:13px;margin-bottom:10px"><span data-ic="languages" data-size="16" style="color:var(--secondary)"></span>语言与口型</div>
+                <div class="grid-2">
+                  <div>
+                    <span class="lbl">源语言</span>
+                    <div class="field">
+                      <span data-ic="globe" data-size="15"></span>
+                      <select id="oc-srclang" class="lc-select">
+                        <option value="auto">自动检测</option>
+                        <option value="zh">中文</option>
+                        <option value="en">English</option>
+                        <option value="ja">日本語</option>
+                        <option value="ko">한국어</option>
+                        <option value="es">Español</option>
+                        <option value="pt">Português</option>
+                        <option value="fr">Français</option>
+                        <option value="de">Deutsch</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <span class="lbl">配音音色</span>
+                    <div class="field">
+                      <span data-ic="shieldCheck" data-size="15"></span>
+                      <span class="lc-select" style="padding-top:2px">原声克隆（本地引擎 · 音色不变）</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="margin-top:12px">
+                  <span class="lbl">翻译模型档位</span>
+                  <div class="field">
+                    <span data-ic="sparkles" data-size="15"></span>
+                    <select id="oc-tmodel" class="lc-select">
+                      <option value="qwen-translate" selected>高质量 1.5B · 约 1.1GB（推荐）</option>
+                      <option value="qwen-translate-lite">极速 0.5B · 约 400MB（质量有限）</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style="margin-top:14px">
+                  <div class="gap-row" style="justify-content:space-between">
+                    <span class="lbl">目标语言（可多选，逐条产出）</span>
+                    <span class="gap-row">
+                      <button class="btn tiny ghost" id="oc-all">全选 8 种</button>
+                      <button class="btn tiny ghost" id="oc-none">清空</button>
+                    </span>
+                  </div>
+                  <div class="lc-langs" id="oc-langs"></div>
+                </div>
+
+                <div style="margin-top:14px">
+                  <div class="gap-row" style="justify-content:space-between">
+                    <span class="lbl" style="margin:0">口型同步</span>
+                    <label class="cbx"><input type="checkbox" id="oc-lip" checked /><span class="box"><span data-ic="check" data-size="11"></span></span>逐帧重绘嘴部，与目标语言语音对齐</label>
+                  </div>
+                  <div class="lc-vhint muted" style="margin-top:6px">口型同步是成片的关键：配音定稿后，模型逐帧读「配音的频谱」重画嘴型。本机 M 芯片实测约 5 倍实时（10 秒片约 50 秒），检测不到人脸时自动降级为配音版并提示。关掉后只换配音与字幕、嘴型保持原样。</div>
+                </div>
+
+                <div style="margin-top:12px">
+                  <div class="gap-row" style="justify-content:space-between">
+                    <span class="lbl" style="margin:0">背景音乐</span>
+                    <label class="cbx"><input type="checkbox" id="oc-bgm" checked /><span class="box"><span data-ic="check" data-size="11"></span></span>保留原片背景音乐（自动去掉原语言人声）</label>
+                  </div>
+                </div>
+
+                <div class="gap-row" style="margin-top:14px">
+                  <span class="lbl" style="margin:0">字幕颜色</span>
+                  <span class="gap-row" id="oc-colors">
+                    <button class="lc-swatch sel" data-color="#FFFFFF" style="background:#FFFFFF" title="白色"></button>
+                    <button class="lc-swatch" data-color="#FFDE33" style="background:#FFDE33" title="黄色"></button>
+                    <button class="lc-swatch" data-color="#3AE5FF" style="background:#3AE5FF" title="青色"></button>
+                    <button class="lc-swatch" data-color="#4DFF7C" style="background:#4DFF7C" title="绿色"></button>
+                  </span>
+                </div>
+
+                <div class="notice" style="margin-top:14px"><span data-ic="info" data-size="15"></span><span>全流程离线：识别（Whisper.cpp）、翻译（Llama.cpp）、原声克隆（Chatterbox）、口型重绘（Wav2Lip）都在本机跑，不上传任何音视频。首次会下载口型权重（约 416MB，仅一次）。</span></div>
+
+                <div class="lc-vhint muted" id="oc-est" style="margin-top:8px"></div>
+
+                <div class="bar" style="margin-top:10px;padding-bottom:0;border-bottom:0">
+                  <div class="left">
+                    <button class="btn primary" id="oc-run" disabled><span data-ic="sparkles" data-size="16"></span>开始多语口播</button>
+                    <button class="btn hidden" id="oc-cancel"><span data-ic="stop" data-size="15"></span>停止</button>
+                    <button class="btn ghost" id="oc-goto-engine"><span data-ic="box" data-size="15"></span>管理引擎</button>
+                  </div>
+                </div>
+
+                <div id="oc-progress" class="hidden" style="margin-top:12px">
+                  <div class="gap-row" style="justify-content:space-between;margin-bottom:6px">
+                    <span class="muted" id="oc-stage" style="font-size:11px">准备中…</span>
+                    <span class="muted mono" id="oc-pct" style="font-size:11px">0%</span>
+                  </div>
+                  <div class="meter"><i id="oc-bar" style="width:0%"></i></div>
+                </div>
+
+                <div class="lc-engine" id="oc-engine"></div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="card">
+                <div class="card-title" style="font-size:13px;margin-bottom:10px"><span data-ic="queue" data-size="16" style="color:var(--secondary)"></span>产出队列</div>
+                <div class="lc-jobs" id="oc-jobs">
+                  <div class="lc-empty muted">选择目标语言后，每个语种会生成一条口型对齐的 MP4，并附带同名 SRT。</div>
+                </div>
+              </div>
+              <div class="notice"><span data-ic="shieldCheck" data-size="15"></span><span>口型重绘只改人脸区域，头部晃动、手势与背景全部来自原片。</span></div>
+            </div>
+          </div>
+
+          <div class="card" id="oc-results-card">
+            <div class="card-head" style="margin-bottom:10px">
+              <div class="gap-row">
+                <span class="card-title" style="font-size:13px"><span data-ic="film" data-size="16" style="color:var(--secondary)"></span>口播结果</span>
+                <span class="pill square" id="oc-count">0</span>
+              </div>
+              <div class="gap-row">
+                <button class="btn small" id="oc-open-folder" disabled><span data-ic="folderOpen" data-size="14"></span>打开输出文件夹</button>
+              </div>
+            </div>
+            <div class="lc-results" id="oc-results">
+              <div class="lc-empty muted">还没有产出。上传一条口播短视频，选择目标语言后点击「开始多语口播」。</div>
+            </div>
+          </div>
+        </section>
+
         <!-- ============ VIEW: CLIPS (v2.6 AI 批量切片) ============ -->
         <section class="view" id="view-clips">
           <div class="card">
@@ -1283,6 +1438,7 @@
   <script src="i18n/ja.js"></script>
   <script src="i18n/runtime.js"></script>
   <script src="localize.js"></script>
+  <script src="oralcast.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

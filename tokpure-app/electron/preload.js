@@ -130,5 +130,17 @@ contextBridge.exposeInMainWorld('tokpure', {
     start: (payload) => invoke('loc:start', payload),
     cancel: () => invoke('loc:cancel'),
     onProgress: (cb) => ipcRenderer.on('loc:progress', (_e, p) => cb(p))
+  },
+  oral: {
+    status: () => invoke('oral:status'),
+    statusDeep: () => invoke('oral:statusDeep'),
+    install: () => invoke('oral:install'),
+    pickFile: () => invoke('oral:pickFile'),
+    openPath: (p) => invoke('oral:openPath', p),
+    reveal: (p) => invoke('oral:reveal', p),
+    open: (p) => invoke('oral:open', p),
+    start: (payload) => invoke('oral:start', payload),
+    cancel: () => invoke('oral:cancel'),
+    onProgress: (cb) => ipcRenderer.on('oral:progress', (_e, p) => cb(p))
   }
 });

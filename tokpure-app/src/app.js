@@ -121,6 +121,7 @@ function switchView(name) {
   }
   if (name === 'stickers') initStickers();
   if (name === 'localize' && window.LingoCast) window.LingoCast.init();
+  if (name === 'oralcast' && window.OralCast) window.OralCast.init();
 }
 
 /* ---------------- sidebar collapse / expand ----------------
