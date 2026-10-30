@@ -218,7 +218,9 @@ function sync({ video, audio, out, fps, onProgress, onChild } = {}) {
     '--ffmpeg', ffmpegMod.getFfmpegPath(),
     '--fps', String(fps || 25),
     '--batch', '16',
-    '--crf', '19'
+    // 口型重绘是整条链路里最容易糊的一环：源片、口型、成片要各编码一次，
+    // CRF 放到 17 尽量少丢高频细节，避免嘴部被连续压缩磨平
+    '--crf', '17'
   ];
 
   const child = spawn(py, args, { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });

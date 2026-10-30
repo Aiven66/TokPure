@@ -2063,7 +2063,9 @@ async function prepareOralVideo(source, duration, fps, dir, emit, from, to) {
     '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p',
     '-r', String(fps),
     '-an',
-    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
+    // 这一份是口型模型的输入：嘴部细节要在这里就冻住，压缩过狠会让高频细节
+    // 在重绘阶段被当成「原片纹理」回填，等于把压缩噪点放大到嘴上
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16',
     '-movflags', '+faststart',
     out
   ], (line) => {
@@ -2113,9 +2115,11 @@ async function renderOral({ input, dir, duration, narration, bgm, srtText, srtNa
     aChain = `[1:a]aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=0:${D},asetpts=PTS-STARTPTS,alimiter=limit=0.95:attack=2:level=false[a]`;
   }
   const hw = await ffmpegMod.hasEncoder('h264_videotoolbox');
+  // 口播成片是「人像特写」，嘴部的高频一旦被压缩磨平就回到那个糊斑问题，
+  // 所以这里比竖版切片给更高的码率；回退的 libx264 也从 crf20 提到 18
   const videoArgs = (useHw) => (useHw
-    ? ['-c:v', 'h264_videotoolbox', '-b:v', '10M', '-maxrate', '14M', '-bufsize', '28M', '-profile:v', 'high']
-    : ['-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast']);
+    ? ['-c:v', 'h264_videotoolbox', '-b:v', '14M', '-maxrate', '18M', '-bufsize', '36M', '-profile:v', 'high']
+    : ['-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast']);
   const build = (useHw) => [
     '-y', '-i', input,
     ...(narration ? ['-i', narration] : []),

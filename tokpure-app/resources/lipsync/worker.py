@@ -7,7 +7,10 @@
 设计要点：
 1. 全程离线：模型权重与代码都在本机，进程内不发任何网络请求；
 2. 音频驱动先于口型：配音定稿后再逐帧重绘嘴部，绝不边合成边对齐；
-3. 只重绘「人脸区域」并羽化回贴，头部晃动、手势、景别全部保留；
+3. 只重绘「嘴部椭圆」并羽化回贴：96×96 的重绘结果只覆盖嘴唇与下巴上缘，
+   脸颊、眼镜、发际线等全部保留原片像素；回贴前先对 96×96 结果做 Richardson–Lucy
+   反卷积去掉模型自带的糊，再用「低频对色 + 高频细节回填 + 轻度 USM」补回
+   皮肤与唇纹，避免出现大片模糊补丁；头部晃动、手势、景别全部保留；
 4. 人脸检测用 OpenCV 的级联分类器（Apache-2.0），逐帧结果做 5 帧滑动平均，
    避免检测框抖动导致嘴部闪烁；
 5. 视频解码/编码都走 ffmpeg 管道（bgr24 rawvideo），不依赖 ImageIO 之类的额外轮子。
@@ -236,16 +239,90 @@ class FaceTracker:
         return sm
 
 
-def feather_mask(w, h):
-    """回贴用的羽化蒙版：边缘 6% 线性过渡，避免嘴部四周出现硬边框"""
-    f = max(2, int(min(w, h) * 0.06))
-    ax = np.ones(w, np.float32)
-    ay = np.ones(h, np.float32)
-    ax[:f] = np.linspace(0.0, 1.0, f)
-    ax[-f:] = np.linspace(1.0, 0.0, f)
-    ay[:f] = np.linspace(0.0, 1.0, f)
-    ay[-f:] = np.linspace(1.0, 0.0, f)
-    return ay[:, None] * ax[None, :]
+_blend_cache = {}
+
+
+def mouth_masks(bw, bh):
+    """回贴蒙版：只覆盖嘴部与下巴上缘，其余脸皮保持原片清晰度。
+
+    之前用整张人脸框做羽化回贴，96×96 的重绘结果被放大 4~5 倍铺满下半脸，
+    下巴、腮帮、眼镜下沿会变成一大块「糊斑」。这里收成嘴部椭圆：
+    - 外椭圆：羽化很宽（sigma≈9% 短边），保证与原文理无接缝；
+    - 内椭圆（口腔开口）：细节回填权重低一些，避免旧牙齿/旧唇线重影。
+    """
+    key = (bw, bh)
+    if key in _blend_cache:
+        return _blend_cache[key]
+    import cv2
+    out = np.zeros((bh, bw), np.float32)
+    inner = np.zeros((bh, bw), np.float32)
+    cv2.ellipse(out, (int(bw * 0.50), int(bh * 0.79)),
+                (max(2, int(bw * 0.29)), max(2, int(bh * 0.19))), 0, 0, 360, 1.0, -1)
+    cv2.ellipse(inner, (int(bw * 0.50), int(bh * 0.80)),
+                (max(2, int(bw * 0.15)), max(2, int(bh * 0.08))), 0, 0, 360, 1.0, -1)
+    sigma = max(1.0, min(bw, bh) * 0.09)
+    out = cv2.GaussianBlur(out, (0, 0), sigma)
+    if out.max() > 0:
+        out /= out.max()
+    inner = cv2.GaussianBlur(inner, (0, 0), max(1.0, min(bw, bh) * 0.03))
+    if inner.max() > 0:
+        inner /= inner.max()
+    # 细节回填系数：嘴唇周围 0.62，口腔内部 0.30。
+    # 实测口径：口内也要留一部分高频，否则模型 96×96 的牙齿会被放大成一块平滑深色，
+    # 看起来就是「嘴部糊成一片」；外圈权重偏高才能把唇线的锐度找回来。
+    detail = 0.30 + (0.62 - 0.30) * (1.0 - inner[:, :, None])
+    mask = out[:, :, None]
+    _blend_cache[key] = (mask, detail)
+    return _blend_cache[key]
+
+
+def rl_deconv(img, sigma=1.1, iters=6):
+    """Richardson–Lucy 反卷积，专治「模型自带的糊」。
+
+    Wav2Lip 输出的 96×96 本身就被高斯模糊过（1~1.5px），直接 LANCZOS 放大 4~8 倍
+    就是用户看到的那片虚化。放大之前先按 PSF 反解一次，唇线/牙缝才会真正变实；
+    这比在大图上拉 USM 干净得多——USM 只是提对比度，糊的边还是糊的，还会留光晕。
+    """
+    import cv2
+    if sigma <= 0 or iters <= 0:
+        return img.astype(np.float32)
+    k = max(3, int(sigma * 4) | 1)
+    ax = cv2.getGaussianKernel(k, sigma).astype(np.float32)
+    psf = np.outer(ax, ax)
+    psf /= psf.sum()
+    psf_t = psf[::-1, ::-1]
+    obs = np.clip(img.astype(np.float32), 1e-3, 255.0)
+    est = obs.copy()
+    for _ in range(int(iters)):
+        conv = cv2.filter2D(est, -1, psf, borderType=cv2.BORDER_REPLICATE)
+        ratio = cv2.filter2D(obs / np.maximum(conv, 1e-3), -1, psf_t, borderType=cv2.BORDER_REPLICATE)
+        est = np.clip(est * ratio, 1e-3, 255.0)
+    return est
+
+
+def composite_mouth(region, gen, mask, detail):
+    """把 96×96 的重绘结果贴回原帧：反卷积去糊 + 低频对色 + 高频细节回填 + 轻度 USM"""
+    import cv2
+    bwf = region.astype(np.float32)
+    bh, bw = bwf.shape[:2]
+    # 0) 先在小图上反卷积：糊是 96×96 那一次缩放造成的，放大到 200~600px 之后再
+    #    用 sigma≈1 的 USM 只能锐化 1px 的边，救不回被放大 4~8 倍的嘴
+    gen = rl_deconv(gen, 1.1, 6)
+    gen = cv2.resize(gen, (bw, bh), interpolation=cv2.INTER_LANCZOS4).astype(np.float32)
+    # 1) 低频（颜色/亮度）对齐：重绘裁片的肤色、光照向原片靠拢，避免贴块色差
+    sigma = max(2.0, min(bw, bh) / 80.0)
+    low_r = cv2.GaussianBlur(bwf, (0, 0), sigma)
+    low_g = cv2.GaussianBlur(gen, (0, 0), sigma)
+    gen = gen + (low_r - low_g)
+    # 2) 高频细节回填：把原片皮肤/唇纹的锐度补回低分辨率重绘结果。
+    #    必须限幅：旧唇线、牙缝、眼镜框都是强边，整段回填会在嘴上留下深色横带。
+    hi = np.clip(bwf - low_r, -22.0, 22.0)
+    gen = gen + hi * detail
+    # 3) 轻度 USM 收一下放大后的软边（半径小、幅度小，只补微对比，不留光晕）
+    soft = cv2.GaussianBlur(gen, (0, 0), 1.2)
+    gen = gen + 0.35 * (gen - soft)
+    blended = bwf * (1.0 - mask) + gen * mask
+    return np.clip(blended, 0, 255).astype(np.uint8)
 
 
 def main():
@@ -347,7 +424,10 @@ def main():
                 x1, y1 = max(0, x1), max(0, y1)
                 x2, y2 = min(w, max(x1 + 8, x2)), min(h, max(y1 + 8, y2))
                 crop = frames[i][y1:y2, x1:x2]
-                crop = cv2.resize(crop, (96, 96))
+                # 缩小用 INTER_AREA 抗锯齿，放大用 LANCZOS4 保边；之前一律 LINEAR，
+                # 大脸裁片缩到 96 时会出现明显锯齿，回贴放大后又变成一团糊
+                interp = cv2.INTER_AREA if (x2 - x1) > 96 or (y2 - y1) > 96 else cv2.INTER_LANCZOS4
+                crop = cv2.resize(crop, (96, 96), interpolation=interp)
                 masked = crop.copy()
                 masked[48:] = 0
                 crops.append(np.concatenate((masked, crop), axis=2) / 255.0)
@@ -373,13 +453,12 @@ def main():
             out = np.clip(out * 255.0, 0, 255).astype(np.uint8)
             for j, (x1, y1, x2, y2) in enumerate(metas):
                 bw, bh = x2 - x1, y2 - y1
-                mouth = cv2.resize(out[j], (bw, bh), interpolation=cv2.INTER_CUBIC)
                 key = (bw, bh)
                 if key not in masks:
-                    masks[key] = feather_mask(bw, bh)[:, :, None]
+                    masks[key] = mouth_masks(bw, bh)
+                mask, detail = masks[key]
                 base = frames[start + j]
-                blended = base[y1:y2, x1:x2].astype(np.float32) * (1 - masks[key]) + mouth.astype(np.float32) * masks[key]
-                base[y1:y2, x1:x2] = np.clip(blended, 0, 255).astype(np.uint8)
+                base[y1:y2, x1:x2] = composite_mouth(base[y1:y2, x1:x2], out[j], mask, detail)
                 writer.write(base)
             done = min(total, end)
             emit(stage='infer', percent=25 + int(74 * done / max(1, total)),
