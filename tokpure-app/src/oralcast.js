@@ -180,6 +180,7 @@
       row('声音克隆', !!(s.engine && s.python), s.engine ? 'Chatterbox · 本地离线' : '需在「桌面引擎」安装「本地声音克隆」'),
       row('口型依赖', !!s.deps, depsPending ? '正在探测 OpenCV 依赖' : 'OpenCV 人脸检测 · 复用克隆引擎', depsPending),
       row('口型模型', !!s.weights, s.weights ? 'Wav2Lip GAN · 96×96' : '首次约 416MB，仅一次'),
+      row('嘴部细节增强', !!s.sr, s.sr ? 'Real-ESRGAN x4 · 唇线/牙缝超分' : '首次约 64MB，仅一次'),
       row('推理脚本', !!s.script, s.script ? '本地 worker.py' : '客户端文件缺失，请重新安装')
     ].join('');
   }

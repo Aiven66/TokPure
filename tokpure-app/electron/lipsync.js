@@ -29,6 +29,16 @@ const MODEL_SOURCES = [
   'https://huggingface.co/camenduru/Wav2Lip/resolve/main/checkpoints/wav2lip_gan.pth',
   'https://hf-mirror.com/camenduru/Wav2Lip/resolve/main/checkpoints/wav2lip_gan.pth'
 ];
+/* 嘴部细节增强（Real-ESRGAN x4）：
+   口型模型的 96×96 里嘴只有约 34 像素，直接放大到 200~500px 必然发蜡、唇线发虚、
+   牙齿糊成一片。回贴前先用它把嘴部窗口超分一次，唇线、牙缝、皮肤纹理才真正立起来。
+   67MB，随口型权重一起装，装不上也只是退回插值放大，不影响出片。 */
+const SR_BYTES = 67040989;
+const SR_SOURCES = [
+  'https://hf-mirror.com/ai-forever/Real-ESRGAN/resolve/main/RealESRGAN_x4.pth',
+  'https://huggingface.co/ai-forever/Real-ESRGAN/resolve/main/RealESRGAN_x4.pth',
+  'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth'
+];
 // OpenCV 只用来做人脸检测：锁定与 chatterbox 兼容的版本，绝不把 numpy 升到 2.x
 const PIP_PKGS = ['numpy==1.26.4', 'opencv-python-headless==4.10.0.84'];
 const IDLE_TIMEOUT = 300000;
@@ -42,6 +52,19 @@ function engineRoot() {
 
 function weightsPath() {
   return path.join(engineRoot(), 'models', 'wav2lip_gan.pth');
+}
+
+function srPath() {
+  return path.join(engineRoot(), 'models', 'realesr_x4.pth');
+}
+
+/** 超分权重是「增强项」：没有就退回插值放大，绝不能让整条口播任务失败 */
+function srReady() {
+  try {
+    return fs.statSync(srPath()).size > 55 * 1024 * 1024;
+  } catch (_) {
+    return false;
+  }
 }
 
 function scriptPath() {
@@ -98,6 +121,7 @@ function status() {
     // null = 还没探测过（探测要起 python，约数秒），界面据此显示「检测中」
     deps: depsCache,
     weights: modelReady(),
+    sr: srReady(),
     script: fs.existsSync(scriptPath()),
     bytes: modelReady() ? MODEL_BYTES : 0,
     file: weightsPath()
@@ -185,7 +209,45 @@ async function ensureReady({ proxy, onProgress, onChild } = {}) {
   if (!pythonReady()) throw new Error('口型引擎需要「本地声音克隆」的 Python 环境，请先在桌面引擎安装它');
   await ensureDeps(proxy, onProgress);
   await ensureWeights({ proxy, onProgress, onChild });
+  await ensureSR({ proxy, onProgress, onChild }).catch(() => false);
   return true;
+}
+
+/** 嘴部超分权重：失败只降级（退回插值放大），不阻断任务 */
+async function ensureSR({ proxy, onProgress, onChild } = {}) {
+  if (srReady()) return srPath();
+  const dest = srPath();
+  const tmp = `${dest}.part`;
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const attempt = async (i, lastErr) => {
+    if (i >= SR_SOURCES.length) throw lastErr || new Error('嘴部细节增强模型下载失败');
+    const url = SR_SOURCES[i];
+    try {
+      const ctrl = new AbortController();
+      if (typeof onChild === 'function') onChild(ctrl);
+      if (onProgress) onProgress({ stage: '下载嘴部细节增强模型（约 64MB，仅一次）', percent: 0 });
+      await net.downloadToFile(url, tmp, {
+        proxy,
+        timeout: 30000,
+        abortSignal: ctrl.signal,
+        onProgress: (got, total) => {
+          const t = total || SR_BYTES;
+          if (onProgress) onProgress({ stage: '下载嘴部细节增强模型', percent: Math.min(99, Math.round((got / t) * 100)) });
+        }
+      });
+      const size = fs.statSync(tmp).size;
+      // 三个来源的字节数略有出入（同一架构的不同训练产物），只校验「够大」即可，
+      // 真正的合法性由 worker 里的 load_state_dict 把关
+      if (size < 55 * 1024 * 1024) throw new Error('嘴部细节增强模型下载不完整，请重试');
+      fs.renameSync(tmp, dest);
+      return dest;
+    } catch (e) {
+      try { fs.unlinkSync(tmp); } catch (_) {}
+      if (/已取消/.test(String((e && e.message) || e))) throw e;
+      return attempt(i + 1, e);
+    }
+  };
+  return attempt(0, null);
 }
 
 /* ---------------- 推理 ---------------- */
@@ -222,6 +284,8 @@ function sync({ video, audio, out, fps, onProgress, onChild } = {}) {
     // CRF 放到 17 尽量少丢高频细节，避免嘴部被连续压缩磨平
     '--crf', '17'
   ];
+  // 有超分权重就让 worker 先给嘴部窗口超分再回贴（这是「不发蜡」的关键）
+  if (srReady()) args.push('--sr-weights', srPath());
 
   const child = spawn(py, args, { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   activeChild = child;
@@ -292,9 +356,12 @@ module.exports = {
   statusAsync,
   ensureReady,
   ensureWeights,
+  ensureSR,
   ensureDeps,
   sync,
   cancel,
   weightsPath,
+  srPath,
+  srReady,
   engineRoot
 };

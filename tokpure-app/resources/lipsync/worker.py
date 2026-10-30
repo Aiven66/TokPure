@@ -8,12 +8,15 @@
 1. 全程离线：模型权重与代码都在本机，进程内不发任何网络请求；
 2. 音频驱动先于口型：配音定稿后再逐帧重绘嘴部，绝不边合成边对齐；
 3. 只重绘「嘴部椭圆」并羽化回贴：96×96 的重绘结果只覆盖嘴唇与下巴上缘，
-   脸颊、眼镜、发际线等全部保留原片像素；回贴前先对 96×96 结果做 Richardson–Lucy
-   反卷积去掉模型自带的糊，再用「低频对色 + 高频细节回填 + 轻度 USM」补回
-   皮肤与唇纹，避免出现大片模糊补丁；头部晃动、手势、景别全部保留；
-4. 人脸检测用 OpenCV 的级联分类器（Apache-2.0），逐帧结果做 5 帧滑动平均，
+   脸颊、眼镜、发际线等全部保留原片像素；
+4. 嘴部先超分再回贴（关键）：96×96 里嘴只占约 34 像素，直接插值放大到 200~500px
+   必然是「发蜡、唇线发虚、牙齿糊成一片」。回贴前用 Real-ESRGAN x4 只对嘴部窗口做
+   一次超分，把唇线、牙缝、皮肤纹理真正生成出来，再做「低频对色 + 轻量高频回填」；
+   超分权重缺失时自动退回「反卷积 + 插值」的老路径（宁可慢，不中断）；
+   头部晃动、手势、景别全部保留；
+5. 人脸检测用 OpenCV 的级联分类器（Apache-2.0），逐帧结果做 5 帧滑动平均，
    避免检测框抖动导致嘴部闪烁；
-5. 视频解码/编码都走 ffmpeg 管道（bgr24 rawvideo），不依赖 ImageIO 之类的额外轮子。
+6. 视频解码/编码都走 ffmpeg 管道（bgr24 rawvideo），不依赖 ImageIO 之类的额外轮子。
 
 调试约定：进度与分析信息以 `@@PROG {json}` 单行写 stdout，其余日志写 stderr。
 """
@@ -267,10 +270,11 @@ def mouth_masks(bw, bh):
     inner = cv2.GaussianBlur(inner, (0, 0), max(1.0, min(bw, bh) * 0.03))
     if inner.max() > 0:
         inner /= inner.max()
-    # 细节回填系数：嘴唇周围 0.62，口腔内部 0.30。
-    # 实测口径：口内也要留一部分高频，否则模型 96×96 的牙齿会被放大成一块平滑深色，
-    # 看起来就是「嘴部糊成一片」；外圈权重偏高才能把唇线的锐度找回来。
-    detail = 0.30 + (0.62 - 0.30) * (1.0 - inner[:, :, None])
+    # 细节回填系数：嘴唇周围 0.88，口腔内部 0.35。
+    # 外圈必须接近 1.0：皮肤的高频（毛孔、胡渣、光影粗糙感）一旦被 96×96 的重绘结果
+    # 顶掉，嘴周就会出现一圈「发亮、发蜡」的平滑斑——这正是用户反复看到的嘴部虚化。
+    # 口腔内部略低，避免旧牙齿把新嘴型画出重影。
+    detail = 0.35 + (0.88 - 0.35) * (1.0 - inner[:, :, None])
     mask = out[:, :, None]
     _blend_cache[key] = (mask, detail)
     return _blend_cache[key]
@@ -300,29 +304,118 @@ def rl_deconv(img, sigma=1.1, iters=6):
     return est
 
 
-def composite_mouth(region, gen, mask, detail):
-    """把 96×96 的重绘结果贴回原帧：反卷积去糊 + 低频对色 + 高频细节回填 + 轻度 USM"""
+def composite_mouth(region, gen, mask, detail, hi_gain):
+    """把还原到原帧分辨率的嘴部贴回原帧：低频对色 + 高频细节回填 + 羽化融合"""
     import cv2
     bwf = region.astype(np.float32)
     bh, bw = bwf.shape[:2]
-    # 0) 先在小图上反卷积：糊是 96×96 那一次缩放造成的，放大到 200~600px 之后再
-    #    用 sigma≈1 的 USM 只能锐化 1px 的边，救不回被放大 4~8 倍的嘴
-    gen = rl_deconv(gen, 1.1, 6)
-    gen = cv2.resize(gen, (bw, bh), interpolation=cv2.INTER_LANCZOS4).astype(np.float32)
     # 1) 低频（颜色/亮度）对齐：重绘裁片的肤色、光照向原片靠拢，避免贴块色差
     sigma = max(2.0, min(bw, bh) / 80.0)
     low_r = cv2.GaussianBlur(bwf, (0, 0), sigma)
     low_g = cv2.GaussianBlur(gen, (0, 0), sigma)
     gen = gen + (low_r - low_g)
-    # 2) 高频细节回填：把原片皮肤/唇纹的锐度补回低分辨率重绘结果。
-    #    必须限幅：旧唇线、牙缝、眼镜框都是强边，整段回填会在嘴上留下深色横带。
-    hi = np.clip(bwf - low_r, -22.0, 22.0)
-    gen = gen + hi * detail
-    # 3) 轻度 USM 收一下放大后的软边（半径小、幅度小，只补微对比，不留光晕）
-    soft = cv2.GaussianBlur(gen, (0, 0), 1.2)
-    gen = gen + 0.35 * (gen - soft)
+    # 2) 高频细节回填：超分出来的嘴已经很锐，这里补的是「颗粒感」——
+    #    让嘴周的噪点/毛孔/胡渣与旁边没被动过的脸皮一样，不会出现一块干净的贴片。
+    #    回填权重按「原片自己的边缘强度」给：
+    #    - 原片唇线、牙缝这类强边处少回填 → 旧的唇线/牙齿不会在新嘴上留下第二道边；
+    #    - 原片皮肤处（本来就平）满额回填 → 颗粒原样搬过来。
+    if hi_gain > 0:
+        hi = np.clip(bwf - low_r, -24.0, 24.0)
+        simg = cv2.cvtColor(np.clip(bwf, 0, 255).astype(np.uint8), cv2.COLOR_BGR2GRAY)
+        smag = np.abs(cv2.Laplacian(simg, cv2.CV_32F, ksize=3))
+        smag = cv2.GaussianBlur(smag, (0, 0), max(1.0, min(bw, bh) * 0.012))
+        wgt = 1.0 / (1.0 + (smag / 20.0) ** 2)
+        gen = gen + hi * detail * hi_gain * (0.25 + 0.75 * wgt)[:, :, None]
     blended = bwf * (1.0 - mask) + gen * mask
     return np.clip(blended, 0, 255).astype(np.uint8)
+
+
+# ---------------------------------------------------------------- 嘴部超分
+# 病根：口型模型是 96×96 的整脸图，一张 700px 的脸缩进去，嘴只剩约 34px。
+# 把 34px 的嘴插值放大到 200~500px，无论反卷积还是 USM 都只能「把糊边推亮」，
+# 结果就是用户反复看到的发蜡感：唇线发虚、牙齿糊成一坨白、嘴周皮肤没有毛孔。
+# 解法：只对嘴部窗口再过一遍 Real-ESRGAN x4，让唇线/牙缝/皮肤纹理被真正生成出来。
+# 窗口取椭圆外扩一圈（左 0.12~0.88、上 0.44~1.0），保证羽化带全部落在超分结果里。
+SR_WIN = (0.12, 0.44, 0.88, 1.0)
+# 窗口在 96×96 模型空间的像素范围（与帧无关，算一次即可）
+SR_BOX = (int(96 * SR_WIN[0]), int(96 * SR_WIN[1]),
+          max(int(96 * SR_WIN[0]) + 8, int(96 * SR_WIN[2])),
+          max(int(96 * SR_WIN[1]) + 8, int(96 * SR_WIN[3])))
+SR_HI_GAIN = 1.0        # 超分补的是「颗粒」，按原片边缘强度加权回填
+_geom_cache = {}
+
+
+def mouth_geom(bw, bh):
+    """超分窗口在人脸裁片上的落位与羽化权重（同尺寸只算一次）"""
+    key = (bw, bh)
+    hit = _geom_cache.get(key)
+    if hit is not None:
+        return hit
+    tx0, ty0 = int(bw * SR_WIN[0]), int(bh * SR_WIN[1])
+    tx1, ty1 = max(tx0 + 8, int(bw * SR_WIN[2])), max(ty0 + 8, int(bh * SR_WIN[3]))
+    w, h = tx1 - tx0, ty1 - ty0
+    r = max(3, min(int(min(w, h) * 0.06), min(w, h) // 3))
+    ramp = np.linspace(0.0, 1.0, r + 1)[1:].astype(np.float32)
+    al = np.ones((h, w), np.float32)
+    al[:r] *= ramp[:, None]
+    al[h - r:] *= ramp[::-1][:, None]
+    al[:, :r] *= ramp[None, :]
+    al[:, w - r:] *= ramp[::-1][None, :]
+    hit = ((tx0, ty0, tx1, ty1), al[:, :, None])
+    _geom_cache[key] = hit
+    return hit
+
+
+class DetailEnhancer:
+    """Real-ESRGAN x4：只为嘴部窗口补真实细节（纯推理，权重随模型目录一起安装）"""
+
+    def __init__(self, weights, device):
+        import torch
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from rrdbnet import RRDBNet
+        net = RRDBNet(3, 3, 4, 64, 23, 32).eval()
+        ckpt = torch.load(weights, map_location='cpu')
+        state = ckpt.get('params_ema') or ckpt.get('params') or ckpt
+        state = {k.replace('module.', ''): v for k, v in state.items()}
+        net.load_state_dict(state)
+        self.torch = torch
+        self.net = net.to(device)
+        self.device = device
+
+    def to(self, device):
+        self.net = self.net.to(device)
+        self.device = device
+
+    def run(self, wins):
+        """wins: 一批 BGR uint8 嘴部窗口 → x4 放大后的同序列表"""
+        out = []
+        step = 8  # 96→384 的中间特征不小，按 8 帧一组，16GB 机器上峰值内存可控
+        for i in range(0, len(wins), step):
+            part = wins[i:i + step]
+            arr = np.stack([np.transpose(w[:, :, ::-1].astype(np.float32) / 255.0, (2, 0, 1))
+                            for w in part])
+            with self.torch.no_grad():
+                y = self.net(self.torch.from_numpy(arr).to(self.device))
+            y = y.permute(0, 2, 3, 1).cpu().numpy()[:, :, :, ::-1]
+            out.extend(np.clip(y * 255.0, 0, 255).astype(np.uint8))
+        return out
+
+
+def build_gen(gen96, sr_win, bw, bh):
+    """把 96×96 的重绘结果还原到原帧分辨率"""
+    import cv2
+    if sr_win is None:
+        # 兜底路径（超分不可用）：反卷积去糊 + 插值 + 轻度 USM
+        g = rl_deconv(gen96, 1.1, 6)
+        g = cv2.resize(g, (bw, bh), interpolation=cv2.INTER_LANCZOS4).astype(np.float32)
+        g = g + 0.30 * (g - cv2.GaussianBlur(g, (0, 0), 1.2))
+        return np.clip(g, 0, 255).astype(np.float32)
+    base = cv2.resize(gen96, (bw, bh), interpolation=cv2.INTER_CUBIC).astype(np.float32)
+    (tx0, ty0, tx1, ty1), al = mouth_geom(bw, bh)
+    up = cv2.resize(sr_win, (tx1 - tx0, ty1 - ty0), interpolation=cv2.INTER_LANCZOS4)
+    up = np.clip(up, 0, 255).astype(np.float32)
+    base[ty0:ty1, tx0:tx1] = base[ty0:ty1, tx0:tx1] * (1.0 - al) + up * al
+    return base
 
 
 def main():
@@ -337,6 +430,7 @@ def main():
     ap.add_argument('--batch', type=int, default=16)
     ap.add_argument('--crf', type=int, default=19)
     ap.add_argument('--device', default='auto')
+    ap.add_argument('--sr-weights', default='')
     args = ap.parse_args()
 
     pads = [int(x) for x in args.pads.split(',')]
@@ -374,7 +468,22 @@ def main():
     state = {k.replace('module.', ''): v for k, v in state.items()}
     model.load_state_dict(state)
     model = model.to(device).eval()
-    emit(stage='load', percent=6, device=device, frames=len(chunks))
+
+    # 嘴部超分：权重缺失或只有 CPU 时自动关闭（CPU 上一帧要好几秒，比糊更难受）
+    enhancer = None
+    if args.sr_weights and os.path.exists(args.sr_weights):
+        if device in ('mps', 'cuda'):
+            try:
+                enhancer = DetailEnhancer(args.sr_weights, device)
+                emit(stage='load', percent=7, detail='嘴部细节增强已启用')
+            except Exception as e:
+                log('超分模型加载失败，退回插值放大：%s' % e)
+                enhancer = None
+        else:
+            log('未启用 GPU，跳过嘴部超分')
+    elif args.sr_weights:
+        log('缺少嘴部超分权重，退回插值放大：%s' % args.sr_weights)
+    emit(stage='load', percent=8, device=device, frames=len(chunks), sr=enhancer is not None)
 
     reader = FrameReader(args.ffmpeg, args.video, w, h, fps)
     writer = FrameWriter(args.ffmpeg, args.out, args.audio, w, h, fps, args.crf)
@@ -449,8 +558,15 @@ def main():
                     model = model.to('cpu')
                     img_b, mel_b = img_b.cpu(), mel_b.cpu()
                     pred = model(mel_b, img_b)
+                    # 超分模型也一起退回 CPU（一帧要好几秒，宁可关掉）
+                    enhancer = None
             out = pred.detach().to('cpu').numpy().transpose(0, 2, 3, 1)
             out = np.clip(out * 255.0, 0, 255).astype(np.uint8)
+            # 嘴部窗口超分：只算椭圆附近的窗口，比整张脸 x4 快约 3 倍
+            sr_wins = None
+            if enhancer is not None:
+                sr_wins = enhancer.run([out[j][SR_BOX[1]:SR_BOX[3], SR_BOX[0]:SR_BOX[2]]
+                                       for j in range(len(metas))])
             for j, (x1, y1, x2, y2) in enumerate(metas):
                 bw, bh = x2 - x1, y2 - y1
                 key = (bw, bh)
@@ -458,7 +574,9 @@ def main():
                     masks[key] = mouth_masks(bw, bh)
                 mask, detail = masks[key]
                 base = frames[start + j]
-                base[y1:y2, x1:x2] = composite_mouth(base[y1:y2, x1:x2], out[j], mask, detail)
+                gen = build_gen(out[j], sr_wins[j] if sr_wins else None, bw, bh)
+                gain = SR_HI_GAIN if sr_wins else 1.0
+                base[y1:y2, x1:x2] = composite_mouth(base[y1:y2, x1:x2], gen, mask, detail, gain)
                 writer.write(base)
             done = min(total, end)
             emit(stage='infer', percent=25 + int(74 * done / max(1, total)),

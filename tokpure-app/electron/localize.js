@@ -2161,6 +2161,7 @@ async function oralStatus(opts) {
     deps: lips.deps,
     depsKnown: lips.deps != null,
     weights: lips.weights,
+    sr: lips.sr,
     script: lips.script,
     bytes: lips.bytes,
     ready: !!(clone.installed && lips.python && lips.script)
@@ -2173,7 +2174,9 @@ async function ensureOralReady(proxy, emit, from, to) {
     throw new Error('「AI多语口播」需要先安装「本地声音克隆」引擎（原声克隆与口型都跑在它的 Python 环境里）');
   }
   if (!fs.existsSync(lipsync.weightsPath()) || !fs.statSync(lipsync.weightsPath()).size) {
-    emit({ stage: '准备口型引擎（首次约 416MB，仅一次）', percent: from });
+    emit({ stage: '准备口型引擎（首次约 480MB，仅一次）', percent: from });
+  } else if (!lipsync.srReady()) {
+    emit({ stage: '准备嘴部细节增强（首次约 64MB，仅一次）', percent: from });
   }
   const span = Math.max(1, to - from);
   await lipsync.ensureReady({
