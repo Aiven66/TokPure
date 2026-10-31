@@ -209,7 +209,10 @@ async function ensureReady({ proxy, onProgress, onChild } = {}) {
   if (!pythonReady()) throw new Error('口型引擎需要「本地声音克隆」的 Python 环境，请先在桌面引擎安装它');
   await ensureDeps(proxy, onProgress);
   await ensureWeights({ proxy, onProgress, onChild });
-  await ensureSR({ proxy, onProgress, onChild }).catch(() => false);
+  // 嘴部清晰度已改为「原片高清嘴型回贴」：像素直接取自原片同人同机位的真实唇部，
+  // 不再依赖 Real-ESRGAN 超分（超分只放大 96×96 的生成结果，反而会造出蜡感）。
+  // 这里不再强制下载 64MB 超分权重，仅当本机已存在时由 sync() 顺带传给 worker，
+  // 供「供体不足时」的老路径兜底使用。
   return true;
 }
 

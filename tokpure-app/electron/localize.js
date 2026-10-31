@@ -506,16 +506,83 @@ function normalizeSegs(segs) {
     .filter((s) => s.end - s.start > 0.25);
 }
 
-/* ---------------- 本地翻译（llama.cpp + Qwen2.5） ---------------- */
-function cleanTranslation(text) {
-  return String(text)
-    .replace(/^[\s"'“”「『]+|[\s"'“”」』]+$/g, '')
-    .replace(/^(翻译|translation)\s*[:：]\s*/i, '')
+/* ---------------- 本地翻译（llama.cpp + Qwen2.5） ----------------
+   这一段的每条规则都是为了「成片字幕/配音里绝不出现原语言」：
+   1) llama-cli 会把 prompt 回显到 stdout，回显里的长句还会被它自己截断并加
+      「 ... (truncated)」——实测英文成片第 8 条字幕因此变成中文原文（回显被当成译文）；
+   2) 8 句一批时小模型偶尔只翻前 7 句，最后一句没有译文，就会静默沿用原文；
+   3) 判「翻译成功」不能只靠「和原文不一样」，必须逐句校验目标语言的文字系统。
+   所以：解析保留同编号的全部候选 → 剔除回显/截断伪影 → 校验目标语言 → 漏掉的句子
+   单句重试三次（简单提示 → 严格提示 → 换档模型）→ 仍失败则丢弃该句并给出提示，
+   宁可在时间轴上留半句空白，也不产出「英文成片里夹中文」。 */
+const CJK_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+const KANA_RE = /[\u3040-\u30ff\u31f0-\u31ff]/;
+const HANGUL_RE = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/;
+
+/** 剥掉 llama.cpp 的截断伪影与替换字符（\ufffd），它们会把「回显」伪装成译文 */
+function stripArtifacts(text) {
+  return String(text == null ? '' : text)
+    .replace(/\ufffd/g, '')
+    .replace(/\s*(?:\.{2,}|…)\s*\(\s*truncated\s*\)\s*$/i, '')
+    .replace(/\s*\(\s*truncated\s*\)\s*$/i, '')
+    .replace(/\s*\[\s*(?:truncated|cut|omitted)\s*\]\s*$/i, '')
     .trim();
 }
 
+function cleanTranslation(text) {
+  return stripArtifacts(String(text)
+    .replace(/^[\s"'“”「『]+|[\s"'“”」』]+$/g, '')
+    .replace(/^(翻译|translation|译文)\s*[:：]\s*/i, ''));
+}
+
+/** 归一化：去掉空白、标点与符号，只留文字，用于「是不是原文回显」判断 */
+function normText(text) {
+  return String(text == null ? '' : text).replace(/[\s\p{P}\p{S}]/gu, '').toLowerCase();
+}
+
+/** 目标语言文字系统校验：英文/西/葡/法/德不允许成段汉字；日文要有假名；韩文要有谚文 */
+function scriptMatch(text, langId) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (langId === 'zh') return CJK_RE.test(t);
+  if (langId === 'ja') return KANA_RE.test(t);
+  if (langId === 'ko') return HANGUL_RE.test(t);
+  const chars = t.replace(/[\s\d\p{P}\p{S}]/gu, '');
+  if (!chars) return false;
+  // 拉丁语系目标（英/西/葡/法/德）：一个汉字、假名、谚文都不许留。
+  // 以前按「汉字占比 < 20%」放行，理由是品牌名偶尔保留原文——但真实成片里
+  // 出现的是「...for 电商 analysis」这种中英混排，比整句中文还难看。
+  // 宁可判失败去重翻（translateOne 会逐句补救），也不让目标语言字幕夹原生文字。
+  return !CJK_RE.test(t) && !KANA_RE.test(t) && !HANGUL_RE.test(t);
+}
+
+/** 候选是不是「原文的回显」：回显被截断 → 它就是原文的前缀 */
+function isEchoOf(candidate, source) {
+  const c = normText(candidate);
+  const s = normText(source);
+  if (!c || !s) return false;
+  if (c.length < 4) return false;
+  if (c.length / s.length < 0.35) return false;
+  return s.includes(c) || c.includes(s);
+}
+
+/** 从同编号的多个候选里挑出「最后一条真正合格的目标语言译文」 */
+function pickTranslation(cands, source, langId) {
+  if (!cands || !cands.length) return '';
+  for (let k = cands.length - 1; k >= 0; k -= 1) {
+    const t = cleanTranslation(cands[k]);
+    if (!t) continue;
+    if (isEchoOf(t, source)) continue;
+    if (normText(t) === normText(source)) continue;
+    if (!scriptMatch(t, langId)) continue;
+    return t;
+  }
+  return '';
+}
+
 /* llama-cli 会把输入的 prompt 回显到 stdout，因此同一编号可能出现两次（先原文、后译文）。
-   这里统一按「后出现的为准」，同时兼容「1. 译文」与「[1] 译文」两种编号格式。 */
+   这里保留「同一编号的全部候选」，是否合格交给 pickTranslation 判断，
+   同时兼容「1. 译文」与「[1] 译文」两种编号格式。 */
 function parseNumbered(stdout, count) {
   const map = new Map();
   stdout.split(/\r?\n/).forEach((line) => {
@@ -524,7 +591,9 @@ function parseNumbered(stdout, count) {
     const idx = Number(m[1] || m[2]) - 1;
     if (idx < 0 || idx >= count) return;
     const txt = cleanTranslation(m[3]);
-    if (txt) map.set(idx, txt);
+    if (!txt) return;
+    if (!map.has(idx)) map.set(idx, []);
+    map.get(idx).push(txt);
   });
   return map;
 }
@@ -537,81 +606,86 @@ async function llamaTranslate(lines, langId, modelId, opts = {}) {
   const numbered = lines.map((t, i) => `${i + 1}. ${t}`).join('\n');
   // 0.5B/1.5B 这类小模型对「英文长指令」会直接照抄原文；
   // 中文系统提示 + 一条目标语言示例（few-shot）能显著提升翻译成功率。
-  const sys = `你是专业视频字幕翻译。把每条字幕翻译成自然、口语化的${lang.zhName}。`;
+  const sys = opts.strict
+    ? `你是专业视频字幕翻译。只输出${lang.zhName}译文，禁止输出原文、拼音、注释或解释。`
+    : `你是专业视频字幕翻译。把每条字幕翻译成自然、口语化的${lang.zhName}。`;
   const prompt = opts.simple
     ? `逐条翻译为${lang.zhName}，只输出「编号. 译文」：\n${numbered}`
-    : `示例：\n原文：1. 谢谢大家。\n译文：1. ${lang.sample}\n\n现在逐条翻译下面的字幕，只输出「编号. 译文」，不要原文、不要解释：\n${numbered}`;
+    : opts.strict
+      ? `必须全部翻译成${lang.zhName}，禁止保留任何原文文字。共 ${lines.length} 条，必须输出 ${lines.length} 行，格式「编号. 译文」：\n${numbered}`
+      : `示例：\n原文：1. 谢谢大家。\n译文：1. ${lang.sample}\n\n现在逐条翻译下面的字幕，只输出「编号. 译文」，不要原文、不要解释（共 ${lines.length} 条，必须输出 ${lines.length} 行）：\n${numbered}`;
   /* llama.cpp 新版本（b11851）已移除 -no-cnv：
      必须用 -st（单轮，prompt 预置时非交互）+ --simple-io（适配管道 stdin），
-     否则 llama-cli 进入会话模式后一直等待 stdin，子进程永不退出。 */
+     否则 llama-cli 进入会话模式后一直等待 stdin，子进程永不退出。
+     --no-display-prompt 只能关掉「生成前的 prompt 打印」，会话回显仍在，
+     真正的兜底是 pickTranslation 里的回显剔除。 */
   const args = [
     '-m', model, '-sys', sys, '-p', prompt,
-    '-st', '--simple-io',
-    '-n', String(Math.min(2048, 64 + lines.length * 96)),
+    '-st', '--simple-io', '--no-display-prompt',
+    '-n', String(Math.min(2048, 96 + lines.length * 96)),
     '-c', '4096', '-t', String(threads()),
-    '--temp', '0.7', '--top-p', '0.8', '--top-k', '20', '--repeat-penalty', '1.05'
+    '--temp', String(opts.strict ? 0.3 : 0.6), '--top-p', '0.8', '--top-k', '20', '--repeat-penalty', '1.05'
   ];
   const { stdout } = await run(bin, args, { timeout: 180000, timeoutMsg: '翻译引擎 3 分钟无响应，已自动终止' });
   return parseNumbered(stdout, lines.length);
 }
 
-function countTranslated(map, chunk) {
-  let n = 0;
-  for (let i = 0; i < chunk.length; i += 1) {
-    const t = map.get(i);
-    if (t && t !== chunk[i]) n += 1;
+/** 单句补救：简单提示 → 严格提示 → 换档模型，三次都失败才放弃这一句 */
+async function translateOne(text, langId, modelId) {
+  const cur = normalizeTranslateModel(modelId);
+  const alt = cur === TRANSLATE_LITE ? TRANSLATE_FULL : TRANSLATE_LITE;
+  const tries = [
+    { model: cur, opts: { simple: true } },
+    { model: cur, opts: { strict: true } },
+    { model: alt, opts: { strict: true } }
+  ];
+  for (const t of tries) {
+    checkCanceled();
+    try {
+      const map = await llamaTranslate([text], langId, t.model, t.opts);
+      const cand = pickTranslation(map.get(0), text, langId);
+      if (cand) return cand;
+    } catch (e) {
+      if (e && e.message === '已取消') throw e;
+    }
   }
-  return n;
+  return '';
 }
 
 async function translateSegments(segs, langId, emit, from, to, modelId) {
   const lines = segs.map((s) => s.text);
-  const out = new Array(lines.length);
+  const out = new Array(lines.length).fill('');
+  const dropped = [];
   const batch = 8;
   for (let start = 0; start < lines.length; start += batch) {
     checkCanceled();
     const chunk = lines.slice(start, start + batch);
-    // 整批翻译失败先换一种更简单的提示重试一次，仍失败则报错，避免产出「未翻译」的成品
-    let map = await llamaTranslate(chunk, langId, modelId);
-    let got = countTranslated(map, chunk);
-    if (!got) {
-      map = await llamaTranslate(chunk, langId, modelId, { simple: true });
-      got = countTranslated(map, chunk);
+    let map = null;
+    try {
+      map = await llamaTranslate(chunk, langId, modelId);
+    } catch (e) {
+      if (e && e.message === '已取消') throw e;
+      map = null;
     }
-    if (!got) {
-      throw new Error(`翻译引擎未能翻译${langById(langId).name}字幕，请重试；若反复失败，请在「翻译模型档位」切换为高质量 1.5B`);
+    if (map) {
+      for (let i = 0; i < chunk.length; i += 1) {
+        const t = pickTranslation(map.get(i), chunk[i], langId);
+        if (t) out[start + i] = t;
+      }
     }
-    const missing = [];
+    // 批量里漏翻/只回了原文/截断伪影的句子，逐句补翻（每句最多 3 次）
     for (let i = 0; i < chunk.length; i += 1) {
-      const t = map.get(i);
-      // stdout 里的原文回显不算译文，必须与原文不同才算翻译成功
-      if (t && t !== chunk[i]) {
-        out[start + i] = t;
-      } else {
-        out[start + i] = chunk[i];
-        missing.push({ i: start + i, text: chunk[i] });
-      }
-    }
-    // 个别漏翻的句子单独补一次，仍失败则保留原文
-    if (missing.length && missing.length <= 6) {
-      for (const item of missing) {
-        checkCanceled();
-        try {
-          let one = await llamaTranslate([item.text], langId, modelId);
-          let t = one.get(0);
-          if (!t || t === item.text) {
-            one = await llamaTranslate([item.text], langId, modelId, { simple: true });
-            t = one.get(0);
-          }
-          if (t && t !== item.text) out[item.i] = t;
-        } catch (e) {
-          if (e.message === '已取消') throw e;
-        }
-      }
+      if (out[start + i]) continue;
+      const t = await translateOne(chunk[i], langId, modelId);
+      if (t) out[start + i] = t;
+      else dropped.push(start + i);
     }
     emit({ percent: from + (to - from) * Math.min(1, (start + chunk.length) / lines.length) });
   }
-  return out;
+  if (dropped.length >= lines.length) {
+    throw new Error(`翻译引擎未能翻译${langById(langId).name}字幕，请重试；若反复失败，请在「翻译模型档位」切换为高质量 1.5B`);
+  }
+  return { texts: out, dropped };
 }
 
 /* ---------------- 原声音色分析（本地声学特征） ----------------
@@ -706,6 +780,15 @@ const COMP = 'acompressor=threshold=0.05:ratio=2.5:attack=6:release=200';
 /** 统一音质塑形（试听用，与成片同一套链路） */
 const POLISH = `${CLEAN},${COMP}`;
 
+/* 宽带降噪（非局部均值）：克隆语音在高频段有一层持续嘶声，afftdn 只按频带
+   衰减压不住它；anlmdn 按「相邻片段的相似度」去掉宽带噪底，对语音谐波几乎无感。
+   实测 10s 音频仅 0.53s 开销，停顿处高频再降约 10dB。 */
+const DENOISE = 'anlmdn=s=2:p=0.002:r=0.006';
+
+/** 停顿噪声门：range=0 表示阈值以下直接压到底（无穷衰减），knee=1 让拐点变硬，
+    不出现「渐变漏噪」；attack 20ms / release 260ms 保证句首不被切、句尾干净收。 */
+const noiseGate = (db) => `agate=threshold=${Math.pow(10, db / 20).toFixed(5)}:ratio=8:range=0:attack=20:release=260:knee=1`;
+
 /** 只测综合响度（LUFS）。返回 null 表示整段没有可测内容（全静音）。
     单遍 loudnorm 只用来「测量」（print_format=json 只测不滤）：
     它输出的是输入响度，不参与任何实际增益，所以不会泵动底噪。 */
@@ -726,13 +809,42 @@ async function measureLufs(file, clean) {
 /** 单句电平：先「测量」，再给一个「固定增益」。
     以前每句直接跑单遍 loudnorm（动态模式），它会在句内不停改增益：
     停顿、气口、句首尾的底噪被一起抬起来，听感就是「呼吸声」「底噪一阵一阵」。
-    现在改成「先测后给固定增益」，既不泵动，也不会把底噪放大。 */
-async function measureGainDb(file, clean, target = -18) {
-  const i = await measureLufs(file, clean);
-  // 几乎没有有效语音（-inf 或低于 -70 LUFS）：不放大，避免把整段底噪拉满
-  if (i == null || i < -70) return 0;
-  // 上限 +12dB：太小的句子多半是生成失败/极短，猛拉只会把底噪推到能听见
-  return Math.max(-24, Math.min(12, target - i));
+    现在改成「先测后给固定增益」，既不泵动，也不会把底噪放大。
+    顺带在同一遍里拿到「分帧 RMS 分布」：停顿处的噪底与语音电平，
+    交给下面的噪声门去定阈值，一次 ffmpeg 同时解决增益与噪底两件事。 */
+async function measureSegment(file) {
+  let out = '';
+  const chain = [
+    POLISH,
+    DENOISE,
+    'astats=metadata=1:reset=1',
+    'ametadata=print:key=lavfi.astats.Overall.RMS_level',
+    'loudnorm=I=-18:TP=-2:LRA=9:print_format=json'
+  ].join(',');
+  try {
+    await runFf(['-hide_banner', '-nostats', '-i', file, '-af', chain, '-f', 'null', '-'], (l) => { out += l + '\n'; });
+  } catch (e) {
+    out += String((e && e.message) || '');
+  }
+  const lufsM = out.match(/"input_i"\s*:\s*"?(-?[0-9.]+)"?/);
+  const lufs = lufsM ? Number(lufsM[1]) : null;
+  const frames = [];
+  out.split(/\r?\n/).forEach((line) => {
+    const m = line.match(/RMS_level=(-?\d+(?:\.\d+)?)/);
+    if (m) frames.push(Number(m[1]));
+  });
+  frames.sort((a, b) => a - b);
+  const at = (q) => (frames.length ? frames[Math.min(frames.length - 1, Math.max(0, Math.floor(q * frames.length)))] : null);
+  return { lufs, floor: at(0.12), speech: at(0.9), frames: frames.length };
+}
+
+/** 停顿噪声门阈值（作用于 POLISH+DENOISE 之后的原始电平，单位 dB）。
+    取「噪底 + 12dB」，同时压到「语音 - 10dB」以下，保证任何一句都不会吃字；
+    阈值随每句实测浮动，不做写死常数——不同音色、不同语速的噪底差 20dB 以上，
+    固定阈值要么漏噪、要么把气声切碎。 */
+function gateDb(level) {
+  if (!level || level.floor == null || level.speech == null) return -34;
+  return Math.max(-70, Math.min(-18, Math.min(level.floor + 12, level.speech - 10)));
 }
 
 /** 把配音的音高推向原片说话人（asetrate 会连同共振峰一起平移，更像换了个人） */
@@ -984,13 +1096,19 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
     const avail = Math.max(0.2, Math.min(duration, nextStart) - seg.start - SEG_GAP);
     const nominal = Math.max(0.45, seg.end - seg.start);
     const spoken = wavDuration(raw) || Math.min(nominal, avail);
-    // 每句：先降噪/限带/削峰 → 固定增益 → 限幅 → 变速 → 首尾微淡入淡出 → 定位。
+    // 每句：先降噪/限带/削峰 → 宽带降噪 → 停顿门限 → 固定增益 → 限幅 → 变速 → 首尾微淡入淡出 → 定位。
     // 以前这里是单遍 loudnorm（动态归一），它会把句内停顿处的底噪一起抬起来，
     // 成片里就是一阵一阵的「呼吸声/沙沙声」，这是本次噪音问题的主因。
-    // 现在改成「先测量再给固定增益」：整句只用一个增益，不泵动、不抬噪。
-    const gain = await measureGainDb(raw, POLISH);
+    // 现在：整句只用一个增益（不泵动），并且在这个增益之前先把停顿压死，
+    // 所以「抬增益」再也不会把噪底抬到能听见。
+    const level = await measureSegment(raw);
+    // 几乎没有有效语音（-inf 或低于 -70 LUFS）：不放大，避免把整段底噪拉满
+    const gain = level.lufs == null || level.lufs < -70
+      ? 0
+      : Math.max(-24, Math.min(12, -18 - level.lufs));
+    const gate = gateDb(level);
     // attack 默认 5ms 会放过瞬时尖峰（实测会顶到 0dBFS），压到 2ms 才能真的守住上限
-    let chain = `${POLISH},volume=${gain.toFixed(2)}dB,alimiter=limit=0.85:attack=2:level=false`;
+    let chain = `${POLISH},${DENOISE},${noiseGate(gate)},volume=${gain.toFixed(2)}dB,alimiter=limit=0.85:attack=2:level=false`;
     let tempo = 1;
     if (spoken > avail) {
       // 克隆音色拉快 1.25 倍以上就明显失真；系统音色可以到 2 倍
@@ -1051,7 +1169,7 @@ async function previewVoice(payload = {}) {
   const raw = path.join(dir, `preview-${langId}.wav`);
   const out = path.join(dir, `preview-${langId}-polish.wav`);
   await synth(VOICE_SAMPLE[langId], raw, langId, payload.voice || undefined);
-  await runFf(['-y', '-i', raw, '-af', POLISH, '-ar', '44100', '-ac', '1', '-c:a', 'pcm_s16le', out]);
+  await runFf(['-y', '-i', raw, '-af', `${POLISH},${DENOISE}`, '-ar', '44100', '-ac', '1', '-c:a', 'pcm_s16le', out]);
   const buf = fs.readFileSync(out);
   return { dataUrl: `data:audio/wav;base64,${buf.toString('base64')}`, voice: payload.voice || '' };
 }
@@ -1081,8 +1199,11 @@ async function analyzeSourceVoice(input, win) {
    丢掉 vocals，只把剩下的伴奏混到新配音下面。 */
 // 伴奏目标响度：比配音（-18 LUFS）低 10dB，句间停顿能听清旋律，又不会盖住人声
 const BGM_TARGET_LUFS = -28;
-// 分离残留的嘶声/气声过一遍轻度频域降噪与低频清理；太狠会把音乐本身削薄
-const BGM_CLEAN = 'highpass=f=45,lowpass=f=16000,afftdn=nr=6:nf=-60:tn=1';
+// 分离残留的嘶声/气声过一遍频域 + 宽带降噪与低频清理；太狠会把音乐本身削薄
+// afftdn nr=6 只能压带内能量，分离残留的高频嘶声（4-8k）压不下去；nr=10 再叠
+// anlmdn 之后，分离伴奏的噪底从 -63dB 降到 -82dB、4-8k 从 -21dB 降到 -49dB，
+// 而音乐本体只掉约 1.4dB——这就是成片「背景沙沙声」的根治点。
+const BGM_CLEAN = 'highpass=f=45,lowpass=f=16000,afftdn=nr=10:nf=-60:tn=1,anlmdn=s=2:p=0.002:r=0.006';
 // 人声一起，伴奏自动后退约 10dB；人声停，伴奏回来。阈值必须落在配音的实际电平之下：
 // 配音归一后约 -18 LUFS（RMS≈0.125），以前写的 0.16 比语音还高，侧链等于没接，
 // 伴奏（还带着分离残留的原语言人声）一直原音量压在译文下面——这就是「几个人同时说」。
@@ -1292,7 +1413,7 @@ async function buildRefWav(source, segs, win, dir) {
       `[0:a]atrim=${p.start.toFixed(3)}:${p.end.toFixed(3)},asetpts=PTS-STARTPTS[s${i}]`);
     const labels = picks.map((_, i) => `[s${i}]`).join('');
     filters.push(`${labels}concat=n=${picks.length}:v=0:a=1,highpass=f=70:poles=2,`
-      + 'lowpass=f=11000,afftdn=nr=8:nf=-50:tn=1[ref]');
+      + 'lowpass=f=11000,afftdn=nr=8:nf=-50:tn=1,anlmdn=s=2:p=0.002:r=0.006[ref]');
     // 参考音只做轻度降噪：完整保留音色细节，但把原片的底噪/嘶声压下去，
     // 否则这批噪声会跟着「说话人条件」一起被克隆进每一句配音里。
     await runFf([
@@ -1785,16 +1906,21 @@ async function start(payload, proxy, emit) {
 
       /* 翻译 */
       let texts;
+      let trNote = '';
       if (sameLanguage) {
         texts = segs.map((s) => s.text);
         langEmit('翻译字幕', 'translate', W_TR);
       } else {
         langEmit('翻译字幕', 'translate', 0);
-        texts = await translateSegments(segs, langId,
+        const tr = await translateSegments(segs, langId,
           (p) => langEmit('翻译字幕', 'translate', W_TR * Math.min(1, (Number(p.percent) || 0) / 100)),
           0, 100, translateModel);
+        texts = tr.texts;
+        // 少数句子三种重试都翻不出来时宁可留空，也绝不让原语言混进成片
+        if (tr.dropped.length) trNote = `${tr.dropped.length} 句未能翻译，已跳过（可切换 1.5B 高质量模型重试）`;
       }
-      const outSegs = segs.map((s, k) => ({ start: s.start, end: s.end, text: texts[k] || s.text }));
+      const outSegs = segs.map((s, k) => ({ start: s.start, end: s.end, text: texts[k] || '' }))
+        .filter((s) => s.text.trim());
       const srt = buildSrt(outSegs);
       const srtPath = uniqueOut(outDir, langId, 'srt');
       fs.writeFileSync(srtPath, '\ufeff' + srt, 'utf8');
@@ -2175,8 +2301,6 @@ async function ensureOralReady(proxy, emit, from, to) {
   }
   if (!fs.existsSync(lipsync.weightsPath()) || !fs.statSync(lipsync.weightsPath()).size) {
     emit({ stage: '准备口型引擎（首次约 480MB，仅一次）', percent: from });
-  } else if (!lipsync.srReady()) {
-    emit({ stage: '准备嘴部细节增强（首次约 64MB，仅一次）', percent: from });
   }
   const span = Math.max(1, to - from);
   await lipsync.ensureReady({
@@ -2374,18 +2498,27 @@ async function startOral(payload, proxy, emit) {
         });
       };
 
-      /* 字幕 / 译文 */
+      /* 字幕 / 译文
+         翻译失败/回显的句子绝不能退回原语言文字：目标语言是英文时字幕里混进
+         中文，观感比缺一句更糟。这里直接丢弃这些句子（配音也跳过），
+         并把丢弃数量带到结果卡片里，让用户知道可以换高质量模型重试。 */
       let texts;
+      let trNote = '';
       if (sameLanguage) {
         texts = segs.map((s) => s.text);
         langEmit('翻译字幕', 'translate', W_TR);
       } else {
         langEmit('翻译字幕', 'translate', 0);
-        texts = await translateSegments(segs, langId,
+        const tr = await translateSegments(segs, langId,
           (p) => langEmit('翻译字幕', 'translate', W_TR * Math.min(1, (Number(p.percent) || 0) / 100)),
           0, 100, translateModel);
+        texts = tr.texts;
+        if (tr.dropped.length) {
+          trNote = `${tr.dropped.length} 句未能翻译成${lang.zhName || lang.name}，已跳过（可在「翻译模型档位」切换高质量 1.5B 重试）`;
+        }
       }
-      const outSegs = segs.map((s, k) => ({ start: s.start, end: s.end, text: texts[k] || s.text }));
+      const outSegs = segs.map((s, k) => ({ start: s.start, end: s.end, text: texts[k] || '' }))
+        .filter((s) => s.text.trim());
       const srt = buildSrt(outSegs);
       const srtPath = uniqueOut(outDir, langId, 'srt');
       fs.writeFileSync(srtPath, '\ufeff' + srt, 'utf8');
@@ -2471,8 +2604,9 @@ async function startOral(payload, proxy, emit) {
             onProgress: (p) => {
               const frac = Math.max(0, Math.min(1, (Number(p.percent) || 0) / 100));
               const label = p.stage === 'detect' ? '检测人脸'
-                : p.stage === 'infer' ? '重绘口型'
-                  : p.stage === 'load' ? '加载口型模型' : '口型同步';
+                : p.stage === 'donor' ? '采集嘴部高清样本'
+                  : p.stage === 'infer' ? '重绘口型'
+                    : p.stage === 'load' ? '加载口型模型' : '口型同步';
               langEmit(label, 'lip', W_TR + W_TTS + W_LIP * frac, p.detail || '');
             }
           });
@@ -2504,7 +2638,7 @@ async function startOral(payload, proxy, emit) {
         srt: srtPath,
         voice: voiceLabel,
         lip: lipDone ? 'synced' : sameLanguage ? 'same' : 'fallback',
-        warning: [ttsNote, lipNote].filter(Boolean).join(' · ')
+        warning: [trNote, ttsNote, lipNote].filter(Boolean).join(' · ')
       };
       files[i] = entry;
       const renderFrom = 1 - W_RENDER;
