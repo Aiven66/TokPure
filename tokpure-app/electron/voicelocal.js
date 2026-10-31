@@ -183,6 +183,8 @@ async function openSession({ refAudio, lang, onLog, threads, conc, steps } = {})
   const env = {
     ...process.env,
     PYTHONUNBUFFERED: '1',
+    // 打包态 worker.py 位于已签名的 App 包内，写 __pycache__ 会破坏 bundle 签名
+    PYTHONDONTWRITEBYTECODE: '1',
     HF_HOME: hfCache(),
     HF_HUB_DISABLE_TELEMETRY: '1',
     HF_ENDPOINT: process.env.HF_ENDPOINT || 'https://hf-mirror.com'

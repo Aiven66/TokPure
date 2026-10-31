@@ -168,6 +168,8 @@ function separate({ input, outdir, onProgress, onChild } = {}) {
   const env = {
     ...process.env,
     PYTHONUNBUFFERED: '1',
+    // 打包态脚本在已签名的 App 包内，禁止生成 __pycache__（否则破坏 bundle 签名）
+    PYTHONDONTWRITEBYTECODE: '1',
     TORCH_HOME: torchHome(),
     HF_HOME: voicelocal.hfCache(),
     // 权重必须在本地：没装就明确失败，绝不偷偷联网下载

@@ -269,6 +269,9 @@ function sync({ video, audio, out, fps, onProgress, onChild } = {}) {
   const env = {
     ...process.env,
     PYTHONUNBUFFERED: '1',
+    // 绝不往脚本目录写 .pyc：打包后脚本就在 App 包内（Contents/Resources/...），
+    // 一旦生成 __pycache__ 就会改动已签名的 bundle，下次启动时 macOS 校验失败
+    PYTHONDONTWRITEBYTECODE: '1',
     // 只跑推理，任何 hub 访问都禁止（模型是本地的，走 hub 校验会拖几十秒甚至报错）
     HF_HUB_OFFLINE: '1',
     TRANSFORMERS_OFFLINE: '1',
