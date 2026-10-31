@@ -780,14 +780,18 @@ const COMP = 'acompressor=threshold=0.05:ratio=2.5:attack=6:release=200';
 /** 统一音质塑形（试听用，与成片同一套链路） */
 const POLISH = `${CLEAN},${COMP}`;
 
-/* 宽带降噪（非局部均值）：克隆语音在高频段有一层持续嘶声，afftdn 只按频带
-   衰减压不住它；anlmdn 按「相邻片段的相似度」去掉宽带噪底，对语音谐波几乎无感。
-   实测 10s 音频仅 0.53s 开销，停顿处高频再降约 10dB。 */
-const DENOISE = 'anlmdn=s=2:p=0.002:r=0.006';
+/* 宽带降噪（非局部均值 anlmdn）—— 实测证伪，**已禁用**。
+   它叠在 afftdn 之后会在语音上产生很明显的「咕噜声 / 水下音」：同一段配音实测
+   停顿处噪底帧间跳变（jump_p99）从 14.5dB 升到 21.9dB，瞬时尖峰占比从 4.8% 升到
+   14.2%，低频/高频中位电平还降了 16dB（等于把人声削薄、再把残余噪声脉冲化）。
+   这就是成片里那层「沙沙噪音」的直接来源。afftdn（tn=1 噪声跟踪）+ 高低通已经够用。
+   这里保留空串，调用处统一按 filter(Boolean) 拼接，避免出现连续逗号。 */
+const DENOISE = '';
 
-/** 停顿噪声门：range=0 表示阈值以下直接压到底（无穷衰减），knee=1 让拐点变硬，
-    不出现「渐变漏噪」；attack 20ms / release 260ms 保证句首不被切、句尾干净收。 */
-const noiseGate = (db) => `agate=threshold=${Math.pow(10, db / 20).toFixed(5)}:ratio=8:range=0:attack=20:release=260:knee=1`;
+/** 停顿噪声门：range=0 实测等于「阈值以下直接压到 -inf」，所以停顿里的底噪是真消失，
+    而不是被压低；knee=2 让开合不再是一刀切（knee=1 时句首/句尾会听到「咔」一下的
+    气流突变，听起来也像噪音）。attack 20ms / release 300ms 保证不切字。 */
+const noiseGate = (db) => `agate=threshold=${Math.pow(10, db / 20).toFixed(5)}:ratio=8:range=0:attack=20:release=300:knee=2`;
 
 /** 只测综合响度（LUFS）。返回 null 表示整段没有可测内容（全静音）。
     单遍 loudnorm 只用来「测量」（print_format=json 只测不滤）：
@@ -816,11 +820,10 @@ async function measureSegment(file) {
   let out = '';
   const chain = [
     POLISH,
-    DENOISE,
     'astats=metadata=1:reset=1',
     'ametadata=print:key=lavfi.astats.Overall.RMS_level',
     'loudnorm=I=-18:TP=-2:LRA=9:print_format=json'
-  ].join(',');
+  ].filter(Boolean).join(',');
   try {
     await runFf(['-hide_banner', '-nostats', '-i', file, '-af', chain, '-f', 'null', '-'], (l) => { out += l + '\n'; });
   } catch (e) {
@@ -1108,7 +1111,7 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
       : Math.max(-24, Math.min(12, -18 - level.lufs));
     const gate = gateDb(level);
     // attack 默认 5ms 会放过瞬时尖峰（实测会顶到 0dBFS），压到 2ms 才能真的守住上限
-    let chain = `${POLISH},${DENOISE},${noiseGate(gate)},volume=${gain.toFixed(2)}dB,alimiter=limit=0.85:attack=2:level=false`;
+    let chain = `${[POLISH, DENOISE, noiseGate(gate)].filter(Boolean).join(',')},volume=${gain.toFixed(2)}dB,alimiter=limit=0.85:attack=2:level=false`;
     let tempo = 1;
     if (spoken > avail) {
       // 克隆音色拉快 1.25 倍以上就明显失真；系统音色可以到 2 倍
@@ -1169,7 +1172,7 @@ async function previewVoice(payload = {}) {
   const raw = path.join(dir, `preview-${langId}.wav`);
   const out = path.join(dir, `preview-${langId}-polish.wav`);
   await synth(VOICE_SAMPLE[langId], raw, langId, payload.voice || undefined);
-  await runFf(['-y', '-i', raw, '-af', `${POLISH},${DENOISE}`, '-ar', '44100', '-ac', '1', '-c:a', 'pcm_s16le', out]);
+  await runFf(['-y', '-i', raw, '-af', [POLISH, DENOISE].filter(Boolean).join(','), '-ar', '44100', '-ac', '1', '-c:a', 'pcm_s16le', out]);
   const buf = fs.readFileSync(out);
   return { dataUrl: `data:audio/wav;base64,${buf.toString('base64')}`, voice: payload.voice || '' };
 }
@@ -1199,16 +1202,20 @@ async function analyzeSourceVoice(input, win) {
    丢掉 vocals，只把剩下的伴奏混到新配音下面。 */
 // 伴奏目标响度：比配音（-18 LUFS）低 10dB，句间停顿能听清旋律，又不会盖住人声
 const BGM_TARGET_LUFS = -28;
-// 分离残留的嘶声/气声过一遍频域 + 宽带降噪与低频清理；太狠会把音乐本身削薄
-// afftdn nr=6 只能压带内能量，分离残留的高频嘶声（4-8k）压不下去；nr=10 再叠
-// anlmdn 之后，分离伴奏的噪底从 -63dB 降到 -82dB、4-8k 从 -21dB 降到 -49dB，
-// 而音乐本体只掉约 1.4dB——这就是成片「背景沙沙声」的根治点。
-const BGM_CLEAN = 'highpass=f=45,lowpass=f=16000,afftdn=nr=10:nf=-60:tn=1,anlmdn=s=2:p=0.002:r=0.006';
+// 分离残留的嘶声/气声过一遍频域降噪与限带；太狠会把音乐本身削薄。
+// 这里**不再叠 anlmdn**：非局部均值在音乐上同样会制造「咕噜/水下」纹理，听感上
+// 比它压掉的那点嘶声更像噪音（人声轨已因同样的原因把 anlmdn 关掉）。
+// afftdn tn=1 让噪声底按帧自动跟踪，对稳定嘶声有效；lowpass 收到 14k 再砍一层
+// 分离算法最容易残留的高频。阈值再往下压（nr>12）会把鼓组的高频毛刺一起吃掉。
+const BGM_CLEAN = 'highpass=f=45,lowpass=f=14000,afftdn=nr=12:nf=-55:tn=1';
 // 人声一起，伴奏自动后退约 10dB；人声停，伴奏回来。阈值必须落在配音的实际电平之下：
 // 配音归一后约 -18 LUFS（RMS≈0.125），以前写的 0.16 比语音还高，侧链等于没接，
 // 伴奏（还带着分离残留的原语言人声）一直原音量压在译文下面——这就是「几个人同时说」。
-// 实测 threshold=0.004/ratio=6 在真实电平下压 9~10dB，停顿处立刻回到原音量。
-const BGM_DUCK = 'sidechaincompress=threshold=0.004:ratio=6:attack=12:release=350:level_sc=1';
+// 实测 threshold=0.004/ratio=6 在真实电平下压 9~10dB，停顿处立刻回到原音量——
+// 但 12ms attack / 350ms release 配 10dB 深度，在句与句之间形成了 1~2Hz 的「抽吸」，
+// 听感上是背景一阵一阵地涌上来，很容易被当成噪音。现在把深度降到约 5dB、
+// 起落时间拉长（25ms / 550ms），既能让人声清楚，又不会出现可闻的泵动。
+const BGM_DUCK = 'sidechaincompress=threshold=0.005:ratio=3.5:attack=25:release=550:level_sc=1';
 
 /**
  * 只分离「这次要出片的窗口」，各语种共用同一份伴奏。
@@ -1413,7 +1420,7 @@ async function buildRefWav(source, segs, win, dir) {
       `[0:a]atrim=${p.start.toFixed(3)}:${p.end.toFixed(3)},asetpts=PTS-STARTPTS[s${i}]`);
     const labels = picks.map((_, i) => `[s${i}]`).join('');
     filters.push(`${labels}concat=n=${picks.length}:v=0:a=1,highpass=f=70:poles=2,`
-      + 'lowpass=f=11000,afftdn=nr=8:nf=-50:tn=1,anlmdn=s=2:p=0.002:r=0.006[ref]');
+      + 'lowpass=f=11000,afftdn=nr=8:nf=-50:tn=1[ref]');
     // 参考音只做轻度降噪：完整保留音色细节，但把原片的底噪/嘶声压下去，
     // 否则这批噪声会跟着「说话人条件」一起被克隆进每一句配音里。
     await runFf([
