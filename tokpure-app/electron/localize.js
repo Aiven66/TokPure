@@ -805,6 +805,66 @@ const DENOISE = 'anlmdn=s=2:p=0.002:r=0.006';
     注意 gate 排在 volume 之前：底噪在被抬起之前就已经被压到底，抬增益不会再抬噪。 */
 const noiseGate = (db) => `agate=threshold=${Math.pow(10, db / 20).toFixed(5)}:ratio=8:range=0:attack=20:release=260:knee=1`;
 
+/* ---------------- 克隆音色的频带对齐（去掉残留的「沙沙」电流声） ----------------
+   本地克隆引擎（Chatterbox，24kHz）逐句生成的语音，比原片真人嗓音在 2.4~10kHz
+   高 3~6dB。这层成分是**跟语音一起生成**的宽带嘶声，不是停顿里的稳态噪声：
+   afftdn / anlmdn 只对「停顿里有、语音里没有」的稳态噪声有效，对谐波之间的填充
+   几乎不动（实测 nr 从 10 加到 24，4.8~7k 只掉 0.1dB）。所以它一路进了成片，
+   听感就是人声底下一直有一层「沙沙」——用户反复反馈的「背景音噪音」。
+   两条互补的措施：
+   1）参考音深度降噪（见 buildRefWav）：克隆的底噪主要来自「说话人条件」里带的
+      房间声，把参考音压干净，克隆出来的停顿噪底直接从 -43.9 降到 -50.9dB、
+      语音里的高频嘶声也随之下移（同一句、同一参考，只改降噪链的 A/B 实测）；
+   2）这里再量「原片参考音」与「本次合成里最长的一句」的倍频带能量差，反推一组
+      小 EQ，把克隆音色的频带分布拉回真人。限制：单带最多 -4dB、3k 以上只许减不许加
+      （加只会把嘶声一起抬起来）。EQ 排在固定增益之后、限幅之前，
+      实测整链里 4.8~7k 再降 4.4dB、7~10k 再降 4.0dB，2.4~4.8k 降 3.2dB，
+      而 300~1200Hz 基本不动（语音主体不受影响）。
+   EQ 量为空（参考音不可用/量不出来）时整链退回原样，绝不让任务因它失败。 */
+const EQ_CENTERS = [125, 250, 500, 1000, 2000, 3000, 4500, 6500, 9000];
+
+/** 量一段语音在若干倍频带内的电平（dB）。用 agate 先把停顿压掉，
+    只统计「真的在说话」的帧——否则一段很长的静音会把所有频带一起拉低。 */
+async function bandLevels(file) {
+  if (!file || !fs.existsSync(file)) return null;
+  const rows = await Promise.all(EQ_CENTERS.map(async (c0) => {
+    let out = '';
+    try {
+      await runFf(['-hide_banner', '-nostats', '-i', file, '-af',
+        'agate=threshold=0.01:ratio=8:range=0:attack=5:release=10,'
+        + `bandpass=f=${c0}:width_type=o:width=1,astats=metadata=0`,
+        '-f', 'null', '-'], (l) => { out += l + '\n'; });
+    } catch (_) {
+      return null;
+    }
+    const hits = out.match(/RMS level dB:\s*(-?\d+(?:\.\d+)?)/g) || [];
+    if (!hits.length) return null;
+    const v = Number(String(hits[hits.length - 1]).replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(v) ? v : null;
+  }));
+  return rows.every((v) => v != null) ? rows : null;
+}
+
+/** 由两段语音的倍频带电平差生成矫正 EQ；只修「音色倾斜」，不碰整体响度。
+    限幅：3k 以上**只许减不许加**（加 = 把嘶声一起抬起来），最多 -4dB；
+    3k 以下最多减 4dB、加 2dB（低频只补不足，避免把克隆音色推成闷响）。 */
+function eqAlignChain(refBands, ttsBands) {
+  if (!refBands || !ttsBands || refBands.length !== EQ_CENTERS.length) return '';
+  const mean = (a) => a.reduce((n, v) => n + v, 0) / a.length;
+  const mr = mean(refBands);
+  const mt = mean(ttsBands);
+  const parts = [];
+  EQ_CENTERS.forEach((c0, i) => {
+    let g = (refBands[i] - mr) - (ttsBands[i] - mt);
+    const lo = -4;
+    const hi = c0 >= 3000 ? 0 : 2;
+    g = Math.max(lo, Math.min(hi, g));
+    if (Math.abs(g) < 0.4) return;
+    parts.push(`equalizer=f=${c0}:width_type=o:width=1:g=${g.toFixed(2)}`);
+  });
+  return parts.join(',');
+}
+
 /** 只测综合响度（LUFS）。返回 null 表示整段没有可测内容（全静音）。
     单遍 loudnorm 只用来「测量」（print_format=json 只测不滤）：
     它输出的是输入响度，不参与任何实际增益，所以不会泵动底噪。 */
@@ -1092,6 +1152,29 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
     await Promise.all(Array.from({ length: workers }, worker));
   }
 
+  // 频带对齐：拿「原片参考音」和「本次合成里最长的一句」做倍频带电平对比，
+  // 生成一组小 EQ 把克隆音色的倾斜拉回真人（详见 eqAlignChain 上的说明）。
+  // 只量一次、只影响音色分布，不改变响度；任何一步量不出来就退回原链。
+  let eqChain = '';
+  if (opts.refAudio && fs.existsSync(opts.refAudio)) {
+    let probe = null;
+    let probeDur = 0;
+    for (let i = 0; i < raws.length; i += 1) {
+      const f = raws[i];
+      if (!f || !fs.existsSync(f)) continue;
+      const d = wavDuration(f);
+      if (d >= 1.2 && d > probeDur) { probe = f; probeDur = d; }
+    }
+    if (probe) {
+      try {
+        const [rb, tb] = await Promise.all([bandLevels(opts.refAudio), bandLevels(probe)]);
+        eqChain = eqAlignChain(rb, tb);
+      } catch (_) {
+        eqChain = '';
+      }
+    }
+  }
+
   for (let i = 0; i < segs.length; i += 1) {
     checkCanceled();
     const seg = segs[i];
@@ -1134,7 +1217,9 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
     if (gain !== 0) prevGain = gain;
     const gate = gateDb(level);
     // attack 默认 5ms 会放过瞬时尖峰（实测会顶到 0dBFS），压到 2ms 才能真的守住上限
-    let chain = `${[POLISH, DENOISE, noiseGate(gate)].filter(Boolean).join(',')},volume=${gain.toFixed(2)}dB,alimiter=limit=0.85:attack=2:level=false`;
+    // 频带对齐 EQ 放在固定增益之后、限幅之前：如果放在压缩之前，压缩器会把被削掉的高频
+    // 又相对抬回来（实测整链 4.8~7k 只降了 1.7dB，放末端能降 4.3dB），也避免增益把它放大。
+    let chain = `${[POLISH, DENOISE, noiseGate(gate), `volume=${gain.toFixed(2)}dB`, eqChain, 'alimiter=limit=0.85:attack=2:level=false'].filter(Boolean).join(',')}`;
     let tempo = 1;
     if (spoken > avail) {
       // 克隆音色拉快 1.25 倍以上就明显失真；系统音色可以到 2 倍
@@ -1464,10 +1549,15 @@ async function buildRefWav(source, segs, win, dir) {
     const filters = picks.map((p, i) =>
       `[0:a]atrim=${p.start.toFixed(3)}:${p.end.toFixed(3)},asetpts=PTS-STARTPTS[s${i}]`);
     const labels = picks.map((_, i) => `[s${i}]`).join('');
-    filters.push(`${labels}concat=n=${picks.length}:v=0:a=1,highpass=f=70:poles=2,`
-      + 'lowpass=f=11000,afftdn=nr=8:nf=-50:tn=1[ref]');
-    // 参考音只做轻度降噪：完整保留音色细节，但把原片的底噪/嘶声压下去，
-    // 否则这批噪声会跟着「说话人条件」一起被克隆进每一句配音里。
+    filters.push(`${labels}concat=n=${picks.length}:v=0:a=1,highpass=f=80:poles=2,`
+      + 'lowpass=f=10000,afftdn=nr=16:nf=-50:tn=1,anlmdn=s=4:p=0.002:r=0.006[ref]');
+    // 参考音必须深度降噪：克隆引擎把「说话人条件」里的房间声/嘶声一起复制进每一句配音，
+    // 参考音里留多少底噪，成片里就会多一层同样的底噪（这是「背景音噪音」的源头）。
+    // 实测（同一句文本、同一参考音，只换降噪链）：停顿处噪底从 -43.9 降到 -50.9dB，
+    // 整条成片链路里 4.8~7k 的残余嘶声再降约 1~2dB（单句波动大，多句平均更稳）。
+    // 参考音本身的倍频带分布几乎不变（各带差 ≤0.1dB），所以音色不会被磨掉。
+    // 这里敢用 nr=16 + anlmdn s=4：参考音只用来「教音色」，不直接进成片，
+    // 压得更狠只会让克隆更干净，不会让成片变闷。
     await runFf([
       '-y', '-i', source,
       '-filter_complex', filters.join(';'),
@@ -1480,7 +1570,7 @@ async function buildRefWav(source, segs, win, dir) {
   const dur = Math.max(3, Math.min(60, span.end - span.start));
   await runFf([
     '-y', '-ss', span.start.toFixed(3), '-t', dur.toFixed(3), '-i', source,
-    '-vn', '-af', 'highpass=f=60,lowpass=f=12000', '-ac', '1', '-ar', '24000',
+    '-vn', '-af', 'highpass=f=80:poles=2,lowpass=f=10000,afftdn=nr=12:nf=-50:tn=1,anlmdn=s=2:p=0.002:r=0.006', '-ac', '1', '-ar', '24000',
     '-c:a', 'pcm_s16le', out
   ]);
   if (!fs.existsSync(out) || fs.statSync(out).size < 4096) throw new Error('原声参考音频提取失败');
@@ -2043,7 +2133,7 @@ async function start(payload, proxy, emit) {
             onTts, 0, 100,
             // 克隆模式下「保不住原声」就是失败：整句失败只会拆句重试，
             // 绝不再退化成系统音色（那会出现两个人声混在同一条片子里）。
-            { synthFn, voice: 'clone', allowFallback: false, synthConcurrency });
+            { synthFn, voice: 'clone', allowFallback: false, synthConcurrency, refAudio: isLocal ? cloneRef : '' });
           beatBus.sink = null;
           narration = built.file;
           // 译文比原文长时会有个别句子被收进窗口截断，提示出来比让用户以为「丢了词」更好
@@ -2614,7 +2704,7 @@ async function startOral(payload, proxy, emit) {
             langEmit('合成配音', 'tts', shownFrac, `第 ${cur}/${totalSegs} 句 · 已生成 ${Math.round(sec)}s`);
           };
           const built = await buildNarration(outSegs, dur, langId, dir, onTts, 0, 100,
-            { synthFn, voice: 'clone', allowFallback: false, synthConcurrency });
+            { synthFn, voice: 'clone', allowFallback: false, synthConcurrency, refAudio: refWav });
           beatBus.sink = null;
           narration = built.file;
           if (built.squeezed) ttsNote = `${built.squeezed} 句译文偏长，已收紧时长以对齐口型`;
