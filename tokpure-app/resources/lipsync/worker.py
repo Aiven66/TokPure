@@ -681,7 +681,7 @@ def band_env_seq(wav, fps, total):
         seg = np.asarray(y[a:max(b, a + 1)], np.float64)
         e = float(np.sqrt(np.mean(seg ** 2) + 1e-12))
         db[i] = 20.0 * np.log10(max(e, 1e-6))
-    db = zero_phase_smooth(db, 2.2)
+    db = zero_phase_smooth(db, 1.6)
     return db
 
 
@@ -857,16 +857,20 @@ MASK_RX = 0.57                   # 蒙版半宽 / 唇宽（蒙版横向就压在
 # 下沿压在下唇下方的下巴上，那两个位置被换成供体的皮肤；供体来自另一时刻，
 # 光照/白平衡本来就有差，叠上去就是用户截图里「嘴上一圈灰斑」和嘴角的双层唇线。
 # 现在闭嘴 0.17（≈1.15 倍真实半高），全张 0.32，只多盖 2~3 像素作为羽化余量。
-MASK_RY = 0.20                   # 蒙版半高 / 唇宽（闭嘴）
+MASK_RY = 0.16                   # 蒙版半高 / 唇宽（闭嘴）
 # 张口时（上唇上抬、下唇下沉、牙齿整块露出来）纵向必须跟着长，否则上/下排牙齿
 # 正好压在羽化带上，会被「供体的牙齿」和「当前帧自己的牙齿」各掺一半，
 # 唇齿交界处就是一片发丝状的网纹重影（用户在 01:16 反馈的那块「糊斑」）。
-MASK_RY_OPEN = 0.16              # 张口到最大时，蒙版半高再增加 0.16 倍唇宽
+MASK_RY_OPEN = 0.18              # 张口到最大时，蒙版半高再增加 0.18 倍唇宽
 REGION_RH = 1.34                 # 回贴区域高 / 唇宽（要装得下最张的蒙版 + 一圈皮肤环）
 MASK_DY = 0.0                    # 蒙版中心相对嘴中心的下移（实测≈0，留着便于微调）
 MASK_FEATHER = 0.12              # 羽化带占半径的比例（越小越硬，接缝越干净）
-CHROMA_KEEP = 0.22               # 皮肤环对色里只保留 22% 的逐通道色偏（其余只修亮度）
-CHROMA_CLAMP = 11.0              # 唇面色度（LAB a/b）最多平移这么多，防止「蓝色口红」
+AB_FIELD_CLAMP = 26.0            # 低频光照场的单通道上限（超过这个量级已是换了场景）
+# 唇面色度（LAB a/b）的平移上限。以前夹 ±11，但实测冷光段（供体冷、当前帧暖）
+# 两张图的唇面 a 相差到 11~14，夹住就等于「只校了一半」——剩下的那半块正好
+# 呈现为嘴唇上的淡紫/灰白（用户截图红框）。唇色的目标值来自当前帧自己，
+# 所以放宽到 ±20 是安全的：真正的越界会被「按唇面软蒙版」限制在嘴唇上。
+CHROMA_CLAMP = 20.0
 DESC = (40, 20)                  # 嘴型描述子尺寸（灰度）
 MIN_LAP = 20.0                   # 供体整块清晰度门槛（拉普拉斯方差）
 MIN_BLAP = 30.0                  # 供体「唇部」清晰度门槛：低于此值贴上去就是一团粉红
@@ -892,11 +896,18 @@ PLAN_LO_PCT = 20                 # 子句开口下限 = 供体库张口度的 20
 PLAN_HI_PCT = 80                 # 子句开口上限 = 供体库张口度的 80 分位
 PLAN_DB_LO = 15                  # 子句内包络归一化的下分位（dB）
 PLAN_DB_HI = 85                  # 子句内包络归一化的上分位（dB）
-FY_FLOOR = 0.70                  # 形变硬下限（再小嘴唇薄得失真）
+FY_FLOOR = 0.66                  # 形变硬下限（再小嘴唇薄得失真）
 FY_CEIL = 1.36                   # 形变硬上限（再大嘴唇拉长失真）
-FY_SLEW = 0.065                  # 逐帧形变限速（22fps 下 ≈1.4 倍/秒，肉眼是连续张合）
-PLAN_FY_LO = 0.72                # 子句内最轻音节：把这张嘴压到 0.72（基本合上）
-PLAN_FY_HI = 1.30                # 子句内最响音节：拉到 1.30（开口峰值）
+# 逐帧形变限速。以前 0.065 是为了压住「96px 预测噪声驱动」时的抽动；现在驱动量
+# 是平滑后的元音包络（本身没有抖动），再夹这么小就等于把嘴变慢：从峰值 1.30
+# 合到 0.72 要走 9 帧（22fps 下 0.41 秒），而真实音节切换只要 0.15~0.2 秒，
+# 成片看起来就是「嘴比配音慢半拍」（用户反馈的「没对齐」有很大一部分是它）。
+# 0.13 下同样的行程 4.5 帧 ≈0.2 秒，和音节切换一致；全片实测 0.13 时 29% 的帧
+# 顶在限幅上（还在拖慢），放到 0.18 后全片开口序列与配音包络的相关性 0.80、
+# 与目标开口的逐帧偏差 p50 只有 0.007，形变幅度 p95 仍是 0.18 以内，不会抖。
+FY_SLEW = 0.18
+PLAN_FY_LO = 0.68                # 子句内最轻音节：把这张嘴压到 0.68（基本合上）
+PLAN_FY_HI = 1.32                # 子句内最响音节：拉到 1.32（开口峰值）
 PLAN_OPEN_MAX = 0.52             # 贴上去的嘴最多张到这个「原片尺度」（≈全库 95 分位）
 OPEN_W = 26.0                    # 张嘴程度不匹配的罚分系数（0.1 的差 ≈ 2.6 分）
 
@@ -916,8 +927,8 @@ class MouthRetimer:
         self._open_sorted = np.zeros(0, np.float32)
         self._open_rank = np.zeros(0, np.float32)
         self._idx = np.zeros(0, np.int32)
-        # 上一帧的「增益 + 偏移」对色参数（逐帧自由估计会让唇色轻微闪烁）
-        self._ab = None
+        # 上一帧的低频光照场（LAB 三通道），供体换帧时用它做时序混合，避免色温跳
+        self._df = None
         # 档位 → 固定供体（见 _build_bank）：整条片子只用这 LEVELS 张嘴
         self._bank = []
         self._bank_open = []
@@ -927,8 +938,8 @@ class MouthRetimer:
         self._last_lvl = 0
         self._last_i = -99
         self._last_fy = 1.0
-        self._abl = None            # 唇面色度偏移的上一帧值（时序平滑用）
-        self._all = None            # 唇面亮度偏移的上一帧值（时序平滑用）
+        self._lc = None             # 唇面 (L, a, b) 偏移的上一帧值（时序平滑用）
+        self._dlip = None           # 唇内低频色场的上一帧值（时序平滑用）
         self.stats = {'lip': 0, 'skip': 0, 'score': [], 'openpen': [], 'fy': []}
         self._grids = {}
         # 诊断用（TP_LIP_DEBUG=1 时逐帧记录清晰度链路），生产运行零开销
@@ -1016,6 +1027,51 @@ class MouthRetimer:
         thr = max(30.0, float(np.percentile(g, 90)) * 0.62)
         return float((g < thr).mean())
 
+    def lip_edges(self, patch, ex, ey, lw):
+        """供体「上唇下缘 → 下唇上缘」两行（补丁坐标），用来做「只拉开口腔」的形变。
+
+        整块补丁等比纵向缩放时，fy 一拉嘴唇厚度也跟着变（fy=1.3 时厚 30%，
+        下唇那道高光被拉成一条厚白带，看着像涂了唇釉），下巴还被压缩，脸型都在动。
+        真实的张嘴是「上唇基本不动、下颌下移」，所以必须先知道口腔那一段在哪儿。
+        做法：口腔/牙齿的色度（LAB chroma）天然低于唇面，取嘴心中心列的行中位
+        色度，低于窗口内「唇面 80 分位 → 最低值」的 45% 视为口腔，再以最靠近
+        嘴中心的那一段为准并限制在嘴心 ±0.34 唇宽内；判不准就退回「整段等于
+        嘴中心」，此时形变等同于旧行为，不会比现在更差。
+        """
+        cv2 = self.cv2
+        h, w = patch.shape[:2]
+        half = max(4, int(round(lw * 0.30)))
+        x1, x2 = int(max(0, ex - half)), int(min(w, ex + half))
+        y1 = int(max(0, ey - lw * 0.34))
+        y2 = int(min(h, ey + lw * 0.36))
+        if x2 - x1 < 6 or y2 - y1 < 8:
+            return None
+        lab = cv2.cvtColor(patch[y1:y2, x1:x2], cv2.COLOR_BGR2LAB).astype(np.float32)
+        ch = np.maximum(np.abs(lab[:, :, 1] - 128.0), np.abs(lab[:, :, 2] - 128.0))
+        cw = ch.shape[1]
+        mid = ch[:, int(cw * 0.25):max(int(cw * 0.75), int(cw * 0.25) + 1)]
+        prof = np.median(mid, axis=1)
+        hi = float(np.percentile(prof, 80))
+        lo = float(np.min(prof))
+        if hi < 7.0 or hi - lo < 3.0:
+            return None
+        inside = prof < (lo + 0.45 * (hi - lo))
+        rows = np.where(inside)[0]
+        if rows.size == 0:
+            return None
+        k = int(rows[np.argmin(np.abs(rows - (ey - y1)))])
+        a = k
+        while a - 1 >= 0 and bool(inside[a - 1]):
+            a -= 1
+        b = k
+        while b + 1 < inside.size and bool(inside[b + 1]):
+            b += 1
+        u = float(y1 + a)
+        l = float(y1 + b + 1)
+        if (l - u) > lw * 0.55 or u > ey + lw * 0.10 or l < ey - lw * 0.10:
+            return None
+        return (u, l)
+
     def _open_rank_of(self, value):
         """把张开程度映射成「在全库里的百分位」，抵消两张图各自曝光/模糊带来的尺度差"""
         if self._open.size == 0:
@@ -1059,150 +1115,227 @@ class MouthRetimer:
         """把原片尺度的张口度归一化到 0~1（闭嘴≈0.15、最大≈0.55），给蒙版用"""
         return float(np.clip((float(value) - 0.15) / 0.40, 0.0, 1.0))
 
-    def lip_band(self, patch, mask):
-        """蒙版内「中间亮度带」的像素 → (LAB 图, 选择器, 蒙版) ，不足则 None。
+    def lip_stats(self, patch, mask):
+        """唇面统计 → (校正权重, 均值权重, (L, a, b) 加权均值)，量不到返回 None。
 
-        牙齿在亮度顶端、口腔暗腔在底端，35~80 分位剩下的正好是唇面本身。
-        唇色的 a/b 与亮度 L 都基于同一套选择器量，避免「a/b 量唇面、L 量到牙齿」。
+        旧做法是「亮度 35~80 分位 ∩ a ≥ 55 分位」的硬选择 + 膨胀 3px，两个死角：
+          · 选出来的永远是**最红**的那一块，而真正出问题的是「偏淡/偏蓝」的那一块
+            （用户截图红框里的淡紫唇），硬选择恰好把它排除在可校范围之外，
+            于是每帧都在修「已经不紫的地方」，紫的地方一直修不到；
+          · 求均值的集合里混着嘴唇上方的皮肤（a≈13 对唇面 a≈25），均值被拉淡
+            → 目标本身偏灰白，校完就是淡紫唇。
+        现在拆成两份软权重：
+          w_app（校正范围）= 蒙版 × 色度权重。色度权重按「偏离中性多少」平滑取值
+            （|a-128|、|b-128| 各到 8 为满值），所以唇面（无论浓淡）都是 1，
+            牙齿/齿间高光（近中性）≈0 —— 白牙不会被染成黄牙或蓝牙。
+          w_tgt（求均值）= 校正范围 × 亮度权重（蒙版内 25~72 分位当唇面，更亮
+            是牙齿、更暗是口腔，两头 6 灰阶平滑衰减），牙齿与下巴皮肤不进均值。
         """
         cv2 = self.cv2
-        band = mask[:, :, 0] > 0.55
+        band = mask[:, :, 0]
+        core = band > 0.55
+        if int(core.sum()) < 40:
+            return None
+        lab = cv2.cvtColor(patch, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+        chroma = np.maximum(np.abs(lab[:, :, 1] - 128.0), np.abs(lab[:, :, 2] - 128.0))
+        # /4 而不是 /8：上唇偏淡时 |a-128| 只有 5~8，/8 会把它降到 0.6~0.8，
+        # 于是「越淡的地方修的越少」，淡紫上唇永远修不回来（实测 t8 上唇 a 比
+        # 原片低 6 就是这个原因）。/4 下只要不是严格中性（牙齿 a±2）就按满权修。
+        w_app = np.clip(chroma / 4.0, 0.0, 1.0) * band
+        lo = float(np.percentile(L[core], 25))
+        hi = float(np.percentile(L[core], 72))
+        wl = (np.clip((L - (lo - 6.0)) / 6.0, 0.0, 1.0)
+              * np.clip(((hi + 6.0) - L) / 6.0, 0.0, 1.0))
+        w_tgt = w_app * wl
+        s = float(w_tgt.sum())
+        if s < 20.0:
+            # 整张嘴都是牙齿/暗腔（例如大笑）时退化成按色度权重求均值
+            w_tgt = w_app
+            s = float(w_app.sum())
+            if s < 20.0:
+                return None
+        mean = tuple(float((lab[:, :, ch] * w_tgt).sum() / s) for ch in range(3))
+        return w_app[:, :, None], w_tgt[:, :, None], mean
+
+    def lip_geo(self, patch, mask, lw):
+        """唇形掩码（几何范围）：蒙版内「明显比周围红」的那块唇面，膨胀+羽化。
+
+        校色必须限定在嘴唇轮廓内。只按「偏离中性多少」判权重时，嘴上方/下方的皮肤
+        也带着色度（a≈13，唇面≈25），会被当成唇面，校色就把唇色抹到皮肤上
+        （71.6s 实测嘴上方出现一块偏红补丁，b 被推到 +22）。这里用蒙版内
+        色度的 80 分位选唇面、再按唇宽膨胀 0.06 + 羽化 0.05，得到「只框住嘴唇」
+        的软掩码；真正的唇面（哪怕是偏淡的部分）全在框内，皮肤在框外。
+        """
+        cv2 = self.cv2
+        band = mask[:, :, 0] >= 0.45
         if int(band.sum()) < 40:
             return None
         lab = cv2.cvtColor(patch, cv2.COLOR_BGR2LAB).astype(np.float32)
-        g = lab[:, :, 0][band]
-        lo, hi = np.percentile(g, 35), np.percentile(g, 80)
-        sel = (g >= lo) & (g <= hi)
+        chroma = np.maximum(np.abs(lab[:, :, 1] - 128.0), np.abs(lab[:, :, 2] - 128.0))
+        thr = float(np.percentile(chroma[band], 80))
+        sel = band & (chroma >= thr)
         if int(sel.sum()) < 24:
             return None
-        return lab, sel, band
+        r = max(2, int(round(lw * 0.06)))
+        k = np.ones((2 * r + 1, 2 * r + 1), np.uint8)
+        core = cv2.dilate(sel.astype(np.uint8), k, iterations=1)
+        soft = cv2.GaussianBlur(core.astype(np.float32), (0, 0), max(1.5, lw * 0.05))
+        return np.clip(soft, 0.0, 1.0)[:, :, None]
 
-    def lip_chroma(self, patch, mask):
-        """唇面色度（LAB 的 a/b）：只统计蒙版里**中间亮度**的像素。
+    def match_lip_color(self, cur, mcur, out, mout, lw=80.0, smooth=True):
+        """把供体的**整片唇面** L/a/b 对齐到当前帧自己的唇面（均值闭环 + 唇内色场）。
 
-        上一版取「亮的一半」，结果选中的是牙齿/齿面高光/嘴唇上方的皮肤——都不是
-        唇面颜色，拿它去校色等于「把嘴唇校成皮肤色」，实测嘴唇直接被推成中性
-        淡紫（用户看到的「一圈紫白口红」）。
-        """
-        r = self.lip_band(patch, mask)
-        if r is None:
-            return None
-        lab, sel, band = r
-        return float(lab[:, :, 1][band][sel].mean()), float(lab[:, :, 2][band][sel].mean())
+        为什么必须闭环：供体来自另一时刻，人像灯/屏幕补光一直在变，实测同一段里
+        贴完的唇面亮度能差 ±10、色度差 3~7；而且「量供体用的像素集合」与贴合后
+        那张嘴并不相同（嘴型、牙齿露出量、唇线粗细都变了），一次性算差值收不住，
+        残差原样留在成片上，正是用户截图里那圈「淡紫/灰白」。
 
-    def match_lip_luma(self, out, cur, mask):
-        """唇面亮度（LAB 的 L）对齐：只补「唇面比当前帧亮/暗了多少」，夹 ±9。
+        两步：
+          ① 均值闭环：校正作用在 w_app（整片唇面，含偏淡的部分），牙齿/皮肤按
+             ≈0 权重不动；目标均值取 w_tgt（排除牙齿/暗腔/皮肤），目标不会自己偏灰。
+          ② 唇内低频色场：只对齐均值时，供体「上唇偏淡、内部偏红」的结构会原样
+             保留（均值对了，上唇还是淡紫）。这里用「唇面权重归一化的模糊」求两边
+             的唇内低频色图并相减，只在**两张图都判定为唇面**的位置（min 权重）上
+             叠回去：上唇、唇峰、嘴角各自就地校正，嘴边皮肤权重≈0 不会被染色。
 
-        皮肤环的亮度增益是**整体**作用到整块补丁上的，供体嘴唇常带一条强高光，
-        于是当前帧本该「红而暗」的嘴唇被一起提亮 —— 实测 4.6s 帧唇面灰阶
-        81→88、主色 a 13.0→11.3，肉眼就是「下唇发白、像涂了白口红」。
-        这里按同一套中间亮度带量出差值，只在蒙版内补回去，并做时序平滑。
+        两个参考蒙版必须分开：
+          mcur —— 按**当前帧自己**的张口度建的蒙版。若拿回贴蒙版去量当前帧，
+                 遇到「当前帧闭嘴、贴上去的嘴大张」时会把下巴皮肤算进唇面，
+                 a 被拉低 8~12、目标变淡 → 校出来就是淡紫唇。
+          mout —— 回贴蒙版（供体张口度 × 形变），只用来定位要改哪块像素。
         """
         cv2 = self.cv2
-        rc = self.lip_band(cur, mask)
-        ro = self.lip_band(out, mask)
-        if rc is None or ro is None:
+        ref = self.lip_stats(cur, mcur)
+        if ref is None:
             return out
-        lc = float(rc[0][:, :, 0][rc[2]][rc[1]].mean())
-        lo = float(ro[0][:, :, 0][ro[2]][ro[1]].mean())
-        d = float(np.clip((lc - lo) * 0.75, -9.0, 9.0))
-        if self._all is not None:
-            d = float(np.clip(0.45 * d + 0.55 * self._all, self._all - 1.5, self._all + 1.5))
-        self._all = d
-        if abs(d) < 1.0:
+        # 几何范围（当前帧自己的唇形轮廓）：皮肤虽然也有色度，但不在唇形框里，
+        # 所以「按色度加权」的均值闭环只作用在唇面上，不会把唇色抹到嘴边皮肤。
+        geo_c = self.lip_geo(cur, mcur, lw)
+
+        def adjust(lab, d, w):
+            w = w[:, :, None] if w.ndim == 2 else w
+            return cv2.cvtColor(np.clip(lab + np.asarray(d, np.float32) * w, 0, 255)
+                                .astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+        tgt = ref[2]
+        for it in range(3):
+            got = self.lip_stats(out, mout)
+            if got is None:
+                return out
+            w_app = got[0][:, :, 0]
+            geo_o = self.lip_geo(out, mout, lw)
+            if geo_c is not None and geo_o is not None:
+                w_app = w_app * geo_o[:, :, 0]
+            d = np.array([tgt[ch] - got[2][ch] for ch in range(3)], np.float32)
+            # 时序平滑：逐帧独立量到的唇面均值会随嘴型跳 2~4 个色度单位，
+            # 直接闭环就是「一帧偏粉一帧偏灰」（帧间闪烁）。与上一帧 55:45 混合，
+            # 单帧变化限幅（L ±4 / a、b ±3）；目标仍是绝对值，滞后不会留下永久偏差。
+            if it == 0 and smooth and self._lc is not None:
+                prev = np.asarray(self._lc, np.float32)
+                lim = np.array([4.0, 3.0, 3.0], np.float32)
+                d = np.clip(0.55 * d + 0.45 * prev, prev - lim, prev + lim)
+                self._lc = tuple(float(v) for v in d)
+            elif it == 0 and smooth:
+                self._lc = tuple(float(v) for v in d)
+            d = np.clip(d, -CHROMA_CLAMP if it == 0 else -6.0,
+                        CHROMA_CLAMP if it == 0 else 6.0)
+            if float(np.abs(d).max()) < 0.6:
+                break
+            lab = cv2.cvtColor(out, cv2.COLOR_BGR2LAB).astype(np.float32)
+            out = adjust(lab, d, w_app)
+
+        # ② 唇内低频色场：只对齐均值时，供体「上唇偏淡、内部偏红」的结构会原样
+        #    保留（均值对了，上唇还是淡紫）。这里求两边的唇内低频色图（权重归一化
+        #    模糊，半径 0.10 唇宽 ≈ 上唇的尺度）相减，只在两张图**都在唇形框内**的
+        #    位置叠回去，于是上唇、唇峰、嘴角各自就地校正，嘴边皮肤一点不动。
+        got = self.lip_stats(out, mout)
+        if got is None:
             return out
-        lab = cv2.cvtColor(out, cv2.COLOR_BGR2LAB).astype(np.float32)
-        lab[:, :, 0] += d * mask[:, :, 0]
-        return cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
+        geo_o = self.lip_geo(out, mout, lw)
+        sig = float(max(2.0, lw * 0.10))
+        wc = ref[0][:, :, 0] if geo_c is None else geo_c[:, :, 0]
+        wo = got[0][:, :, 0] if geo_o is None else geo_o[:, :, 0]
+        lab_c = cv2.cvtColor(cur, cv2.COLOR_BGR2LAB).astype(np.float32)
+        lab_o = cv2.cvtColor(out, cv2.COLOR_BGR2LAB).astype(np.float32)
+        field = self._wblur(lab_c, wc, sig) - self._wblur(lab_o, wo, sig)
+        if self._dlip is not None and self._dlip.shape == field.shape:
+            field = 0.62 * field + 0.38 * self._dlip
+        self._dlip = field
+        field = np.clip(field, np.array([-8.0, -5.0, -5.0], np.float32),
+                        np.array([8.0, 5.0, 5.0], np.float32))
+        out = adjust(lab_o, field, np.minimum(wc, wo)[:, :, None])
 
-    def match_lip_chroma(self, cur, patch, mask):
-        """把供体**唇面**的色度搬向当前帧（只动 LAB 的 a/b，不动亮度与纹理）。
+        # ③ 色场会让均值略微偏移，最后再补一轮均值（不再做时序平滑）
+        for it in range(2):
+            got = self.lip_stats(out, mout)
+            if got is None:
+                return out
+            d = np.clip(np.array([tgt[ch] - got[2][ch] for ch in range(3)], np.float32),
+                        -3.0, 3.0)
+            if float(np.abs(d).max()) < 0.4:
+                break
+            geo_o = self.lip_geo(out, mout, lw)
+            w = got[0][:, :, 0] * (1.0 if geo_o is None else geo_o[:, :, 0])
+            lab = cv2.cvtColor(out, cv2.COLOR_BGR2LAB).astype(np.float32)
+            out = adjust(lab, d, w)
+        return out
 
-        白平衡差一点，同一张嘴的唇色就会从暖粉变成灰白。唇色不能拿皮肤去估
-        （皮肤与唇面的色素并不线性跟随光照），也不能让供体原样留下
-        （供体可能是冷光下的另一段），所以单独把两张图的**唇面**量出来对齐，
-        幅度夹在 ±CHROMA_CLAMP，并按蒙版渐变，边界处不留色痕。
+    def _wblur(self, lab, w, sig):
+        """按权重归一化的三维高斯：只统计 w>0 的像素，得到一张平滑的「唇内色图」"""
+        cv2 = self.cv2
+        num = cv2.GaussianBlur(lab * w[:, :, None], (0, 0), sig)
+        den = cv2.GaussianBlur(w, (0, 0), sig)
+        return num / np.maximum(den, 0.10)[:, :, None]
+
+
+    def blend(self, cur, patch, mask, ring, lw=80.0):
+        """低频基色迁移（detail transfer）+ 羽化回贴。
+
+        旧做法是「蒙版外的皮肤环上逐通道估 增益×补丁 + 偏移」，两个硬伤：
+          1. 逐通道独立估：70~78s 这一段实测估出过 B+30 / R-25（供体在冷光蓝厅、
+             当前帧在暖光红帘），整块嘴唇被推成「蓝色口红」；
+          2. 增益在整个补丁上是**同一个常数**，一进蒙版羽化带就变成「分段常数场」，
+             边界内侧残留的那一圈正是用户截图里「嘴唇周围一圈紫灰光晕」。
+        现在是 detail transfer：色差只在皮肤环（漫反射、不含口红）上量，再用
+        半径 0.30 唇宽的**加权模糊**把它平滑内插成一张「光照/白平衡场」。
+        L 全额、色度也全额（皮肤对皮肤必须给足，否则环上残留一条冷灰带），但色度
+        项按供体自身的「偏离中性程度」加权 —— 牙齿/齿间高光（近中性）≈0，
+        白牙不会被染成蓝牙或黄牙。唇面绝对色随后由 match_lip_color 按当前帧
+        自己的唇面闭环收敛（那一步只认绝对值，不掺这个场）。
+        场与上一帧 62:38 混合 + 限幅 ±26，档位换供体时色温不会跳帧。
+        供体的高频（唇线、牙缝、胡渣、高光）一个像素都不动，所以既不虚也不糊。
         """
         cv2 = self.cv2
-        a = self.lip_chroma(cur, mask)
-        b = self.lip_chroma(patch, mask)
-        if a is None or b is None:
-            return patch
-        da = float(np.clip((a[0] - b[0]) * 0.85, -CHROMA_CLAMP, CHROMA_CLAMP))
-        db = float(np.clip((a[1] - b[1]) * 0.85, -CHROMA_CLAMP, CHROMA_CLAMP))
-        # 时序约束：唇色每帧都重新量，而量到的 a/b 会随嘴型（唇面/牙齿/口腔占比）
-        # 跳 2~5 个色度单位，直接套用就是「一帧偏粉、一帧偏灰」的闪变。
-        # 与上一帧 45:55 混合，并限幅 ±1.2/帧，让唇色像人眼看到的那样缓慢跟随。
-        if self._abl is not None:
-            da = float(np.clip(0.45 * da + 0.55 * self._abl[0],
-                               self._abl[0] - 1.2, self._abl[0] + 1.2))
-            db = float(np.clip(0.45 * db + 0.55 * self._abl[1],
-                               self._abl[1] - 1.2, self._abl[1] + 1.2))
-        self._abl = (da, db)
-        if abs(da) < 0.5 and abs(db) < 0.5:
-            return patch
-        lab = cv2.cvtColor(patch, cv2.COLOR_BGR2LAB).astype(np.float32)
-        lab[:, :, 1] += da * mask[:, :, 0]
-        lab[:, :, 2] += db * mask[:, :, 0]
-        return cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
-
-    def blend(self, cur, patch, mask, ring):
-        """皮肤环上的「亮度增益 + 偏移」对色 + 羽化回贴：唇线、牙缝、胡渣的高频一个像素不动。
-
-        为什么不能只做加性偏移：供体来自另一时刻，原片这盏人像灯偏暖、屏幕补光偏冷，
-        供体与当前帧常常是「同一个人的两种白平衡」。只平移亮度时，供体偏红/偏粉的
-        嘴唇会原样留下，正好在蒙版边缘形成一块「偏红斑 + 糊成一团」。
-
-        **但逐通道独立对色会翻车**：实测 70.0s 那一帧，皮肤环估出来的偏移在
-        B 通道 +30、R 通道 -25（供体是冷光下的蓝厅、当前帧是暖光下的红帘），
-        整块嘴唇被推成了「蓝色口红」。唇色素（R 与 B 的相对关系）在光照变化下
-        并不线性跟随皮肤，所以逐通道偏移不能直接套在嘴唇上。
-        现在把估计量拆成两半：三通道平均部分（亮度/曝光差）全额作用；
-        相对平均的色偏部分只保留 CHROMA_KEEP（22%），而且**只在皮肤环生效**：
-        唇面（mask 内）几乎不吃皮肤估出来的色偏，唇色交给 match_lip_chroma 单独校。
-        这样亮度仍然对得准，色温只做少量跟随——宁可留一点暖调，也不会出现整块变色。
-        偏移绝对值也从 ±26 收到 ±16：超过这个量级已经不是白平衡，而是「换了个场景」，
-        此时正确做法是不动色、只贴细节，而不是硬掰。
-        """
-        cv2 = self.cv2
-        c = cur.astype(np.float32)
-        p = patch.astype(np.float32)
-        ref = ring[:, :, 0] > 0.25
-        if int(ref.sum()) < 40:
-            ref = mask[:, :, 0] >= 0.45
-        raw = []
-        for ch in range(3):
-            cs = c[:, :, ch][ref]
-            ps = p[:, :, ch][ref]
-            if ps.size < 40:
-                raw.append((1.0, 0.0))
-                continue
-            cmed, pmed = float(np.median(cs)), float(np.median(ps))
-            csd, psd = float(cs.std()), float(ps.std())
-            gain = float(np.clip(csd / psd, 0.82, 1.18)) if psd > 3.0 and csd > 3.0 else 1.0
-            off = float(np.clip(cmed - gain * pmed, -16.0, 16.0))
-            raw.append((gain, off))
-        gm = sum(r[0] for r in raw) / 3.0
-        om = sum(r[1] for r in raw) / 3.0
-        # 色偏在皮肤环全额、唇面只留 CHROMA_KEEP：嘴唇不能跟着皮肤的色温走，
-        # 否则 70s 那种「供体冷光、当前帧暖光」的帧会被整块推成淡紫。
-        w = CHROMA_KEEP + (1.0 - CHROMA_KEEP) * (1.0 - mask)
-        ab = []
-        for ch in range(3):
-            gain, off = raw[ch]
-            # 时序约束：逐帧独立估计的增益/偏移会随供体换帧而跳，嘴唇亮度就会
-            # 一帧亮一帧暗（肉眼同样表现为「抖动」）。与上一帧按 45:55 混合，
-            # 并把单帧变化限幅在 ±6% / ±2 灰阶，色温只做缓慢跟随。
-            if self._ab is not None and ch < len(self._ab):
-                g0, o0 = self._ab[ch]
-                gain = float(np.clip(0.45 * gain + 0.55 * g0, g0 * 0.94, g0 * 1.06))
-                off = float(np.clip(0.45 * off + 0.55 * o0, o0 - 2.0, o0 + 2.0))
-            ab.append((gain, off))
-            p[:, :, ch] = (p[:, :, ch] * (gm + (gain - gm) * w[:, :, 0])
-                           + (om + (off - om) * w[:, :, 0]))
-        self._ab = ab
-        p = np.clip(p, 0.0, 255.0)
-        return np.clip(c * (1.0 - mask) + p * mask, 0, 255).astype(np.uint8)
+        c_lab = cv2.cvtColor(cur, cv2.COLOR_BGR2LAB).astype(np.float32)
+        p_lab = cv2.cvtColor(patch, cv2.COLOR_BGR2LAB).astype(np.float32)
+        if ring is not None:
+            ref = np.clip(ring[:, :, 0].astype(np.float32), 0.0, 1.0)
+        else:
+            ref = np.clip(1.0 - mask[:, :, 0], 0.0, 1.0)
+        if float(ref.sum()) < 40.0:
+            ref = np.clip(1.0 - mask[:, :, 0], 0.0, 1.0)
+        # 半径 0.30 唇宽：皮肤环本身就铺在这个尺度上，场能跟着「上唇上方那条阴影 /
+        # 嘴角一侧的补光」走；再大就退化成全脸平均（局部冷斑压不掉），
+        # 再小则在环与唇之间留下明显台阶。
+        sig = float(max(3.0, lw * 0.30))
+        d = c_lab - p_lab
+        num = cv2.GaussianBlur(d * ref[:, :, None], (0, 0), sig)
+        den = cv2.GaussianBlur(ref, (0, 0), sig)
+        # den 下限不能给到 1e-3：补丁四角几乎没有皮肤环覆盖，除以一个接近 0 的
+        # 权重会把单像素噪声放大成花斑。0.15 只让角上的场自然衰减，中间照旧。
+        field = num / np.maximum(den, 0.15)[:, :, None]
+        field = np.clip(field, -AB_FIELD_CLAMP, AB_FIELD_CLAMP)
+        if self._df is not None and self._df.shape == field.shape:
+            field = 0.62 * field + 0.38 * self._df
+        self._df = field
+        wch = np.clip(np.maximum(np.abs(p_lab[:, :, 1] - 128.0),
+                                 np.abs(p_lab[:, :, 2] - 128.0)) / 8.0, 0.0, 1.0)
+        field[:, :, 1] *= wch
+        field[:, :, 2] *= wch
+        p_lab = np.clip(p_lab + field, 0.0, 255.0)
+        out = c_lab * (1.0 - mask) + p_lab * mask
+        return cv2.cvtColor(np.clip(out, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
 
     def _lap(self, img):
         cv2 = self.cv2
@@ -1243,7 +1376,7 @@ class MouthRetimer:
                                    cv2.GaussianBlur(base, (0, 0), 1.0), -amount, 0)
             cand = np.clip(cand, 0, 255).astype(np.uint8)
             ratio = self._band_lap(cand, band) / target
-            if ratio > 1.30:
+            if ratio > 1.15:
                 hi = amount
                 amount = amount * 0.55
                 if hi <= 0.3:
@@ -1289,7 +1422,9 @@ class MouthRetimer:
                                     ex, ey, lw),
                 'roi': (rx1, ry1, rx2, ry2), 'patch': patch,
                 'desc': d, 'lap': lap, 'blap': blap,
-                'open': op, 'lw': lw}
+                'open': op, 'lw': lw,
+                # 口腔上下缘：回贴时只拉伸这一段（见 _warp_donor），唇厚不变
+                'edges': self.lip_edges(patch, ex, ey, lw)}
         dup = -1
         for k, old in enumerate(self.donors):
             if abs(lw - old['lw']) / max(1.0, old['lw']) > 0.18:
@@ -1421,10 +1556,18 @@ class MouthRetimer:
             self._bank_rank.append(float(self._open_rank[k]))
 
     def _warp_donor(self, k, ex, ey, lw, fy, rw, rh):
-        """把第 k 张供体按「唇心对齐 + 唇宽缩放 + 纵向形变」重采样进回贴区域。
+        """把第 k 张供体按「唇心对齐 + 唇宽缩放 + 张-闭形变」重采样进回贴区域。
 
-        纵向形变的支点钉在嘴唇中心 (ex, ey)：只缩放不平移时整张嘴会随开合上下漂，
-        和原片的脸对不齐，肉眼看就是「嘴在晃」。
+        旧的纵向形变是「整块补丁按唇心等比缩放」（warpAffine 一个 [[s,0],[0, s*fy]]），
+        两个硬伤都是肉眼可见的：
+          · 嘴唇厚度跟着 fy 一起变。fy=1.30 时上下唇各厚 30%，下唇那道镜面高光
+            被拉成一条厚白带、唇线变宽（实测放大图上就是「像涂了唇釉的厚嘴唇」）；
+          · 下巴被同比例压缩，脸型在动。
+        真实的张嘴是「上唇基本不动、口腔张开、下颌下移」：所以这里改成**分段行映射**——
+            y ≤ u（上唇下缘）        不动；
+            u < y ≤ l（口腔/牙齿）    按 fy 拉伸（这一段就是开口）；
+            y > l（下唇与下颌）        整体平移 (fy-1)*(l-u)，厚度不变。
+        横向仍然只按唇宽缩放 s。行映射是单调的，反解用 np.interp，一张 remap 完成。
         """
         cv2 = self.cv2
         if k < 0 or k >= len(self.donors):
@@ -1433,17 +1576,32 @@ class MouthRetimer:
         s = lw / max(1.0, d['mouth'][2])
         if s < 0.70 or s > 1.42:
             return None
-        sy = s * float(fy)
-        dx = ex - s * d['mouth'][3]
-        dy = ey - sy * d['mouth'][4]
-        if (abs(s - 1.0) < 0.015 and abs(sy - 1.0) < 0.015
+        fy = float(fy)
+        cx_d, cy_d = d['mouth'][3], d['mouth'][4]
+        ph = d['patch'].shape[0]
+        dx = ex - s * cx_d
+        dy = ey - s * cy_d
+        if (abs(s - 1.0) < 0.015 and abs(fy - 1.0) < 0.02
                 and d['patch'].shape[0] == rh and d['patch'].shape[1] == rw
                 and abs(dx) < 0.5 and abs(dy) < 0.5):
             # 几何恰好是恒等变换时别重采样：插值只会让原片高清嘴唇掉一点锐度
             return d['patch'].copy()
-        flags = cv2.INTER_LANCZOS4 if (abs(s - 1.0) > 0.08 or abs(sy - 1.0) > 0.08) else cv2.INTER_CUBIC
-        Mm = np.array([[s, 0, dx], [0, sy, dy]], np.float32)
-        w = cv2.warpAffine(d['patch'], Mm, (rw, rh), flags=flags, borderMode=cv2.BORDER_REFLECT_101)
+        ed = d.get('edges')
+        u, l = (float(ed[0]), float(ed[1])) if ed else (cy_d, cy_d)
+        u = max(0.0, min(float(ph - 1), u))
+        l = max(u, min(float(ph - 1), l))
+        seg = l - u
+        ys = np.arange(ph, dtype=np.float32)
+        # 行位移：口腔段按 fy 拉伸，其下整体平移，其上不动
+        below = np.clip(ys - u, 0.0, seg) if seg > 0.5 else (ys - u)
+        yd = s * (ys - cy_d) + ey + (fy - 1.0) * s * below
+        order = np.argsort(yd)
+        ysrc = np.interp(np.arange(rh, dtype=np.float32), yd[order], ys[order]).astype(np.float32)
+        xs = ((np.arange(rw, dtype=np.float32) - ex) / s + cx_d).astype(np.float32)
+        map_x = np.repeat(xs[None, :], rh, axis=0)
+        map_y = np.repeat(ysrc[:, None], rw, axis=1)
+        flags = cv2.INTER_LANCZOS4 if (abs(s - 1.0) > 0.08 or abs(fy - 1.0) > 0.10) else cv2.INTER_CUBIC
+        w = cv2.remap(d['patch'], map_x, map_y, flags, borderMode=cv2.BORDER_REFLECT_101)
         if w.shape[:2] != (rh, rw):
             return None
         return w
@@ -1488,14 +1646,17 @@ class MouthRetimer:
         # 不能改用「回贴后实测的暗腔占比」：那个代理量对纵向形变极不敏感
         # （实测 fy 1.0→1.42 只从 0.302 涨到 0.331），张口明明拉大了蒙版却几乎不变，
         # 牙齿露在蒙版外就是「双层牙」。
-        mask, ring = self.mask_of(rh, rw, ex, ey, lw, self.open01_of(eff), float(fy))
+        # 蒙版必须同时装得下「贴上去的那张嘴」和「当前帧自己的嘴」：只按 eff 建时，
+        # 当前帧嘴张得比 eff 大（配音计划偏轻），它自己的嘴唇就会从蒙版上下露出来，
+        # 形成「双层唇」；而过去为了兜住这种情况把半高放到 0.20 唇宽，多盖出来的
+        # 那 9 像素全是供体帧上唇上方的皮肤 —— 正是嘴上一圈灰白/紫灰光晕的来源。
+        op_cur = self.open_of(cur, ex, ey, lw)
+        o_mask = max(self.open01_of(eff), self.open01_of(op_cur))
+        mask, ring = self.mask_of(rh, rw, ex, ey, lw, o_mask, float(fy))
         band = mask[:, :, 0] > 0.60
         if not bool(band.any()):
             self.stats['skip'] += 1
             return False
-        # 唇色先校到当前帧（LAB a/b），再让皮肤环的增益/偏移只管亮度：
-        # 顺序反过来会把刚刚校好的唇色又推回供体的白平衡。
-        warped = self.match_lip_chroma(cur, warped, mask)
         # 当前帧自身的嘴部清晰度 = 回贴后这一帧真实该有的目标清晰度
         target_lap = self._band_lap(cur, band)
         # 供体来自全片清楚的帧，而当前帧的嘴唇可能正处在运动模糊里；只在供体
@@ -1514,16 +1675,23 @@ class MouthRetimer:
                 else:
                     best, hi = cand, mid
             warped = best
-        blended = self.blend(cur, warped, mask, ring)
-        # 皮肤环的亮度增益会把唇面一起提亮（供体嘴唇常带强高光），
-        # 当前帧本该「红而暗」的嘴唇就会变成白口红——按唇面自身亮度再补一次。
-        blended = self.match_lip_luma(blended, cur, mask)
-        # 只在蒙版覆盖到的嘴部补清晰度，周围原生皮肤保持不动；目标取当前帧唇部
-        # 清晰度的 1.15 倍，避免把清晰的供体嘴压成和运动模糊一样糊。
-        sharp = self.sharpen_to(blended, target_lap * 1.15, band)
+        blended = self.blend(cur, warped, mask, ring, lw)
+        # 唇色必须在**混合之后**校：blend 把当前帧的光照场搬到供体上之后，
+        # 唇面（尤其中性化过的牙齿/高光）还会带走一部分供体自己的色温，
+        # 先校后被推回去等于白校（用户截图红框那圈淡紫就是这么留下的）。
+        # 参考蒙版用当前帧自己的张口度单独建一份，
+        # 否则「当前帧闭嘴 + 贴上去的嘴大张」时会把下巴皮肤算进唇面、目标变淡。
+        mcur = self.mask_of(rh, rw, ex, ey, lw, self.open01_of(op_cur), 1.0)[0]
+        blended = self.match_lip_color(cur, mcur, blended, mask, lw)
+        # 只在蒙版覆盖到的嘴部补清晰度，周围原生皮肤保持不动；目标就是当前帧
+        # 唇部自身的清晰度（以前取 1.15 倍，实测收在 1.3 上限 → 唇线出现白色
+        # 描边、下唇高光被打成一条白带）。现在 1.02 倍、上限 1.15。
+        sharp = self.sharpen_to(blended, target_lap * 1.02, band)
         final = np.clip(blended.astype(np.float32)
                         + (sharp.astype(np.float32) - blended.astype(np.float32)) * mask,
                         0, 255).astype(np.uint8)
+        # 锐化会抬高一圈高频（唇面均值随之偏亮 1~4 个灰阶），最后再闭环校一次
+        final = self.match_lip_color(cur, mcur, final, mask, lw, smooth=False)
         frame[ry1:ry2, rx1:rx2] = final
         self.stats['lip'] += 1
         self.stats['fy'].append(float(fy))
@@ -1813,6 +1981,11 @@ def main():
     retimer.finalize(mouths)
 
     use_retime = retimer.count >= 6
+    edges = [(d['edges'], d['lw']) for d in retimer.donors if d.get('edges')]
+    if retimer.count:
+        gl = float(np.median([(b - a) / max(1.0, lw) for (a, b), lw in edges])) if edges else 0.0
+        log('供体口腔段定位 %d/%d 张（中位开口 %.3f 唇宽），其余退回嘴心形变'
+            % (len(edges), retimer.count, gl))
     emit(stage='donor', percent=18, donors=retimer.count,
          mode='retime' if use_retime else 'sr',
          detail='原片高清嘴部样本 %d 张' % retimer.count)
@@ -2002,4 +2175,7 @@ if __name__ == '__main__':
         raise
     except Exception as e:  # 把异常压成一行给 Node 层展示
         log('ERROR %s' % e)
+        if os.environ.get('TP_LIP_DEBUG') == '1':
+            import traceback
+            log(traceback.format_exc())
         sys.exit(1)

@@ -1231,23 +1231,34 @@ async function analyzeSourceVoice(input, win) {
 // 放到「只比人声小一点」的档位，听感就是用户说的「非常明显的噪音」。
 // 现在留 13dB 的间隔：旋律仍然听得到，但不再抢人声。
 const BGM_TARGET_LUFS = -31;
+// 「这条床到底是不是配乐」的门槛（降噪+限带之后测的 LUFS）。
+// 实测本条口播素材（展馆现场、没有人声之外的配乐）分离出来的床只有 -41.7 LUFS，
+// 频谱里 93% 的能量压在 300Hz 以下 —— 那不是音乐，是低频轰鸣 + 人流回声。
+// 这种床**一旦被抬到 -31 LUFS 就是成片里最明显的那层噪音**：
+// 同一份床，被丢弃的那一版（en 3）停顿噪底 -67.6dB，被抬上来的那一版（ja 2）
+// 停顿噪底只有 -46.5dB、80% 能量在 300Hz 以下，听感就是「一直有嗡嗡声」。
+// 所以 -38 LUFS 以下一律判定为「没有真正的配乐」，直接丢弃（宁可静音，不放噪）。
+// 有旋律的素材实测都在 -30 LUFS 以上，不会被这条门槛误伤。
+const BGM_MIN_LUFS = -38;
 // 分离残留的嘶声/气声过一遍频域降噪与限带；太狠会把音乐本身削薄。
 // anlmdn 与配音轨同理**必须留着**：实测这条床（本片其实是展厅底噪，没有旋律）
 // 在 4-8k 有 -21dB 的分离残留，只靠 afftdn nr=12 压不动；叠 anlmdn 之后
 // 4-8k 掉到 -49dB、整轨噪底从 -63dB 到 -82dB，而音乐本体只掉约 1.4dB。
 // afftdn tn=1 让噪声底按帧自动跟踪，对稳定嘶声有效；lowpass 收到 13k 再砍一层。
-const BGM_CLEAN = 'highpass=f=48:poles=2,lowpass=f=13000,afftdn=nr=16:nf=-52:tn=1,anlmdn=s=2:p=0.002:r=0.006';
+// 高通从 48 抬到 60：分离出来的床有相当一部分是 80Hz 以下的低频轰鸣，
+// 48Hz 的高通基本放它过去了（实测 48→60 只掉 0.4dB 的床响度，真配乐不受影响）。
+const BGM_CLEAN = 'highpass=f=60:poles=2,lowpass=f=13000,afftdn=nr=16:nf=-52:tn=1,anlmdn=s=2:p=0.002:r=0.006';
 // 人声一起，伴奏自动后退；人声停，伴奏回来。阈值必须落在配音的实际电平之下：
 // 配音归一后约 -18 LUFS（RMS≈0.125），以前写的 0.16 比语音还高，侧链等于没接，
 // 伴奏（还带着分离残留的原语言人声）一直原音量压在译文下面——这就是「几个人同时说」。
 // 实测 threshold=0.004/ratio=6 在真实电平下压 9~10dB，停顿处立刻回到原音量——
 // 但 12ms attack / 350ms release 配 10dB 深度，在句与句之间形成了 1~2Hz 的「抽吸」，
 // 听感上是背景一阵一阵地涌上来，很容易被当成噪音。所以起落时间拉长（25ms / 550ms）。
-// ratio 又从 3.5 提到 6：本片这种「分离出来没有旋律、只有环境噪音」的素材，
-// 压 5dB 仍然相当于在人声底下的 -36 LUFS 宽带噪声，听感就是「一直有沙沙声」；
-// 压到 15dB（≈ -46 LUFS）人声说话时完全听不见，句间停顿处（侧链无信号）伴奏
-// 仍会按 release 慢慢回到原电平，音乐照样听得到。
-const BGM_DUCK = 'sidechaincompress=threshold=0.005:ratio=6:attack=25:release=550:level_sc=1';
+// ratio 又从 3.5 提到 6、现在到 10：本片这种「分离出来没有旋律、只有环境噪音」的
+// 素材，压 15dB 仍然相当于在人声底下的一层宽带噪声；压到 20dB 以上人声说话时
+// 完全听不见，句间停顿处（侧链无信号）伴奏仍会按 release 慢慢回到原电平，
+// 真正有配乐的素材照样听得到（音乐床已经被 BGM_MIN_LUFS 门槛保证是「真配乐」）。
+const BGM_DUCK = 'sidechaincompress=threshold=0.005:ratio=10:attack=20:release=600:level_sc=1';
 
 /**
  * 只分离「这次要出片的窗口」，各语种共用同一份伴奏。
@@ -1260,12 +1271,13 @@ async function separateBgm({ source, win, dur, dir, onProgress, onChild }) {
   const res = await audiosep.separate({ input: wav, outdir: dir, onProgress, onChild });
   if (!res.file || !fs.existsSync(res.file)) return null;
   const lufs = await measureLufs(res.file, BGM_CLEAN);
-  // 原片没有 BGM 时，分离出来的「伴奏」只是底噪残渣。
-  // 这时再把它抬到目标响度混进成片，等于把噪音放大十几 dB，所以直接丢弃。
-  if (lufs == null || lufs < -48) return null;
-  // 抬升上限 +3dB：再往上就是把分离残留（人声剥离后的「空气/人流」）一起放大，
+  // 原片没有真正的配乐时，分离出来的「伴奏」只是底噪残渣（实测本片 -41.7 LUFS、
+  // 93% 能量在 300Hz 以下）。这种床只要混进成片，句间停顿就会漏出一层低频轰鸣，
+  // 正是用户反复反馈的「非常明显的噪音」；直接丢弃，停顿就是干净静音。
+  if (lufs == null || lufs < BGM_MIN_LUFS) return null;
+  // 抬升上限 +2dB：再往上就是把分离残留（人声剥离后的「空气/人流」）一起放大，
   // 那正是「听起来很吵」的来源；衰减下限 -8dB 防止伴奏被压没
-  const gain = Math.max(-8, Math.min(3, BGM_TARGET_LUFS - lufs));
+  const gain = Math.max(-8, Math.min(2, BGM_TARGET_LUFS - lufs));
   return { file: res.file, lufs, gain, stats: res.stats || null };
 }
 
