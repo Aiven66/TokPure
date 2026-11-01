@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TokPure — 本地口型同步（Wav2Lip 96 + 原片高清嘴部回贴）。
+"""TokPure — 本地口型同步（配音包络驱动 + 原片高清嘴部回贴）。
 
 输入：已经切片好的口播画面（mp4）+ 目标语言配音（wav，含整段静音填充）
 输出：口型跟着配音走的新视频（画面保留原片构图、头部动作、背景）
@@ -7,17 +7,21 @@
 设计要点：
 1. 全程离线：模型权重与代码都在本机，进程内不发任何网络请求；
 2. 音频驱动先于口型：配音定稿后再逐帧重绘嘴部，绝不边合成边对齐；
-3. **口型重定时（主路径）**：Wav2Lip 的 96×96 输出只用来判断「这一帧该张多大嘴」，
-   像素一律取自原片——从原片里挑一张嘴型最接近、且清晰度达标的同一个人「嘴部供体」，
+3. **口型重定时（主路径）**：「这一帧该张多大嘴」由**配音自己的元音包络**算出来
+   （子句切分 → 按句音量选一张供体 → 句内包络映射到纵向形变，逐帧限速）。
+   旧的 Wav2Lip 96×96 预测值实测与配音包络相关系数只有 0.00（纯噪声），
+   用它驱动会让嘴在上下限之间逐帧抽动，所以主路径不再推理。
+   像素一律取自原片——从原片里挑一张嘴型合适的同一个人「嘴部供体」，
    按「嘴唇中心对嘴唇中心 + 唇宽缩放」对齐后羽化回贴（不再用 ORB/人脸框比例，
    两者在嘴唇/牙齿差异大、人脸框跳变时都会把嘴错位）。原片是 800~1080p，
    嘴部有真实唇线、牙缝、胡渣，所以不会再出现「96×96 插值放大 → 发蜡、糊成一团」；
-4. 头部晃动、手势、景别全部保留；人脸检测用 OpenCV 级联（Apache-2.0），
-   检测结果 5 帧滑动平均，避免检测框抖动导致嘴部闪烁；
-5. 视频解码/编码都走 ffmpeg 管道（bgr24 rawvideo），两遍流式：第一遍只留人脸框与
+4. 头部晃动、手势、景别全部保留；人脸检测用 YuNet 关键点（Apache-2.0），
+   逐帧嘴位再做零相位平滑，避免检测框抖动导致嘴部闪烁；
+5. 视频解码/编码都走 ffmpeg 管道（bgr24 rawvideo），全程流式：第一遍只留人脸框与
    嘴部小补丁（绝不把整条视频的所有帧留在内存，82s 视频以前要占 6GB 以上），
-   第二遍逐批推理+回贴+编码；
-6. 供体不足（<6 张，例如原片全程模糊）时退回「超分 / 反卷积」回贴，任务不中断。
+   第二遍逐帧回贴+编码；
+6. 供体不足（<6 张，例如原片全程模糊）时退回「Wav2Lip + 超分 / 反卷积」回贴，
+   任务不中断（这条兜底路径才加载 torch 与模型权重）。
 
 调试约定：进度与分析信息以 `@@PROG {json}` 单行写 stdout，其余日志写 stderr。
 """
@@ -119,6 +123,33 @@ def probe_video(ffmpeg, video):
     if dm:
         dur = float(dm.group(1)) * 3600 + float(dm.group(2)) * 60 + float(dm.group(3))
     return w if w % 2 == 0 else w - 1, h if h % 2 == 0 else h - 1, fps, dur
+
+
+def count_frames(ffmpeg, video):
+    """用 demux 计数（-c copy，不解码）拿到视频的**真实帧数**，用来校验标称帧率。
+
+    手机竖拍素材的容器标称帧率经常与真实帧数对不上，而本流程的「帧号 ↔ 音频时间」
+    完全依赖这个帧率：帧率偏大等于每个音频窗口少走几帧，整条口型会越走越超前。
+    实测本片（816×1440、标称「21.82 fps, 30 tbr」、82.83 秒）demux 得到 1804 个
+    视频包 = 21.78 fps，与标称 21.82 只差 0.2%，所以这里不会改动 fps；
+    但同一条链路对真正的 VFR 素材（标称 30、实际 22 之类）会自动改用真实帧率。
+    多一遍 demux 计数（132MB 约 1 秒）换取「帧号与音频时间严格对齐」是划算的。
+    注意：`ffmpeg -f null -` 打印的 frame= 是**包数**，不是解码帧数；
+    而裸 rawvideo 输出不加 -r 时 ffmpeg 会按 vsync 重复取样（实测会把 1804 帧
+    报成 2481 帧），两者都不能直接当帧数用——所以只认这里的 demux 计数。
+    """
+    text = ''
+    try:
+        proc = subprocess.run([ffmpeg, '-hide_banner', '-nostdin', '-i', video,
+                               '-map', '0:v:0', '-c', 'copy', '-f', 'null', '-'],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                              timeout=180)
+        text = (proc.stderr or '') + (proc.stdout or '')
+    except Exception as e:
+        log('帧数统计失败（沿用标称帧率）：%s' % e)
+        return 0
+    hits = re.findall(r'frame=\s*(\d+)', text)
+    return int(hits[-1]) if hits else 0
 
 
 class FrameReader:
@@ -574,14 +605,193 @@ def locate_mouth(frame, box, w, h, angle=0.0, lm=None):
 
 
 
+def zero_phase_smooth(v, sigma):
+    """对称高斯平滑（**零相位、零滞后**）。
+
+    因果滤波（EMA / 滑动平均）压抖动一定会带滞后：嘴位滞后两帧，蒙版就切在嘴唇
+    边上。这里对整段序列做中心对称卷积，只削「帧间来回跳」的高频，不改变运动的
+    相位——单调运动的中段几乎不变形，只在起点/终点做镜像延拓。
+    """
+    v = np.asarray(v, np.float64)
+    if v.size < 3 or sigma <= 0:
+        return v.copy()
+    r = max(1, int(round(3.0 * sigma)))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1, dtype=np.float64) / float(sigma)) ** 2)
+    k /= k.sum()
+    pad = np.pad(v, (r, r), mode='reflect' if v.size > r else 'edge')
+    return np.convolve(pad, k, mode='valid')
+
+
+def audio_gate_seq(wav, fps, total):
+    """逐帧配音「该说话/该闭嘴」系数（0=静音段，1=正常说话）。
+
+    嘴抖的第二个来源是「模型每帧独立预测张口度」：同一句话里相邻帧的预测值会来回
+    跳，供体就跟着在几张几乎等价的嘴型之间横跳，肉眼看就是嘴唇在抖。这里把三件事
+    一起做掉：
+      1) 用配音自己的 RMS 包络算出「语音/静音」权重，静音帧强制闭嘴；
+      2) 包络与权重都过零相位平滑，不再有逐帧锯齿；
+      3) 张嘴度最终 = 模型张口度 × 权重，停顿处一定是闭着的。
+    第 1 条同时解决「嘴型没和配音对齐」：观众判断对齐，很大程度就看「没声音的时候
+    嘴有没有闭上」，以前的成片在句间停顿仍然半张着嘴。
+    """
+    sr = SAMPLE_RATE
+    hop = sr / max(1.0, float(fps))
+    n = int(min(total, max(1, int(len(wav) / max(1.0, hop))))
+            ) if len(wav) else 0
+    gate = np.ones(max(1, total), np.float64)
+    if n < 3:
+        return gate
+    step = max(1, int(round(hop)))
+    db = np.empty(n, np.float64)
+    for i in range(n):
+        a = i * step
+        b = min(len(wav), a + step)
+        seg = wav[a:max(b, a + 1)]
+        e = float(np.sqrt(np.mean(np.asarray(seg, np.float64) ** 2) + 1e-12))
+        db[i] = 20.0 * np.log10(max(e, 1e-6))
+    db = zero_phase_smooth(db, 1.5)
+    act = db > float(np.percentile(db, 50))
+    ref = float(np.median(db[act])) if bool(act.any()) else float(np.median(db))
+    # 比「典型说话电平」低 13dB 视为静音；5dB 的斜坡保证开合是渐变而不是一刀切
+    g = np.clip((db - (ref - 13.0)) / 5.0, 0.0, 1.0)
+    g = zero_phase_smooth(g, 1.2)
+    gate[:n] = g
+    return gate
+
+
+def band_env_seq(wav, fps, total):
+    """逐帧「元音能量」包络（dB）：只取 90~1100Hz。
+
+    张口的主要物理来源是元音（低波段能量），而 /s/ /ʃ/ /f/ 这类摩擦音能量几乎
+    全在高频、嘴巴基本不动。用全带宽 RMS 会把这些音也当成「该张大嘴」，成片里
+    就会出现「嘶—」的时候嘴张得最大。带通后再取 RMS，开口曲线才跟语音对得上。
+    """
+    from scipy import signal
+    sr = SAMPLE_RATE
+    step = max(1, int(round(sr / max(1.0, float(fps)))))
+    n = int(min(total, max(1, int(len(wav) / float(step))))) if len(wav) else 0
+    db = np.full(max(1, total), -90.0, np.float64)
+    if n < 3:
+        return db
+    sos = signal.butter(2, [90.0, 1100.0], btype='bandpass', fs=sr, output='sos')
+    y = signal.sosfilt(sos, np.asarray(wav, np.float64))
+    for i in range(n):
+        a = i * step
+        b = min(len(wav), a + step)
+        seg = np.asarray(y[a:max(b, a + 1)], np.float64)
+        e = float(np.sqrt(np.mean(seg ** 2) + 1e-12))
+        db[i] = 20.0 * np.log10(max(e, 1e-6))
+    db = zero_phase_smooth(db, 2.2)
+    return db
+
+
+def audio_mouth_plan(wav, fps, total, bank_open):
+    """配音 → 逐帧 (档位, 纵向形变系数)。整条片子只由音频决定，不看模型输出。
+
+    规则：
+      1) 子句（配音门 ≥ PAUSE_GATE 的连续段）内固定同一张供体——不换嘴就不抖；
+      2) 子句的「典型开口」由这一句的音量决定（响的句子换一张更张的嘴），
+         换档只发生在子句起点，而且立刻被形变吸收，没有逐帧换嘴；
+      3) 子句内的逐帧开合 = 该句自己的元音包络（按句内 15/85 分位归一化），
+         直接映射到 [开口下限/供体, 开口上限/供体] 这一段形变区间；
+      4) 停顿：换到最闭合那张供体 + 形变 1（闭着的两张嘴长得一样，换档看不见）；
+      5) 所有形变逐帧限速 FY_SLEW，任何情况下逐帧变化都不会超过这个量。
+
+    返回 (lvl_seq, fy_seq, gate)。
+    """
+    n = max(1, int(total))
+    bank = np.asarray(bank_open, np.float64)
+    if bank.size == 0:
+        return np.zeros(n, np.int32), np.ones(n, np.float64), np.ones(n, np.float64)
+    db = band_env_seq(wav, fps, n)
+    gate = audio_gate_seq(wav, fps, n)
+    speech = gate >= PAUSE_GATE
+    if int(speech.sum()) < 10:
+        speech = np.ones(n, bool)
+    # 子句切分
+    clauses = []
+    i = 0
+    while i < n:
+        if speech[i]:
+            j = i
+            while j + 1 < n and speech[j + 1]:
+                j += 1
+            clauses.append((i, j + 1))
+            i = j + 1
+        else:
+            i += 1
+    voiced = db[speech]
+    p10, p90 = float(np.percentile(voiced, 10)), float(np.percentile(voiced, 90))
+    o_lo = float(np.percentile(bank, PLAN_LO_PCT))
+    o_hi = float(np.percentile(bank, PLAN_HI_PCT))
+    # 目标表：每帧该用的档位与形变（未限速）
+    tgt_lvl = np.zeros(n, np.int32)
+    tgt_fy = np.ones(n, np.float64)
+    for (a, b) in clauses:
+        seg = db[a:b]
+        if p90 > p10 + 1.0 and seg.size >= 3:
+            rank = float(np.clip((np.median(seg) - p10) / (p90 - p10), 0.0, 1.0))
+        else:
+            rank = 0.5
+        want = o_lo + rank * (o_hi - o_lo)
+        L = int(np.argmin(np.abs(bank - want)))
+        lo_c = float(np.percentile(seg, PLAN_DB_LO)) if seg.size >= 3 else p10
+        hi_c = float(np.percentile(seg, PLAN_DB_HI)) if seg.size >= 3 else p90
+        if hi_c < lo_c + 2.0:
+            lo_c, hi_c = p10, p90
+        span = max(2.0, hi_c - lo_c)
+        # 形变区间 = 这一句自身的开口 × [0.72, 1.30]（相对、按句归一）。
+        # 不能再用「全库 20/80 分位」的绝对区间：供体档位一变，同一个绝对区间
+        # 就要靠 0.42~2.2 倍的形变去凑，实际只能截在 [0.78,1.36]，
+        # 结果每句都在上下限之间把嘴拉长又压扁，句内合成动作还一模一样。
+        bopen = max(1e-3, float(bank[L]))
+        f_lo = float(np.clip(want * PLAN_FY_LO / bopen, FY_FLOOR, FY_CEIL))
+        f_hi = float(np.clip(min(want * PLAN_FY_HI, PLAN_OPEN_MAX) / bopen, FY_FLOOR, FY_CEIL))
+        if f_hi < f_lo + 0.12:
+            f_hi = min(FY_CEIL, f_lo + 0.12)
+        tgt_lvl[a:b] = L
+        for k in range(a, b):
+            s = float(np.clip((db[k] - lo_c) / span, 0.0, 1.0))
+            tgt_fy[k] = f_lo + s * (f_hi - f_lo)
+    # 停顿帧：最闭合供体 + 形变 1
+    sil = ~speech
+    tgt_lvl[sil] = 0
+    tgt_fy[sil] = 1.0
+    # 逐帧限速（停顿往闭合收的速度可以稍快一点，人闭嘴本来就比张嘴快）
+    lvl = np.zeros(n, np.int32)
+    fy = np.ones(n, np.float64)
+    cur = 1.0
+    sw = 0
+    prev_l = 0
+    for k in range(n):
+        t = float(tgt_fy[k])
+        lim = FY_SLEW * (1.6 if bool(sil[k]) else 1.0)
+        cur += float(np.clip(t - cur, -lim, lim))
+        cur = float(np.clip(cur, FY_FLOOR, FY_CEIL))
+        lvl[k] = int(tgt_lvl[k])
+        if lvl[k] != prev_l:
+            sw += 1
+            prev_l = int(lvl[k])
+        fy[k] = cur
+    log('mouth-plan clauses=%d levels=%d switches=%d fy(p50=%.2f p05=%.2f p95=%.2f) '
+        'open(p50=%.3f)' % (
+            len(clauses), len(set(lvl.tolist())), sw, float(np.median(fy)),
+            float(np.percentile(fy, 5)), float(np.percentile(fy, 95)),
+            float(np.median([bank[l] * f for l, f in zip(lvl, fy) if l]))))
+    return lvl, fy, gate
+
+
 def smooth_mouths(mouths, w, h):
-    """嘴位修复：只剔粗差、补缺帧、3 帧中值，**绝不做长窗平均**。
+    """嘴位修复：剔粗差 → 补缺帧 → 3 帧中值（去尖峰）→ 零相位高斯（去抖动）。
 
     以前这里是「9 帧中值 + 5 帧均值」。这个窗口在头部左右移动时会把嘴位平均到
     4 帧之前的位置——蒙版就滞后于真实的嘴唇，于是每帧都切掉一部分下唇、又把
     下唇下方的皮肤换进来，肉眼看就是嘴角那块「糊斑」。回贴的对齐用的是同一个
     估计量，常数偏差会自我抵消，真正需要的只有「平滑噪声」而不是「抹平运动」。
-    3 帧中值对单调运动零滞后（只在拐点差 1 帧），同时能压掉单帧关键点跳点。
+    但只有 3 帧中值还不够：YuNet 嘴角关键点在静止头部上逐帧仍有 ±1px 抖动，
+    「a,b,a,b」这种交替抖动的中值正好等于抖动本身，等于没滤——用户看到的
+    「嘴在抖」就是它，外加蒙版接缝在皮肤上来回移动。零相位高斯没有滞后，
+    正好只削这种帧间高频。
     """
     n = len(mouths)
     if n == 0:
@@ -610,6 +820,12 @@ def smooth_mouths(mouths, w, h):
         lo, hi = max(0, i - 1), min(n, i + 2)
         for j in range(3):
             sm[i, j] = np.median(out[lo:hi, j])
+    # 零相位高斯：唇心/唇宽各削一层帧间抖动。唇宽在对数域平滑（它是乘性量）。
+    # sigma=1.1 帧约 50ms，只压 ±1~2px 的来回跳，不抹掉真实的说话动作。
+    sm[:, 0] = zero_phase_smooth(sm[:, 0], 1.1)
+    sm[:, 1] = zero_phase_smooth(sm[:, 1], 1.1)
+    lw = zero_phase_smooth(np.log(np.maximum(1.0, sm[:, 2])), 1.4)
+    sm[:, 2] = np.exp(lw)
     seq = []
     for r in sm:
         cur = [float(r[0]), float(r[1]), float(r[2])]
@@ -634,31 +850,55 @@ def smooth_mouths(mouths, w, h):
 # 校正，唇线/牙缝一律不动。唇心估计若有常数偏差，供体与当前帧用同一个估计量对齐，
 # 偏差会自我抵消——真正要紧的是帧间方差，由 smooth_mouths 的时序滤波负责压掉。
 MASK_RX = 0.57                   # 蒙版半宽 / 唇宽（蒙版横向就压在两侧嘴角上）
-MASK_RY = 0.26                   # 蒙版半高 / 唇宽（闭嘴时：上唇薄下唇厚，唇高 ≈0.5 唇宽）
+# 蒙版半高必须**贴着真实嘴唇**，不能按「嘴唇占多大一块」凭感觉给。
+# 在这条 816×1440 的口播上量（YuNet 双嘴角 = 唇宽基准）：
+#   闭嘴时上下唇外缘总高 ≈0.30 唇宽 → 半高 0.15；全张时（含牙齿）≈0.60 → 半高 0.30。
+# 以前写 0.26 / 0.34（合计 0.60）等于「闭嘴也按半张来盖」，蒙版上沿压在人中、
+# 下沿压在下唇下方的下巴上，那两个位置被换成供体的皮肤；供体来自另一时刻，
+# 光照/白平衡本来就有差，叠上去就是用户截图里「嘴上一圈灰斑」和嘴角的双层唇线。
+# 现在闭嘴 0.17（≈1.15 倍真实半高），全张 0.32，只多盖 2~3 像素作为羽化余量。
+MASK_RY = 0.20                   # 蒙版半高 / 唇宽（闭嘴）
 # 张口时（上唇上抬、下唇下沉、牙齿整块露出来）纵向必须跟着长，否则上/下排牙齿
 # 正好压在羽化带上，会被「供体的牙齿」和「当前帧自己的牙齿」各掺一半，
 # 唇齿交界处就是一片发丝状的网纹重影（用户在 01:16 反馈的那块「糊斑」）。
-MASK_RY_OPEN = 0.34              # 张口到最大时，蒙版半高再增加 0.34 倍唇宽
+MASK_RY_OPEN = 0.16              # 张口到最大时，蒙版半高再增加 0.16 倍唇宽
 REGION_RH = 1.34                 # 回贴区域高 / 唇宽（要装得下最张的蒙版 + 一圈皮肤环）
 MASK_DY = 0.0                    # 蒙版中心相对嘴中心的下移（实测≈0，留着便于微调）
-MASK_FEATHER = 0.10              # 羽化带占半径的比例（越小越硬，接缝越干净）
+MASK_FEATHER = 0.12              # 羽化带占半径的比例（越小越硬，接缝越干净）
+CHROMA_KEEP = 0.22               # 皮肤环对色里只保留 22% 的逐通道色偏（其余只修亮度）
+CHROMA_CLAMP = 11.0              # 唇面色度（LAB a/b）最多平移这么多，防止「蓝色口红」
 DESC = (40, 20)                  # 嘴型描述子尺寸（灰度）
 MIN_LAP = 20.0                   # 供体整块清晰度门槛（拉普拉斯方差）
 MIN_BLAP = 30.0                  # 供体「唇部」清晰度门槛：低于此值贴上去就是一团粉红
 MAX_DONORS = 240                 # 供体上限：约 40~110MB，16GB 机器上留足推理余量
-NEAR_WIN = 10                    # 优先在当前帧 ±10 帧（约 0.45s）内挑供体
+# 张口度档位数：每档只认**一张**供体（见 MouthRetimer._build_bank）。
+# 逐帧自由挑供体时，两张几乎等价的供体会互相顶替（实测每 100 帧换 37 次脸），
+# 唇线厚度/牙齿形状/高光位置每换一次就跳一次，肉眼就是「嘴在抖」；
+# 档位化之后整条片子最多只出现 LEVELS 张嘴，档位不变就不换像素。
+# 13 档实测还是太密：整片 1805 帧里档位变了 454 次（25%），每变一次像素就换一张嘴，
+# 肉眼看仍然是「说话时嘴在跳」。现在换嘴只在「一子句一次」量级（见 audio_mouth_plan）：
+# 档位仍然保留 LEVELS 张备选，但一句只锁一张，开合由纵向形变吸收。
+LEVELS = 9
+# ---------------------------------------------------------------- 开口计划
+# 张口度不再取自 Wav2Lip 的 96×96 输出。实测那份重绘图里量出来的「唇内暗腔占比」
+# 与配音包络的相关系数只有 0.00（纯噪声，见 docs 与 sim 记录），用它驱动会让嘴部
+# 张合和目标语言完全脱钩——用户反馈的「嘴型没和目标语言对齐」「嘴抖得厉害」都是它：
+# 噪声每帧在 0.78/1.42 两个形变极限之间来回撞，等于每帧把嘴拉长又压扁。
+# 现在的驱动量是配音本身：元音（90~1100Hz 带通能量）才让下巴落下去，齿音/气声
+# 几乎不改变开口。逐子句归一化后套到「原片同一张嘴」的纵向形变上，逐帧限速，
+# 于是「张合 = 配音音节」且连续无跳。
+PAUSE_GATE = 0.18                # 配音门低于此值算停顿：闭嘴上换档（看不见）
+PLAN_LO_PCT = 20                 # 子句开口下限 = 供体库张口度的 20 分位
+PLAN_HI_PCT = 80                 # 子句开口上限 = 供体库张口度的 80 分位
+PLAN_DB_LO = 15                  # 子句内包络归一化的下分位（dB）
+PLAN_DB_HI = 85                  # 子句内包络归一化的上分位（dB）
+FY_FLOOR = 0.70                  # 形变硬下限（再小嘴唇薄得失真）
+FY_CEIL = 1.36                   # 形变硬上限（再大嘴唇拉长失真）
+FY_SLEW = 0.065                  # 逐帧形变限速（22fps 下 ≈1.4 倍/秒，肉眼是连续张合）
+PLAN_FY_LO = 0.72                # 子句内最轻音节：把这张嘴压到 0.72（基本合上）
+PLAN_FY_HI = 1.30                # 子句内最响音节：拉到 1.30（开口峰值）
+PLAN_OPEN_MAX = 0.52             # 贴上去的嘴最多张到这个「原片尺度」（≈全库 95 分位）
 OPEN_W = 26.0                    # 张嘴程度不匹配的罚分系数（0.1 的差 ≈ 2.6 分）
-# 张口度「测量域」校准：96×96 的重绘结果再插值放大人脸框尺寸后，唇内暗腔的
-# 对比度天然比原片低（重采样 + 8 倍上采样等于低通一遍），同一个口的开合度会
-# 被系统性读偏——闭口段被读小、张口段被读大。实测原声驱动原片 1803 帧，
-# 按预测值分桶后，桶内真实张口度均值与预测均值的对照是：
-#   预测 0.05/0.10/0.14/0.18/0.22/0.27/0.33/0.40/0.49/0.62
-#   真实 0.16/0.23/0.25/0.29/0.31/0.32/0.35/0.41/0.44/0.53
-# 用这张对照表（而不是分位表）：分位表假设预测与真实完全同序，会把「模型本来
-# 就预测得很开」的帧再抬到供体库最张的那一档，成片里就成了过度张口。
-# 校准后供体排名与目标张口度的相关从 r=0.478 提到 r≈0.97。
-OPEN_KN_IN = (0.05, 0.10, 0.14, 0.18, 0.22, 0.27, 0.33, 0.40, 0.49, 0.62)
-OPEN_KN_OUT = (0.155, 0.228, 0.254, 0.286, 0.306, 0.320, 0.354, 0.408, 0.440, 0.531)
 
 
 class MouthRetimer:
@@ -676,8 +916,20 @@ class MouthRetimer:
         self._open_sorted = np.zeros(0, np.float32)
         self._open_rank = np.zeros(0, np.float32)
         self._idx = np.zeros(0, np.int32)
-        self.last_pick = -1
-        self.stats = {'lip': 0, 'skip': 0, 'score': [], 'openpen': []}
+        # 上一帧的「增益 + 偏移」对色参数（逐帧自由估计会让唇色轻微闪烁）
+        self._ab = None
+        # 档位 → 固定供体（见 _build_bank）：整条片子只用这 LEVELS 张嘴
+        self._bank = []
+        self._bank_open = []
+        self._bank_rank = []
+        # 上一帧贴的是哪张供体（换档时做一次同开口混合，把纹理跳变摊平）
+        self._last_k = None
+        self._last_lvl = 0
+        self._last_i = -99
+        self._last_fy = 1.0
+        self._abl = None            # 唇面色度偏移的上一帧值（时序平滑用）
+        self._all = None            # 唇面亮度偏移的上一帧值（时序平滑用）
+        self.stats = {'lip': 0, 'skip': 0, 'score': [], 'openpen': [], 'fy': []}
         self._grids = {}
         # 诊断用（TP_LIP_DEBUG=1 时逐帧记录清晰度链路），生产运行零开销
         self.dbg = os.environ.get('TP_LIP_DEBUG') == '1'
@@ -770,22 +1022,19 @@ class MouthRetimer:
             return 0.0
         return float(np.searchsorted(self._open_sorted, value, side='left')) / float(self._open.size)
 
-    @staticmethod
-    def calibrate_open(value):
-        """把 96×96 预测出来的张口度换算到「原片尺度」（详见 OPEN_KN_* 的说明）"""
-        v = float(np.clip(value, 0.0, 1.0))
-        return float(np.clip(np.interp(v, OPEN_KN_IN, OPEN_KN_OUT), 0.0, 1.0))
-
-    def mask_of(self, h, w, ex, ey, lw, open01=0.0):
+    def mask_of(self, h, w, ex, ey, lw, open01=0.0, fy=1.0):
         """回贴蒙版：**只盖住嘴唇本体** + 一圈羽化，外加一圈外侧「皮肤环」供对色。
 
         上一版蒙版半宽 0.72 唇宽、半高 0.85「唇高」(=lw/1.75≈0.57lw)，整块约
         1.44lw × 0.97lw——而真实嘴唇只有 1.0lw × 0.22lw。多出来的 3 倍高度全是
         鼻下与下巴的皮肤，供体又是另一帧（头动几像素），低频一叠就成了一条
         「磨皮带」（用户 01:16 截图里那块糊斑正是它）。
-        现在是：半宽 0.57 唇宽；半高闭嘴时 0.26 唇宽、张口时按张口程度最多长到
-        0.60 唇宽（open01 就是校准后的张口度归一值）。羽化只有 10% 半径，
-        接缝落在嘴角外侧约 10px 的皮肤上，肉眼看不出来。
+        现在是：半宽 0.57 唇宽；半高闭嘴时 0.20 唇宽、张口时按张口程度最多长到
+        0.36 唇宽（open01 就是贴上去那张嘴的开口归一值），再乘纵向形变 fy：
+        贴上去的嘴被拉高 fy 倍时，蒙版必须同步长高，否则「当前帧自己的嘴唇」
+        会从蒙版上下边缘露出来，就在嘴唇外面留一圈淡影（实测 y±0.25 唇宽处
+        色相从暖粉( B-R=-50 )变成中性白( B-R≈0 )，肉眼就是「一圈紫白口红」）。
+        羽化 12% 半径，接缝落在嘴角外侧的皮肤上，肉眼看不出来。
         """
         key = ('m', h, w)
         grid = self._grids.get(key)
@@ -795,8 +1044,9 @@ class MouthRetimer:
             self._grids[key] = grid
         xx, yy = grid
         o = float(np.clip(open01, 0.0, 1.0))
+        f = float(np.clip(fy, FY_FLOOR, FY_CEIL))
         rx = max(6.0, lw * MASK_RX)
-        ry = max(4.0, lw * (MASK_RY + MASK_RY_OPEN * o))
+        ry = max(4.0, lw * (MASK_RY + MASK_RY_OPEN * o) * (0.90 + 0.10 * f))
         cy = ey + lw * MASK_DY
         r = np.sqrt(((xx - ex) / rx) ** 2 + ((yy - cy) / ry) ** 2)
         mask = np.clip((1.0 - r) / MASK_FEATHER, 0.0, 1.0)
@@ -809,15 +1059,110 @@ class MouthRetimer:
         """把原片尺度的张口度归一化到 0~1（闭嘴≈0.15、最大≈0.55），给蒙版用"""
         return float(np.clip((float(value) - 0.15) / 0.40, 0.0, 1.0))
 
+    def lip_band(self, patch, mask):
+        """蒙版内「中间亮度带」的像素 → (LAB 图, 选择器, 蒙版) ，不足则 None。
+
+        牙齿在亮度顶端、口腔暗腔在底端，35~80 分位剩下的正好是唇面本身。
+        唇色的 a/b 与亮度 L 都基于同一套选择器量，避免「a/b 量唇面、L 量到牙齿」。
+        """
+        cv2 = self.cv2
+        band = mask[:, :, 0] > 0.55
+        if int(band.sum()) < 40:
+            return None
+        lab = cv2.cvtColor(patch, cv2.COLOR_BGR2LAB).astype(np.float32)
+        g = lab[:, :, 0][band]
+        lo, hi = np.percentile(g, 35), np.percentile(g, 80)
+        sel = (g >= lo) & (g <= hi)
+        if int(sel.sum()) < 24:
+            return None
+        return lab, sel, band
+
+    def lip_chroma(self, patch, mask):
+        """唇面色度（LAB 的 a/b）：只统计蒙版里**中间亮度**的像素。
+
+        上一版取「亮的一半」，结果选中的是牙齿/齿面高光/嘴唇上方的皮肤——都不是
+        唇面颜色，拿它去校色等于「把嘴唇校成皮肤色」，实测嘴唇直接被推成中性
+        淡紫（用户看到的「一圈紫白口红」）。
+        """
+        r = self.lip_band(patch, mask)
+        if r is None:
+            return None
+        lab, sel, band = r
+        return float(lab[:, :, 1][band][sel].mean()), float(lab[:, :, 2][band][sel].mean())
+
+    def match_lip_luma(self, out, cur, mask):
+        """唇面亮度（LAB 的 L）对齐：只补「唇面比当前帧亮/暗了多少」，夹 ±9。
+
+        皮肤环的亮度增益是**整体**作用到整块补丁上的，供体嘴唇常带一条强高光，
+        于是当前帧本该「红而暗」的嘴唇被一起提亮 —— 实测 4.6s 帧唇面灰阶
+        81→88、主色 a 13.0→11.3，肉眼就是「下唇发白、像涂了白口红」。
+        这里按同一套中间亮度带量出差值，只在蒙版内补回去，并做时序平滑。
+        """
+        cv2 = self.cv2
+        rc = self.lip_band(cur, mask)
+        ro = self.lip_band(out, mask)
+        if rc is None or ro is None:
+            return out
+        lc = float(rc[0][:, :, 0][rc[2]][rc[1]].mean())
+        lo = float(ro[0][:, :, 0][ro[2]][ro[1]].mean())
+        d = float(np.clip((lc - lo) * 0.75, -9.0, 9.0))
+        if self._all is not None:
+            d = float(np.clip(0.45 * d + 0.55 * self._all, self._all - 1.5, self._all + 1.5))
+        self._all = d
+        if abs(d) < 1.0:
+            return out
+        lab = cv2.cvtColor(out, cv2.COLOR_BGR2LAB).astype(np.float32)
+        lab[:, :, 0] += d * mask[:, :, 0]
+        return cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+    def match_lip_chroma(self, cur, patch, mask):
+        """把供体**唇面**的色度搬向当前帧（只动 LAB 的 a/b，不动亮度与纹理）。
+
+        白平衡差一点，同一张嘴的唇色就会从暖粉变成灰白。唇色不能拿皮肤去估
+        （皮肤与唇面的色素并不线性跟随光照），也不能让供体原样留下
+        （供体可能是冷光下的另一段），所以单独把两张图的**唇面**量出来对齐，
+        幅度夹在 ±CHROMA_CLAMP，并按蒙版渐变，边界处不留色痕。
+        """
+        cv2 = self.cv2
+        a = self.lip_chroma(cur, mask)
+        b = self.lip_chroma(patch, mask)
+        if a is None or b is None:
+            return patch
+        da = float(np.clip((a[0] - b[0]) * 0.85, -CHROMA_CLAMP, CHROMA_CLAMP))
+        db = float(np.clip((a[1] - b[1]) * 0.85, -CHROMA_CLAMP, CHROMA_CLAMP))
+        # 时序约束：唇色每帧都重新量，而量到的 a/b 会随嘴型（唇面/牙齿/口腔占比）
+        # 跳 2~5 个色度单位，直接套用就是「一帧偏粉、一帧偏灰」的闪变。
+        # 与上一帧 45:55 混合，并限幅 ±1.2/帧，让唇色像人眼看到的那样缓慢跟随。
+        if self._abl is not None:
+            da = float(np.clip(0.45 * da + 0.55 * self._abl[0],
+                               self._abl[0] - 1.2, self._abl[0] + 1.2))
+            db = float(np.clip(0.45 * db + 0.55 * self._abl[1],
+                               self._abl[1] - 1.2, self._abl[1] + 1.2))
+        self._abl = (da, db)
+        if abs(da) < 0.5 and abs(db) < 0.5:
+            return patch
+        lab = cv2.cvtColor(patch, cv2.COLOR_BGR2LAB).astype(np.float32)
+        lab[:, :, 1] += da * mask[:, :, 0]
+        lab[:, :, 2] += db * mask[:, :, 0]
+        return cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
+
     def blend(self, cur, patch, mask, ring):
-        """皮肤环上的「增益 + 偏移」对色 + 羽化回贴：唇线、牙缝、胡渣的高频一个像素不动。
+        """皮肤环上的「亮度增益 + 偏移」对色 + 羽化回贴：唇线、牙缝、胡渣的高频一个像素不动。
 
         为什么不能只做加性偏移：供体来自另一时刻，原片这盏人像灯偏暖、屏幕补光偏冷，
         供体与当前帧常常是「同一个人的两种白平衡」。只平移亮度时，供体偏红/偏粉的
-        嘴唇会原样留下，正好在蒙版边缘形成一块「偏红斑 + 糊成一团」——用户 01:16
-        截图里那块就是它。这里在蒙版外的皮肤环上同时估「标准差比」（对比度/曝光）
-        与「中位差」（色偏），限幅 ±18% / ±26 灰阶后整体作用在供体上，
-        皮肤与嘴唇的相对色差（唇色素）保持不变，只把整块的色温对齐。
+        嘴唇会原样留下，正好在蒙版边缘形成一块「偏红斑 + 糊成一团」。
+
+        **但逐通道独立对色会翻车**：实测 70.0s 那一帧，皮肤环估出来的偏移在
+        B 通道 +30、R 通道 -25（供体是冷光下的蓝厅、当前帧是暖光下的红帘），
+        整块嘴唇被推成了「蓝色口红」。唇色素（R 与 B 的相对关系）在光照变化下
+        并不线性跟随皮肤，所以逐通道偏移不能直接套在嘴唇上。
+        现在把估计量拆成两半：三通道平均部分（亮度/曝光差）全额作用；
+        相对平均的色偏部分只保留 CHROMA_KEEP（22%），而且**只在皮肤环生效**：
+        唇面（mask 内）几乎不吃皮肤估出来的色偏，唇色交给 match_lip_chroma 单独校。
+        这样亮度仍然对得准，色温只做少量跟随——宁可留一点暖调，也不会出现整块变色。
+        偏移绝对值也从 ±26 收到 ±16：超过这个量级已经不是白平衡，而是「换了个场景」，
+        此时正确做法是不动色、只贴细节，而不是硬掰。
         """
         cv2 = self.cv2
         c = cur.astype(np.float32)
@@ -825,16 +1170,37 @@ class MouthRetimer:
         ref = ring[:, :, 0] > 0.25
         if int(ref.sum()) < 40:
             ref = mask[:, :, 0] >= 0.45
+        raw = []
         for ch in range(3):
             cs = c[:, :, ch][ref]
             ps = p[:, :, ch][ref]
             if ps.size < 40:
-                break
+                raw.append((1.0, 0.0))
+                continue
             cmed, pmed = float(np.median(cs)), float(np.median(ps))
             csd, psd = float(cs.std()), float(ps.std())
             gain = float(np.clip(csd / psd, 0.82, 1.18)) if psd > 3.0 and csd > 3.0 else 1.0
-            off = float(np.clip(cmed - gain * pmed, -26.0, 26.0))
-            p[:, :, ch] = p[:, :, ch] * gain + off
+            off = float(np.clip(cmed - gain * pmed, -16.0, 16.0))
+            raw.append((gain, off))
+        gm = sum(r[0] for r in raw) / 3.0
+        om = sum(r[1] for r in raw) / 3.0
+        # 色偏在皮肤环全额、唇面只留 CHROMA_KEEP：嘴唇不能跟着皮肤的色温走，
+        # 否则 70s 那种「供体冷光、当前帧暖光」的帧会被整块推成淡紫。
+        w = CHROMA_KEEP + (1.0 - CHROMA_KEEP) * (1.0 - mask)
+        ab = []
+        for ch in range(3):
+            gain, off = raw[ch]
+            # 时序约束：逐帧独立估计的增益/偏移会随供体换帧而跳，嘴唇亮度就会
+            # 一帧亮一帧暗（肉眼同样表现为「抖动」）。与上一帧按 45:55 混合，
+            # 并把单帧变化限幅在 ±6% / ±2 灰阶，色温只做缓慢跟随。
+            if self._ab is not None and ch < len(self._ab):
+                g0, o0 = self._ab[ch]
+                gain = float(np.clip(0.45 * gain + 0.55 * g0, g0 * 0.94, g0 * 1.06))
+                off = float(np.clip(0.45 * off + 0.55 * o0, o0 - 2.0, o0 + 2.0))
+            ab.append((gain, off))
+            p[:, :, ch] = (p[:, :, ch] * (gm + (gain - gm) * w[:, :, 0])
+                           + (om + (off - om) * w[:, :, 0]))
+        self._ab = ab
         p = np.clip(p, 0.0, 255.0)
         return np.clip(c * (1.0 - mask) + p * mask, 0, 255).astype(np.uint8)
 
@@ -940,7 +1306,7 @@ class MouthRetimer:
             self.donors.append(item)
             return
         # 满仓后的淘汰口径：优先顶掉「时间上最冗余」的那张（帧号与邻居最近），
-        # 库就在全片均匀铺开，配合 NEAR_WIN 的邻近挑选才真正生效；
+        # 库就在全片均匀铺开，按音量子句选档时才不会集中在某一段；
         # 唇部清晰度明显更差的旧供体仍然先被顶掉。
         idxs = np.array([x['i'] for x in self.donors], np.int64)
         order = np.argsort(idxs)
@@ -1001,152 +1367,175 @@ class MouthRetimer:
         self._idx = np.array([d['i'] for d in self.donors], np.int32)
         self._open_sorted = np.sort(self._open)
         self._open_rank = np.array([self._open_rank_of(v) for v in self._open], np.float32)
+        self._build_bank()
 
-    def pick(self, tgt_desc, tgt_lw, tgt_blap, tgt_open, cur_idx=-1):
-        """挑供体：**张口度是硬门槛，嘴型/尺寸/清晰度只做同档内的排位**。
+    def _build_bank(self):
+        """预建「张口度档位 → 固定供体」表——嘴抖的根治点。
 
-        实测（原片 1818 帧，用原声驱动）：Wav2Lip 预测的张口度和原片真实张口度
-        相关 r=0.672，说明模型本身是准的；但旧打分把描述子差、清晰度、尺寸全加在
-        一起和「张口度排名差」竞争，最后选出来的供体张口度相关性掉到 r=0.478——
-        嘴型看起来就不跟着配音走了。现在把张口度改成窗口筛选（±9% 排名 → 逐步放宽），
-        只在满足张口度的候选里比嘴型和清晰度，口型对齐立刻变稳。
+        逐帧自由挑供体的做法有个死结：库里存在大量「张口度几乎一样、但纹理不同」
+        的帧（相邻帧、同一个音节的两次发音），打分差只有零点几分，于是 A/B 两张
+        逐帧互相顶替。实测 3.9.12 的成片每 100 帧换 37 次供体，唇线厚度、牙齿
+        形状、口角高光每换一次就跳一次，用户看到的就是「嘴抖得厉害」，同时
+        「这一帧糊、下一帧锐」的交替也让嘴部像一直在虚焦。
+
+        这里按供体库自身的张口度百分位切成 LEVELS 档，每档固定一张：
+          · 优先「最像全片典型嘴型」——用全库描述子中位数做参照，而不是当前帧。
+            当前帧作参照时，每帧的轻微曝光/角度差异都会把选择推向另一张供体，
+            嘴型就跟着逐帧漂；用全片中位参照，整条片子只有一个「长相」。
+          · 同样像的候选里挑唇部更清楚的（清晰度给正向奖励，而不是罚分）。
+          · 尺度也要接近全片中位，避免忽大忽小的嘴。
+        换嘴只发生在「子句边界 / 停顿」这两处（见 audio_mouth_plan）：
+        整条片子通常只出现十几张嘴，且每一次都是开合真的变了。
         """
+        if self._desc_stack is None or self._desc_stack.shape[0] == 0:
+            return
         n = self._desc_stack.shape[0]
-        diff = np.abs(self._desc_stack - tgt_desc[None]).mean(axis=(1, 2))
-        size_pen = np.abs(np.log(np.maximum(1e-3, self._lw / max(1.0, tgt_lw))))
-        # 清晰度要「像」而不是「越清楚越好」：供体比这一帧清楚太多，贴上去就是
-        # 一张过于锐利的嘴（贴纸感）；比这一帧糊，又会把嘴拖虚。用对数差双向罚。
-        sharp_pen = np.abs(np.log(np.maximum(1e-3, self._blap / max(1.0, tgt_blap))))
-        base = diff + 0.55 * size_pen + 0.50 * sharp_pen
-        # 轻微的时间连续性惩罚：两帧分数接近时优先用原来那张，避免同一句话里
-        # 在两张几乎等价的供体之间反复横跳（会看出嘴部轻微闪烁）
-        if self.last_pick >= 0 and len(self._idx):
-            jump = np.abs(self._idx - self._idx[self.last_pick]) / 60.0
-            base = base + 0.06 * np.minimum(1.0, jump)
-        if self._open_rank.size and self._open_sorted.size:
-            rk = np.abs(self._open_rank - self._open_rank_of(tgt_open))
-        else:
-            rk = np.zeros(n)
-        if cur_idx >= 0 and len(self._idx):
-            near = np.abs(self._idx - cur_idx)
-        else:
-            near = np.zeros(n, np.int64)
-        # 供体清晰度是硬门槛的第二条：供体库里有大量「嘴唇正在高速运动」的帧
-        # （22fps、1/50s 快门，唇线是糊的）。它们张口度、嘴型都对得上，但贴上去
-        # 就是一张「磨皮嘴」——用户说的「嘴部虚化」大半来自这里，而不是回贴精度。
-        # 顺序是「张口度 → 清晰度 → 时间」：先在严格张口度档里找足够清晰的，
-        # 允许为了清晰把供体时间窗放宽（口型本来就是对音频而不是对原片时间轴）。
-        k = None
-        for tol in (0.09, 0.16, 0.26, 0.45):
-            for floor in (0.85, 0.70, 0.52, 0.36, 0.0):
-                ok = self._blap >= max(MIN_BLAP, float(tgt_blap) * floor)
-                for win in (NEAR_WIN, NEAR_WIN * 3, 10 ** 6):
-                    cand = (rk <= tol) & (near <= win) & ok
-                    if cand.any():
-                        s = np.where(cand, base, np.inf)
-                        k = int(np.argmin(s))
-                        break
-                if k is not None:
-                    break
-            if k is not None:
-                break
-        if k is None:
-            k = int(np.argmin(base + OPEN_W * rk))
-        self.last_pick = k
-        self.stats['score'].append(float(base[k]))
-        self.stats['openpen'].append(float(rk[k]))
-        return k
+        med_desc = np.median(self._desc_stack, axis=0)
+        med_blap = float(np.median(self._blap)) if n else 1.0
+        med_lw = float(np.median(self._lw)) if n else 1.0
+        diff = np.abs(self._desc_stack - med_desc[None]).mean(axis=(1, 2))
+        size_pen = np.abs(np.log(np.maximum(1e-3, self._lw / max(1.0, med_lw)))
+                          )
+        # 正向清晰度奖励：对数比，封顶 ±1（≈2.7 倍差异），系数 0.45
+        clear = -0.45 * np.clip(np.log(np.maximum(1e-3, self._blap / max(1.0, med_blap)))
+                                , -1.0, 1.0)
+        base = diff + 0.55 * size_pen + clear
+        step = 1.0 / max(1, LEVELS - 1)
+        self._bank, self._bank_open, self._bank_rank = [], [], []
+        for l in range(LEVELS):
+            c = l * step
+            # 档宽的一半 + 一点点重叠：保证每档都有候选
+            cand = np.abs(self._open_rank - c) <= 0.5 * step + 0.02
+            if cand.any():
+                # 清晰度兜底：这一档里只要有「足够清楚」的，就只在这个子集里挑，
+                # 否则宁可放宽到整库（模糊供体贴上去就是一块粉红糖，不能为了分档硬选）
+                ok = cand & (self._blap >= max(MIN_BLAP * 1.2, med_blap * 0.70))
+                if bool(ok.any()):
+                    cand = ok
+                s = np.where(cand, base, np.inf)
+                k = int(np.argmin(s))
+            else:
+                k = int(np.argmin(np.abs(self._open_rank - c)))
+            self._bank.append(k)
+            self._bank_open.append(float(self._open[k]))
+            self._bank_rank.append(float(self._open_rank[k]))
 
-    def apply(self, frame, gen96, box, mouth, idx=-1):
-        """把「目标嘴型」对应的原片高清嘴部贴回当前帧；返回 False 表示这帧保持原样"""
+    def _warp_donor(self, k, ex, ey, lw, fy, rw, rh):
+        """把第 k 张供体按「唇心对齐 + 唇宽缩放 + 纵向形变」重采样进回贴区域。
+
+        纵向形变的支点钉在嘴唇中心 (ex, ey)：只缩放不平移时整张嘴会随开合上下漂，
+        和原片的脸对不齐，肉眼看就是「嘴在晃」。
+        """
         cv2 = self.cv2
-        if self._desc_stack is None or mouth is None:
-            return False
-        x1, y1, x2, y2 = clip_box(box, self.w, self.h)
-        bw, bh = x2 - x1, y2 - y1
-        if bw < 16 or bh < 16:
+        if k < 0 or k >= len(self.donors):
+            return None
+        d = self.donors[k]
+        s = lw / max(1.0, d['mouth'][2])
+        if s < 0.70 or s > 1.42:
+            return None
+        sy = s * float(fy)
+        dx = ex - s * d['mouth'][3]
+        dy = ey - sy * d['mouth'][4]
+        if (abs(s - 1.0) < 0.015 and abs(sy - 1.0) < 0.015
+                and d['patch'].shape[0] == rh and d['patch'].shape[1] == rw
+                and abs(dx) < 0.5 and abs(dy) < 0.5):
+            # 几何恰好是恒等变换时别重采样：插值只会让原片高清嘴唇掉一点锐度
+            return d['patch'].copy()
+        flags = cv2.INTER_LANCZOS4 if (abs(s - 1.0) > 0.08 or abs(sy - 1.0) > 0.08) else cv2.INTER_CUBIC
+        Mm = np.array([[s, 0, dx], [0, sy, dy]], np.float32)
+        w = cv2.warpAffine(d['patch'], Mm, (rw, rh), flags=flags, borderMode=cv2.BORDER_REFLECT_101)
+        if w.shape[:2] != (rh, rw):
+            return None
+        return w
+
+    def apply(self, frame, mouth, idx=-1, lvl=0, fy=1.0):
+        """按配音开口计划把「原片同一张嘴」贴回当前帧；返回 False 表示这帧保持原样。
+
+        lvl / fy 由 audio_mouth_plan() 预先算好：整条片子的开口只跟配音走，
+        子句内不换供体、形变逐帧限速，所以既不会「每 4.6 帧换一张嘴」的抖，
+        也不会出现「噪声把嘴在 0.78/1.42 之间来回拉」的抽动。
+        """
+        cv2 = self.cv2
+        if self._desc_stack is None or mouth is None or not self._bank:
             return False
         rx1, ry1, rx2, ry2 = self.region(mouth)
         rw, rh = rx2 - rx1, ry2 - ry1
         if rw < 40 or rh < 32:
+            self.stats['skip'] += 1
+            return False
+        ex, ey, lw = mouth[0] - rx1, mouth[1] - ry1, float(mouth[2])
+        lvl = int(max(0, min(LEVELS - 1, int(lvl))))
+        k = int(self._bank[lvl])
+        if k < 0 or k >= len(self.donors):
+            self.stats['skip'] += 1
             return False
         cur = frame[ry1:ry2, rx1:rx2].copy()
-        ex, ey, lw = mouth[0] - rx1, mouth[1] - ry1, float(mouth[2])
-        # 目标嘴型：把 96×96 的重绘结果放大回人脸框尺寸，与当前帧同一坐标系
-        gen_full = cv2.resize(gen96, (bw, bh), interpolation=cv2.INTER_LINEAR)
-        tgt = gen_full[ry1 - y1:ry1 - y1 + rh, rx1 - x1:rx1 - x1 + rw]
-        if tgt.shape[:2] != (rh, rw):
+        warped = self._warp_donor(k, ex, ey, lw, fy, rw, rh)
+        if warped is None:
             self.stats['skip'] += 1
             return False
-        tgt_desc = self.desc_of(tgt, ex, ey, lw)
-        if tgt_desc is None:
-            return False
-        tgt_open_raw = self.open_of(tgt, ex, ey, lw)
-        # 预测图（低分辨率上采样）读出的张口度系统性偏小，先换到原片尺度再比排名
-        tgt_open = self.calibrate_open(tgt_open_raw)
-        # 蒙版高度跟着目标张口度走：张口时上下唇会离开唇缝好几像素，
-        # 固定高度会让牙齿落在羽化带里，和当前帧自己的牙齿叠出网纹重影
-        mask, ring = self.mask_of(rh, rw, ex, ey, lw, self.open01_of(tgt_open))
+        eff = float(self._bank_open[lvl]) * float(fy)
+        # 换档的那一帧做一次「同开口、同位置」的 50% 混合，把纹理跳变摊到两帧上。
+        # 两张都是按当前帧的唇心/唇宽/开口重采样的，混合不会像旧版那样出现双层唇线。
+        if self._last_k is not None and self._last_k != k and (idx - self._last_i) <= 2:
+            old_fy = float(np.clip(eff / max(1e-3, self._bank_open[self._last_lvl]),
+                                   FY_FLOOR, FY_CEIL))
+            old_w = self._warp_donor(self._last_k, ex, ey, lw, old_fy, rw, rh)
+            if old_w is not None:
+                warped = cv2.addWeighted(warped, 0.5, old_w, 0.5, 0)
+        self._last_k, self._last_lvl, self._last_i, self._last_fy = k, lvl, idx, float(fy)
+        # 蒙版高度跟着「贴上去之后这张嘴的张口度」（供体档位 × 形变，同一套量纲）。
+        # 不能改用「回贴后实测的暗腔占比」：那个代理量对纵向形变极不敏感
+        # （实测 fy 1.0→1.42 只从 0.302 涨到 0.331），张口明明拉大了蒙版却几乎不变，
+        # 牙齿露在蒙版外就是「双层牙」。
+        mask, ring = self.mask_of(rh, rw, ex, ey, lw, self.open01_of(eff), float(fy))
         band = mask[:, :, 0] > 0.60
         if not bool(band.any()):
+            self.stats['skip'] += 1
             return False
-        # 当前帧自身的嘴部清晰度 = 回贴后的目标清晰度（这一帧真实该有的水平）
+        # 唇色先校到当前帧（LAB a/b），再让皮肤环的增益/偏移只管亮度：
+        # 顺序反过来会把刚刚校好的唇色又推回供体的白平衡。
+        warped = self.match_lip_chroma(cur, warped, mask)
+        # 当前帧自身的嘴部清晰度 = 回贴后这一帧真实该有的目标清晰度
         target_lap = self._band_lap(cur, band)
-        k = self.pick(tgt_desc, lw, target_lap, tgt_open, idx)
+        # 供体来自全片清楚的帧，而当前帧的嘴唇可能正处在运动模糊里；只在供体
+        # 「明显更锐」（1.9 倍以上）时压一点，压到当前帧的 1.3 倍为止，
+        # 既不让嘴像贴纸，也不再一路压到和运动模糊一样糊。
         d = self.donors[k]
-        # 对齐：嘴唇中心对嘴唇中心 + 按唇宽缩放；同一机位同一秒的人脸，
-        # 位置与尺度本来只有几像素差，不需要 ORB/RANSAC 去「估计」。
-        s = lw / max(1.0, d['mouth'][2])
-        if s < 0.75 or s > 1.35:
-            self.stats['skip'] += 1
-            return False
-        dx = ex - s * d['mouth'][3]
-        dy = ey - s * d['mouth'][4]
-        M = np.array([[s, 0, dx], [0, s, dy]], np.float32)
-        # 缩放接近 1 时用 CUBIC（LANCZOS 在 1:1 附近会出轻微振铃，放大看就是唇边一圈亮边）
-        flags = cv2.INTER_LANCZOS4 if abs(s - 1.0) > 0.08 else cv2.INTER_CUBIC
-        warped = cv2.warpAffine(d['patch'], M, (rw, rh), flags=flags,
-                                borderMode=cv2.BORDER_REFLECT_101)
-        if warped.shape[:2] != (rh, rw):
-            self.stats['skip'] += 1
-            return False
-        # 供体来自全片最清楚的帧，而当前帧的嘴唇可能正在快速运动（22fps、1/50s 快门，
-        # 有明显动态模糊）。把一张「过度锐利」的嘴贴到一张「运动模糊」的脸上，肉眼看到的
-        # 就是嘴部质感与整张脸割裂——像贴上去的一张贴纸。
-        # 这里把供体压到「和当前帧同一清晰度」：目标就是当前帧自己的唇部拉普拉斯方差，
-        # 二分搜索一个高斯 sigma，让供体既不比这一帧锐太多、也不会被压糊。
         wlap = self._band_lap(warped, band)
-        if target_lap > 1.0 and wlap > target_lap * 1.45:
+        if target_lap > 1.0 and wlap > target_lap * 1.90:
             lo, hi = 1e-3, 3.0
             best = warped
             for _ in range(6):
                 mid = (lo + hi) / 2.0
                 cand = cv2.GaussianBlur(warped, (0, 0), mid)
-                if self._band_lap(cand, band) > target_lap * 1.12:
+                if self._band_lap(cand, band) > target_lap * 1.30:
                     lo = mid
                 else:
                     best, hi = cand, mid
             warped = best
         blended = self.blend(cur, warped, mask, ring)
-        # 只在蒙版覆盖到的嘴部补清晰度，周围原生皮肤保持不动
-        sharp = self.sharpen_to(blended, target_lap, band)
+        # 皮肤环的亮度增益会把唇面一起提亮（供体嘴唇常带强高光），
+        # 当前帧本该「红而暗」的嘴唇就会变成白口红——按唇面自身亮度再补一次。
+        blended = self.match_lip_luma(blended, cur, mask)
+        # 只在蒙版覆盖到的嘴部补清晰度，周围原生皮肤保持不动；目标取当前帧唇部
+        # 清晰度的 1.15 倍，避免把清晰的供体嘴压成和运动模糊一样糊。
+        sharp = self.sharpen_to(blended, target_lap * 1.15, band)
         final = np.clip(blended.astype(np.float32)
                         + (sharp.astype(np.float32) - blended.astype(np.float32)) * mask,
                         0, 255).astype(np.uint8)
         frame[ry1:ry2, rx1:rx2] = final
         self.stats['lip'] += 1
+        self.stats['fy'].append(float(fy))
+        self.stats['score'].append(float(self._bank_rank[lvl]))
         if self.dbg:
-            # 第 5 列是校准后的目标张口度（实际用于挑供体），第 8/9 列是「回贴后 /
-            # 回贴前」的真实张口度；第 10 列起是诊断用的原始值：
-            # 10=供体唇部清晰度、11=未校准的预测张口度
             self.dbg_rows.append([
                 round(target_lap, 1), round(self._band_lap(warped, band), 1),
                 round(self._band_lap(blended, band), 1), round(self._band_lap(final, band), 1),
-                round(float(d['lap']), 1), round(tgt_open, 3),
-                round(self._open_rank[k] if self._open_rank.size else 0.0, 2),
+                round(float(d['lap']), 1), round(eff, 3), float(lvl),
                 round(self.open_of(final, ex, ey, lw), 4),
                 round(self.open_of(cur, ex, ey, lw), 4),
-                round(float(d['blap']), 1), round(tgt_open_raw, 4)])
+                round(float(d['blap']), 1), round(float(fy), 3), round(float(eff), 3)])
         return True
 # ---------------------------------------------------------------- 兜底：超分/插值回贴
 # 只在原片实在挑不出供体（全程虚焦、严重压缩）时使用：
@@ -1315,16 +1704,21 @@ def main():
     pads = [int(x) for x in args.pads.split(',')]
     emit(stage='load', percent=2)
     import cv2
-    import torch
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from w2l_model import Wav2Lip
-
-    if not os.path.exists(args.weights):
-        sys.exit('缺少口型模型权重：%s' % args.weights)
 
     w, h, src_fps, dur = probe_video(args.ffmpeg, args.video)
     fps = args.fps if args.fps > 0 else (src_fps or 25.0)
-    fps = max(12.0, min(30.0, fps))
+    # 真实帧率优先：标称帧率与「帧数/时长」差 6% 以上时，说明容器标称是错的
+    # （VFR）。此时按真实帧率做 CFR，一帧不丢，运动才连续（见 count_frames）。
+    n_frames = count_frames(args.ffmpeg, args.video)
+    if n_frames > 10 and dur > 1.0:
+        real = float(n_frames) / float(dur)
+        if abs(real - fps) / max(1.0, real) > 0.06:
+            log('标称帧率 %.2f 与真实帧率 %.2f 不符，改用真实帧率（%d 帧 / %.2f 秒）'
+                % (fps, real, n_frames, dur))
+            fps = real
+    fps = max(12.0, min(60.0, fps))
+    emit(stage='load', percent=3, fps=round(fps, 3), frames=n_frames)
 
     wav = load_wav(args.audio)
     if wav is None or len(wav) < SAMPLE_RATE // 2:
@@ -1335,21 +1729,9 @@ def main():
     chunks = mel_chunks(mel, fps)
     total = len(chunks)
 
-    # 设备选择：M 芯片优先 Metal；个别算子不支持时整批退回 CPU（宁可慢，不出黑帧）
-    device = 'cpu'
-    if args.device in ('auto', 'mps') and torch.backends.mps.is_available():
-        device = 'mps'
-    elif args.device == 'cuda' and torch.cuda.is_available():
-        device = 'cuda'
-
-    model = Wav2Lip()
-    ckpt = torch.load(args.weights, map_location='cpu')
-    state = ckpt.get('state_dict', ckpt)
-    state = {k.replace('module.', ''): v for k, v in state.items()}
-    model.load_state_dict(state)
-    model = model.to(device).eval()
-    emit(stage='load', percent=7, device=device, frames=total)
-
+    # 主路径（原片高清嘴部回贴）只靠配音包络决定开口，不需要模型推理：
+    # 权重与 torch 一律不在主路径加载（省 1.2s 加载、省 300MB 内存、整片快 3 倍）。
+    # 只有供体不足（<6 张，全程虚焦）时才走「超分/插值回贴」兜底，那里才要模型。
     tracker = FaceTracker(pads)
     retimer = MouthRetimer(w, h)
 
@@ -1435,86 +1817,127 @@ def main():
          mode='retime' if use_retime else 'sr',
          detail='原片高清嘴部样本 %d 张' % retimer.count)
 
-    # 兜底才加载超分模型（主路径用不到，省 64MB 内存与一两秒加载时间）
+    # 主路径的「开口计划」：逐帧档位 + 纵向形变 + 说话门，全部直接由配音算出来。
+    # 这一步取代了 Wav2Lip 的 96×96 推理——那个预测值的「张嘴度」与配音包络相关
+    # 只有 0.00（纯噪声），用它驱动必然逐帧抽动；现在开口与配音由构造保证对齐。
+    lvl_seq = fy_seq = gate = None
+    if use_retime:
+        lvl_seq, fy_seq, gate = audio_mouth_plan(wav, fps, total, retimer._bank_open)
+        log('配音停顿占比 %.0f%%，停顿帧统一换到最闭合嘴型'
+            % (100.0 * float(np.mean(np.asarray(gate) < PAUSE_GATE))))
+        emit(stage='load', percent=20, sr=False, mode='retime')
+
+    # 兜底路径（供体不足）才加载 Wav2Lip 与超分模型：主路径完全不碰 torch，
+    # 省 1.2 秒载入、省 300MB 常驻内存，整片还快约 3 倍。
+    device = 'cpu'
+    model = None
     enhancer = None
-    if not use_retime and args.sr_weights and os.path.exists(args.sr_weights):
-        if device in ('mps', 'cuda'):
-            try:
-                enhancer = DetailEnhancer(args.sr_weights, device)
-                log('供体不足，启用嘴部超分兜底')
-            except Exception as e:
-                log('超分模型加载失败，退回插值放大：%s' % e)
-                enhancer = None
-        else:
-            log('未启用 GPU，跳过嘴部超分')
-    elif not use_retime and args.sr_weights:
-        log('缺少嘴部超分权重，退回插值放大：%s' % args.sr_weights)
-    emit(stage='load', percent=20, sr=enhancer is not None, mode='retime' if use_retime else 'sr')
     if not use_retime:
+        import torch
+        from w2l_model import Wav2Lip
+        if not os.path.exists(args.weights):
+            sys.exit('缺少口型模型权重：%s' % args.weights)
+        # 设备选择：M 芯片优先 Metal；个别算子不支持时整批退回 CPU（宁可慢，不出黑帧）
+        if args.device in ('auto', 'mps') and torch.backends.mps.is_available():
+            device = 'mps'
+        elif args.device == 'cuda' and torch.cuda.is_available():
+            device = 'cuda'
+        model = Wav2Lip()
+        ckpt = torch.load(args.weights, map_location='cpu')
+        state = {k.replace('module.', ''): v for k, v in ckpt.get('state_dict', ckpt).items()}
+        model.load_state_dict(state)
+        model = model.to(device).eval()
+        # 兜底才加载超分模型（主路径用不到，省 64MB 内存与一两秒加载时间）
+        if args.sr_weights and os.path.exists(args.sr_weights):
+            if device in ('mps', 'cuda'):
+                try:
+                    enhancer = DetailEnhancer(args.sr_weights, device)
+                    log('供体不足，启用嘴部超分兜底')
+                except Exception as e:
+                    log('超分模型加载失败，退回插值放大：%s' % e)
+                    enhancer = None
+            else:
+                log('未启用 GPU，跳过嘴部超分')
+        elif args.sr_weights:
+            log('缺少嘴部超分权重，退回插值放大：%s' % args.sr_weights)
+        emit(stage='load', percent=20, sr=enhancer is not None, device=device, mode='sr')
         log('供体不足（%d 张），本片改用超分/插值回贴' % retimer.count)
 
-    # ---------- 第二遍（流式分批）：推理 → 回贴 → 编码 ----------
+    # ---------- 第二遍（流式）：主路径逐帧回贴 / 兜底路径推理 → 回贴 → 编码 ----------
     reader = FrameReader(args.ffmpeg, args.video, w, h, fps)
     writer = FrameWriter(args.ffmpeg, args.out, args.audio, w, h, fps, args.crf)
     masks = {}
     batch = max(1, args.batch)
     done = 0
     last = None
-    try:
-        while done < total:
-            end = min(total, done + batch)
-            frames, crops, mels, metas = [], [], [], []
-            for i in range(done, end):
-                frame = reader.read()
-                if frame is None:
-                    # 画面比配音短：用最后一帧填满剩余时长，绝不写出短一截的片子
-                    if last is None:
-                        raise RuntimeError('画面解码失败，请确认视频可正常播放')
-                    frame = last.copy()
-                else:
-                    last = frame
-                x1, y1, x2, y2 = clip_box(boxes[i], w, h)
-                if x2 - x1 < 8 or y2 - y1 < 8:
-                    x1, y1, x2, y2 = 0, 0, min(w, 8), min(h, 8)
-                crop = cv2.resize(frame[y1:y2, x1:x2], (96, 96),
-                                  interpolation=cv2.INTER_AREA if (x2 - x1) > 96 else cv2.INTER_LANCZOS4)
-                masked = crop.copy()
-                masked[48:] = 0
-                crops.append(np.concatenate((masked, crop), axis=2) / 255.0)
-                mels.append(chunks[i])
-                metas.append((x1, y1, x2, y2))
-                frames.append(frame)
-            img_b = torch.from_numpy(np.transpose(np.asarray(crops, np.float32), (0, 3, 1, 2))).to(device)
-            mel_b = torch.from_numpy(np.reshape(np.asarray(mels, np.float32),
-                                                (len(mels), mels[0].shape[0], mels[0].shape[1], 1)
-                                                ).transpose(0, 3, 1, 2)).to(device)
-            with torch.no_grad():
-                try:
-                    pred = model(mel_b, img_b)
-                except Exception as e:
-                    if device == 'cpu':
-                        raise
-                    log('MPS 推理失败，整任务退回 CPU：%s' % e)
-                    emit(stage='infer', percent=20, detail='Metal 不可用，改用 CPU')
-                    device = 'cpu'
-                    model = model.to('cpu')
-                    img_b, mel_b = img_b.cpu(), mel_b.cpu()
-                    pred = model(mel_b, img_b)
-                    enhancer = None
-            out = pred.detach().to('cpu').numpy().transpose(0, 2, 3, 1)
-            out = np.clip(out * 255.0, 0, 255).astype(np.uint8)
 
-            sr_wins = None
-            if not use_retime and enhancer is not None:
-                sr_wins = enhancer.run([out[j][SR_BOX[1]:SR_BOX[3], SR_BOX[0]:SR_BOX[2]]
-                                       for j in range(len(metas))])
-            for j, (x1, y1, x2, y2) in enumerate(metas):
-                base = frames[j]
-                if use_retime:
-                    # 高清供体回贴：嘴型跟着配音，像素是原片真实像素
-                    retimer.apply(base, out[j], (x1, y1, x2, y2),
-                                   mouths[min(len(mouths) - 1, done + j)], done + j)
-                else:
+    def src_frame(_i):
+        """读下一帧；画面比配音短时用最后一帧填满剩余时长，绝不写出短一截的片子"""
+        nonlocal last
+        frame = reader.read()
+        if frame is None:
+            if last is None:
+                raise RuntimeError('画面解码失败，请确认视频可正常播放')
+            return last.copy()
+        last = frame
+        return frame
+
+    try:
+        if use_retime:
+            # 主路径：零推理。开口完全由 lvl_seq / fy_seq 决定（已经按子句选好供体档位、
+            # 按子句内元音包络算好形变并做了逐帧限速），这里只是把它们贴到画面上。
+            while done < total:
+                frame = src_frame(done)
+                retimer.apply(frame, mouths[min(len(mouths) - 1, done)], done,
+                              int(lvl_seq[done]), float(fy_seq[done]))
+                writer.write(frame)
+                done += 1
+                if done % 8 == 0 or done == total:
+                    emit(stage='infer', percent=20 + int(79 * done / max(1, total)),
+                         detail='口型 %d/%d 帧' % (done, total))
+        else:
+            while done < total:
+                end = min(total, done + batch)
+                frames, crops, mels, metas = [], [], [], []
+                for i in range(done, end):
+                    frame = src_frame(i)
+                    x1, y1, x2, y2 = clip_box(boxes[i], w, h)
+                    if x2 - x1 < 8 or y2 - y1 < 8:
+                        x1, y1, x2, y2 = 0, 0, min(w, 8), min(h, 8)
+                    crop = cv2.resize(frame[y1:y2, x1:x2], (96, 96),
+                                      interpolation=cv2.INTER_AREA if (x2 - x1) > 96 else cv2.INTER_LANCZOS4)
+                    masked = crop.copy()
+                    masked[48:] = 0
+                    crops.append(np.concatenate((masked, crop), axis=2) / 255.0)
+                    mels.append(chunks[i])
+                    metas.append((x1, y1, x2, y2))
+                    frames.append(frame)
+                img_b = torch.from_numpy(np.transpose(np.asarray(crops, np.float32), (0, 3, 1, 2))).to(device)
+                mel_b = torch.from_numpy(np.reshape(np.asarray(mels, np.float32),
+                                                    (len(mels), mels[0].shape[0], mels[0].shape[1], 1)
+                                                    ).transpose(0, 3, 1, 2)).to(device)
+                with torch.no_grad():
+                    try:
+                        pred = model(mel_b, img_b)
+                    except Exception as e:
+                        if device == 'cpu':
+                            raise
+                        log('MPS 推理失败，整任务退回 CPU：%s' % e)
+                        emit(stage='infer', percent=20, detail='Metal 不可用，改用 CPU')
+                        device = 'cpu'
+                        model = model.to('cpu')
+                        img_b, mel_b = img_b.cpu(), mel_b.cpu()
+                        pred = model(mel_b, img_b)
+                        enhancer = None
+                out = pred.detach().to('cpu').numpy().transpose(0, 2, 3, 1)
+                out = np.clip(out * 255.0, 0, 255).astype(np.uint8)
+
+                sr_wins = None
+                if enhancer is not None:
+                    sr_wins = enhancer.run([out[j][SR_BOX[1]:SR_BOX[3], SR_BOX[0]:SR_BOX[2]]
+                                            for j in range(len(metas))])
+                for j, (x1, y1, x2, y2) in enumerate(metas):
+                    base = frames[j]
                     bw, bh = x2 - x1, y2 - y1
                     key = (bw, bh)
                     if key not in masks:
@@ -1523,10 +1946,10 @@ def main():
                     gen = build_gen(out[j], sr_wins[j] if sr_wins else None, bw, bh)
                     gain = SR_HI_GAIN if sr_wins else 1.0
                     base[y1:y2, x1:x2] = composite_mouth(base[y1:y2, x1:x2], gen, mask, detail, gain)
-                writer.write(base)
-            done = end
-            emit(stage='infer', percent=20 + int(79 * done / max(1, total)),
-                 detail='口型 %d/%d 帧' % (done, total))
+                    writer.write(base)
+                done = end
+                emit(stage='infer', percent=20 + int(79 * done / max(1, total)),
+                     detail='口型 %d/%d 帧' % (done, total))
         writer.close()
     finally:
         try:
@@ -1535,9 +1958,19 @@ def main():
             pass
     if not os.path.exists(args.out) or os.path.getsize(args.out) < 20000:
         sys.exit('口型视频输出失败')
-    log('mode=%s donors=%d lip=%d skip=%d frames=%d' % (
-        'retime' if use_retime else 'sr', retimer.count, retimer.stats['lip'],
-        retimer.stats['skip'], done))
+    if use_retime:
+        fyv = np.asarray(retimer.stats['fy'], np.float64)
+        dfy = np.abs(np.diff(fyv)) if fyv.size > 1 else np.zeros(1)
+        log('mode=retime donors=%d lip=%d skip=%d frames=%d fy(p50=%.2f p05=%.2f p95=%.2f) '
+            '|dfy|(p50=%.3f p95=%.3f max=%.3f)' % (
+                retimer.count, retimer.stats['lip'], retimer.stats['skip'], done,
+                float(np.median(fyv)) if fyv.size else 1.0,
+                float(np.percentile(fyv, 5)) if fyv.size else 1.0,
+                float(np.percentile(fyv, 95)) if fyv.size else 1.0,
+                float(np.median(dfy)), float(np.percentile(dfy, 95)), float(dfy.max())))
+    else:
+        log('mode=sr donors=%d lip=%d skip=%d frames=%d' % (
+            retimer.count, retimer.stats['lip'], retimer.stats['skip'], done))
     if getattr(retimer, 'dbg_rows', None):
         a = np.asarray(retimer.dbg_rows, np.float32)
         med = np.median(a, axis=0)
@@ -1549,7 +1982,8 @@ def main():
         try:
             np.savetxt(args.out + '.trace.csv', a, fmt='%.4f', delimiter=',',
                        header='cur_lap,warped_lap,blended_lap,final_lap,donor_lap,'
-                              'tgt_open,donor_open_rank,ap_final,ap_cur', comments='')
+                              'eff_open,lvl,ap_final,ap_cur,donor_blap,morph_fy,eff_open_chk',
+                       comments='')
         except Exception as e:
             log('轨迹写出失败：%s' % e)
     emit(stage='done', percent=100, frames=done, fps=fps,
