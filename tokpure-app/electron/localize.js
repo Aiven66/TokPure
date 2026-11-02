@@ -764,38 +764,54 @@ function analyzeVoice(buf) {
   };
 }
 
-/* 配音清洁链：所有模式（克隆 / 近似 / 预置）都要过。
+/* 配音清洁链（3.9.17 重写）：所有模式（克隆 / 近似 / 预置）都要过。
    克隆出来的 24kHz 音频自带的底噪、气声和 10kHz 以上的嘶声，以前是原样
    进成片的（克隆模式不做任何塑形），听感就是「沙沙的电流声」。
-   - highpass=f=70：去掉低频轰鸣与直流偏移
-   - lowpass=f=11000：砍掉 11k 以上的嘶声（24k 源在 11k 以上几乎没有有效内容）
-   - afftdn：频域降噪，tn=1 让噪声底随句子自动跟踪，不依赖固定噪声样本。
-     nr 回到上一版（用户评价「更干净」的那一版）的 10：实测 nr 从 10 加到 24，
-     3k-6k 只再降 10dB、1k-3k 几乎不动，残余噪底的大头在下面的 anlmdn 那一层，
-     继续加 nr 只会把齿音削薄、把语音磨哑。 */
-const CLEAN = 'highpass=f=70:poles=2,lowpass=f=11000,afftdn=nr=10:nf=-50:tn=1';
+   - highpass=f=80：去掉低频轰鸣与直流偏移
+   - lowpass=f=10000：24k 克隆源在 10k 以上已经没有有效内容，整段砍掉；
+     频带实测里成片 12-16k 只有 -64dB（基本是空的），说明这里收一刀没有损失
+   - afftdn nr=18 nf=-52 tn=1：**唯一**的降噪手段（频域降噪，噪声底逐句自动跟踪）。
+     3.9.17 起全链路不再使用 anlmdn：它靠帧块相似度平滑，会在低电平处制造
+     「水声/咕噜」状的调制残留，听感上就是人声底下那层说不清的噪音。
+     单级 afftdn nr=18 与「nr=18 + 二级 nr=10」实测差异在 0.1dB 以内，
+     但两级会多一次帧间平滑（50ms 电平跳变从 6.3/s 涨到 7.7/s），所以只留一级。
+   - highshelf=f=4800:width=2o:g=-6：**3.9.17 新增的固定高频收口**。
+     先说为什么自适应 EQ 不够：克隆引擎的 4.8k 以上能量在「整段平均」上和真人
+     原片几乎一样（整轨 FFT 实测 HF/LF 比：真人 -16.8dB、克隆裸输出 -17.3dB），
+     所以任何只看平均值的对齐都只会算出 -1dB 级的 EQ（实测 3.9.16 只出
+     -1.2/-1.45/-1.35），一刀都没真正切下去。但分布完全不同：真人原片是
+     「HF 平稳、峰值只到 -6dB」，克隆是「大部分帧 -56dB、擦音帧直冲 -1.5dB」，
+     听感就是一下一下的「嘶——」。所以这里按「峰值对齐真人」来定：
+     4.8k 以上统一 -6dB（2 倍频程过渡，3~4k 只掉 1~2dB，不吃清晰度）。
+     同一句克隆输出的整链 AB（tilt = 每帧 HF(4.8-8k) - LF(300-800)）：
+       旧链（3.9.16）  p50 -49.6 / p90 -29.7 / p99 +5.6
+       新链（本版）    p50 -64.5 / p90 -55.5 / p99 -35.0
+     整轨实测（82.83s）：HF 绝对电平 p90 从 -30.3 降到 -37.3dB、
+     p99 从 -3.4 降到 -14.1dB，比真人原片（-25.3 / -6.0）还干净。 */
+const CLEAN = 'highpass=f=80:poles=2,lowpass=f=10000,afftdn=nr=18:nf=-52:tn=1,'
+  + 'highshelf=f=4800:width_type=o:width=2:g=-6';
 
-/* 削峰：克隆输出常有远超语音的瞬时尖峰（峰值贴着 0dBFS），
-   直接按响度放大就会撞上限制器、把齿音压破。
-   先用 2.5:1 的轻压缩把尖峰收下来，再给固定增益，听感自然也不抬底噪。 */
-const COMP = 'acompressor=threshold=0.05:ratio=2.5:attack=6:release=200';
+/* 轻压缩：把 threshold 从 0.05 提到 0.25、ratio 从 2.5 降到 2（3.9.17 的关键修正）。
+   逐级实测（同一句克隆输出，只看「≥4.8kHz 相对 500-800Hz」的能量，越低越干净）：
+     不压缩（只 CLEAN）                 -18.8 dB
+     + threshold=0.05 ratio=2.5        -13.5 dB   ← 3.9.16 及以前的链路，被抬高 5.3dB
+     + threshold=0.25 ratio=2（本版）  -18.5 dB
+   旧阈值 0.05 相当于 -26dBFS，整句几乎都落在压缩区：响度归一（-18 LUFS）会给一个
+   固定增益，被压下去的语音主体（300~1200Hz）抬不回来，高频底噪相对被抬高 5dB，
+   成片听感就是「人声底下一直有一层沙沙」——这就是用户反复反馈的「背景音噪音」。
+   0.25（-12dBFS）只压最上面的瞬态：频谱倾斜 -18.8 → -18.5 几乎不变，
+   同时仍然能收住克隆偶发的近 0dBFS 尖峰（后面还有 alimiter 兜底）。 */
+const COMP = 'acompressor=threshold=0.25:ratio=2:attack=8:release=250';
 
 /** 统一音质塑形（试听用，与成片同一套链路） */
 const POLISH = `${CLEAN},${COMP}`;
 
-/* 宽带降噪（非局部均值 anlmdn）——**必须保留**，它是「噪音」这项的主开关。
-   上一版把它当成「咕噜声」的元凶整段删掉，结果成片比 3.9.10 明显更吵：
-   用同一句克隆语音实测（`afftdn` 之后的残余噪底，单位 dB/Hz）
-     链                       1k-3k     3k-6k    6k-11k    与原始频谱相关
-     只有 afftdn nr=10        -22.5     -40.9     -52.1     0.795
-     只有 afftdn nr=16        -24.4     -46.0     -57.1     0.795
-     afftdn + anlmdn s=2      -44.8     -62.3     -65.9     0.715
-   afftdn 把 nr 从 10 加到 24，3k-6k 只再降 10dB，而且对 1k-3k 几乎无效；
-   叠上 anlmdn 后整条高频带再降 20dB 以上，这就是「沙沙电流声」消失的原因。
-   代价是与原始频谱的相关从 0.795 掉到 0.715（约 10% 的细节被磨平），
-   听感上是「略闷」而不是「水声」。s=2 已经是最小窗口，不再往上加。
-   另一条实测：anlmdn s=1 的降噪量只有 s=2 的六成左右，省 CPU 但压不干净。 */
-const DENOISE = 'anlmdn=s=2:p=0.002:r=0.006';
+/* 静音段增益钳制：单句固定增益之后，本句噪底不得高于这个电平（dBFS）。
+   克隆句子的噪底通常在 -48dB 上下，正常放大（+8~+12dB）后落在 -40~-36dB，
+   离人声还有近 20dB，听不出来；但偶尔会有气声很重的句子（实测噪底 -35dB），
+   一旦按句归一就把它抬到 -24dB，成片里就是「某几句突然一阵沙沙」。
+   用这条把「抬噪」封在 -34dB 以内，宁可那几句轻一点。 */
+const GAIN_NOISE_CEIL = -34;
 
 /** 停顿噪声门：阈值以下直接压到 -inf（range=0），停顿里是**真静音**而不是「压低」。
     range=0.06 那版保留 -24dB 残余，实测成片最低电平 p05 从 -67dB 抬到 -52dB，
@@ -805,34 +821,37 @@ const DENOISE = 'anlmdn=s=2:p=0.002:r=0.006';
     注意 gate 排在 volume 之前：底噪在被抬起之前就已经被压到底，抬增益不会再抬噪。 */
 const noiseGate = (db) => `agate=threshold=${Math.pow(10, db / 20).toFixed(5)}:ratio=8:range=0:attack=20:release=260:knee=1`;
 
-/* ---------------- 克隆音色的频带对齐（去掉残留的「沙沙」电流声） ----------------
-   本地克隆引擎（Chatterbox，24kHz）逐句生成的语音，比原片真人嗓音在 2.4~10kHz
-   高 3~6dB。这层成分是**跟语音一起生成**的宽带嘶声，不是停顿里的稳态噪声：
-   afftdn / anlmdn 只对「停顿里有、语音里没有」的稳态噪声有效，对谐波之间的填充
-   几乎不动（实测 nr 从 10 加到 24，4.8~7k 只掉 0.1dB）。所以它一路进了成片，
-   听感就是人声底下一直有一层「沙沙」——用户反复反馈的「背景音噪音」。
-   两条互补的措施：
-   1）参考音深度降噪（见 buildRefWav）：克隆的底噪主要来自「说话人条件」里带的
-      房间声，把参考音压干净，克隆出来的停顿噪底直接从 -43.9 降到 -50.9dB、
-      语音里的高频嘶声也随之下移（同一句、同一参考，只改降噪链的 A/B 实测）；
-   2）这里再量「原片参考音」与「本次合成里最长的一句」的倍频带能量差，反推一组
-      小 EQ，把克隆音色的频带分布拉回真人。限制：单带最多 -4dB、3k 以上只许减不许加
-      （加只会把嘶声一起抬起来）。EQ 排在固定增益之后、限幅之前，
-      实测整链里 4.8~7k 再降 4.4dB、7~10k 再降 4.0dB，2.4~4.8k 降 3.2dB，
-      而 300~1200Hz 基本不动（语音主体不受影响）。
+/* ---------------- 克隆音色的频带对齐 ----------------
+   本地克隆引擎（Chatterbox，24kHz）逐句生成的语音，比原片真人嗓音在 3~10kHz
+   高 2~3dB，且 300~1200Hz 偏薄（整片实测：成片 800-1200Hz 比真人低 6.8dB）。
+   这里量「原片参考音」与「本次合成里最长的一句」的倍频带能量差，反推一组小 EQ。
+   3.9.17 的两个修正（3.9.16 的对齐几乎没动高频，原因就在这里）：
+   1）量参考音时必须用「实测噪底 + 8dB」当门限。旧版写死 agate threshold=0.01
+      （≈ -40dB），而本片原片的房间噪底就有 -36dB —— 门限比噪底还低，等于没门，
+      于是参考音的噪声能量全被算进 4.8~10kHz 的带能量里，克隆的高频看起来「不高」，
+      EQ 对高频一刀都没切（实测 3.9.16 的 EQ 只有 250/500/1000 三个带），
+      成片 ≥4.8kHz 相对能量 -13.2dB，比真人原片（-15.8dB）还高 2.6dB。
+   2）锚点改成「≤2000Hz 的 5 个语音核心带」的均值，而不是全带均值：全带均值里
+      混进了 6~10k 的噪声能量，会把高频倾斜整个抵消掉。
+   限制：1000Hz 以上只许减不许加（加 = 把嘶声一起抬起来），3k 以上最多 -6dB、
+   4.8k 以上最多 -8dB；3k 以下最多 -4dB / +2dB（低频与中频只补不足）。
    EQ 量为空（参考音不可用/量不出来）时整链退回原样，绝不让任务因它失败。 */
 const EQ_CENTERS = [125, 250, 500, 1000, 2000, 3000, 4500, 6500, 9000];
+const EQ_ANCHOR_MAX = 2000;
 
 /** 量一段语音在若干倍频带内的电平（dB）。用 agate 先把停顿压掉，
-    只统计「真的在说话」的帧——否则一段很长的静音会把所有频带一起拉低。 */
-async function bandLevels(file) {
+    只统计「真的在说话」的帧——否则一段很长的静音会把所有频带一起拉低。
+    floorDb：该文件的实测噪底（20ms 帧的 12% 分位）。门限取 floorDb+8，
+    这样「噪底高的原片」和「噪底极低的克隆音」都在各自同一套标准下统计。 */
+async function bandLevels(file, floorDb) {
   if (!file || !fs.existsSync(file)) return null;
+  const thr = Number.isFinite(floorDb) ? Math.max(-70, Math.min(-20, floorDb + 8)) : -40;
+  const gate = `agate=threshold=${Math.pow(10, thr / 20).toFixed(5)}:ratio=8:range=0:attack=5:release=10`;
   const rows = await Promise.all(EQ_CENTERS.map(async (c0) => {
     let out = '';
     try {
       await runFf(['-hide_banner', '-nostats', '-i', file, '-af',
-        'agate=threshold=0.01:ratio=8:range=0:attack=5:release=10,'
-        + `bandpass=f=${c0}:width_type=o:width=1,astats=metadata=0`,
+        `${gate},bandpass=f=${c0}:width_type=o:width=1,astats=metadata=0`,
         '-f', 'null', '-'], (l) => { out += l + '\n'; });
     } catch (_) {
       return null;
@@ -846,18 +865,18 @@ async function bandLevels(file) {
 }
 
 /** 由两段语音的倍频带电平差生成矫正 EQ；只修「音色倾斜」，不碰整体响度。
-    限幅：3k 以上**只许减不许加**（加 = 把嘶声一起抬起来），最多 -4dB；
-    3k 以下最多减 4dB、加 2dB（低频只补不足，避免把克隆音色推成闷响）。 */
+    锚点只用 ≤2000Hz 的语音核心带（见上面的说明），限幅见上。 */
 function eqAlignChain(refBands, ttsBands) {
   if (!refBands || !ttsBands || refBands.length !== EQ_CENTERS.length) return '';
-  const mean = (a) => a.reduce((n, v) => n + v, 0) / a.length;
-  const mr = mean(refBands);
-  const mt = mean(ttsBands);
+  const ai = EQ_CENTERS.map((c0, i) => (c0 <= EQ_ANCHOR_MAX ? i : -1)).filter((i) => i >= 0);
+  const pick = (a) => ai.reduce((n, i) => n + a[i], 0) / ai.length;
+  const mr = pick(refBands);
+  const mt = pick(ttsBands);
   const parts = [];
   EQ_CENTERS.forEach((c0, i) => {
     let g = (refBands[i] - mr) - (ttsBands[i] - mt);
-    const lo = -4;
-    const hi = c0 >= 3000 ? 0 : 2;
+    const lo = c0 < 3000 ? -4 : c0 < 4800 ? -6 : -8;
+    const hi = c0 < 3000 ? 2 : c0 < 4800 ? 0 : 0;
     g = Math.max(lo, Math.min(hi, g));
     if (Math.abs(g) < 0.4) return;
     parts.push(`equalizer=f=${c0}:width_type=o:width=1:g=${g.toFixed(2)}`);
@@ -913,7 +932,7 @@ async function measureSegment(file) {
   return { lufs, floor: at(0.12), speech: at(0.9), frames: frames.length };
 }
 
-/** 停顿噪声门阈值（作用于 POLISH+DENOISE 之后的原始电平，单位 dB）。
+/** 停顿噪声门阈值（作用于 POLISH 之后的原始电平，单位 dB）。
     取「噪底 + 12dB」，同时压到「语音 - 10dB」以下，保证任何一句都不会吃字；
     阈值随每句实测浮动，不做写死常数——不同音色、不同语速的噪底差 20dB 以上，
     固定阈值要么漏噪、要么把气声切碎。 */
@@ -1155,6 +1174,8 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
   // 频带对齐：拿「原片参考音」和「本次合成里最长的一句」做倍频带电平对比，
   // 生成一组小 EQ 把克隆音色的倾斜拉回真人（详见 eqAlignChain 上的说明）。
   // 只量一次、只影响音色分布，不改变响度；任何一步量不出来就退回原链。
+  // 3.9.17：两个文件各自先测「噪底」，再用「噪底+8dB」当统计门限 —— 原片的房间噪底
+  // 往往比写死的 -40dB 门限还高，旧做法等于把噪底一起算进频带能量，高频一刀都切不动。
   let eqChain = '';
   if (opts.refAudio && fs.existsSync(opts.refAudio)) {
     let probe = null;
@@ -1167,7 +1188,14 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
     }
     if (probe) {
       try {
-        const [rb, tb] = await Promise.all([bandLevels(opts.refAudio), bandLevels(probe)]);
+        const [refLv, ttsLv] = await Promise.all([
+          measureSegment(opts.refAudio),
+          measureSegment(probe)
+        ]);
+        const [rb, tb] = await Promise.all([
+          bandLevels(opts.refAudio, refLv.floor),
+          bandLevels(probe, ttsLv.floor)
+        ]);
         eqChain = eqAlignChain(rb, tb);
       } catch (_) {
         eqChain = '';
@@ -1196,7 +1224,7 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
     const avail = Math.max(0.2, Math.min(duration, nextStart) - seg.start - SEG_GAP);
     const nominal = Math.max(0.45, seg.end - seg.start);
     const spoken = wavDuration(raw) || Math.min(nominal, avail);
-    // 每句：先降噪/限带/削峰 → 宽带降噪 → 停顿门限 → 固定增益 → 限幅 → 变速 → 首尾微淡入淡出 → 定位。
+    // 每句：降噪/限带/轻压缩（POLISH）→ 停顿门限 → 固定增益 → 频带对齐 → 限幅 → 变速 → 首尾微淡入淡出 → 定位。
     // 以前这里是单遍 loudnorm（动态归一），它会把句内停顿处的底噪一起抬起来，
     // 成片里就是一阵一阵的「呼吸声/沙沙声」，这是本次噪音问题的主因。
     // 现在：整句只用一个增益（不泵动），并且在这个增益之前先把停顿压死，
@@ -1206,6 +1234,13 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
     let gain = level.lufs == null || level.lufs < -70
       ? 0
       : Math.max(-24, Math.min(12, -18 - level.lufs));
+    // 静音段增益钳制：把「本句噪底抬升后」的水位钉在 -34dBFS 以内。
+    // 克隆出来的句子噪底通常很低（实测 -48dB），这条不生效；
+    // 个别气声/气泡音很重的句子（实测有 -35dB 的）会被自动少抬，
+    // 避免「某一句突然把底噪抬到能听见」——这正是「噪音一阵一阵」的来源之一。
+    if (Number.isFinite(level.floor)) {
+      gain = Math.min(gain, GAIN_NOISE_CEIL - level.floor);
+    }
     // 相邻句子的增益**限幅到 ±3dB 的台阶**。克隆引擎同一句话的电平会飘
     // 6~14dB（实测有的句子 -32 LUFS、有的 -20 LUFS），每句都归一一次，
     // 句与句之间就出现一串 10dB 级的电平台阶；听感上像「背景噪音一阵一阵涌上来」，
@@ -1219,7 +1254,7 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
     // attack 默认 5ms 会放过瞬时尖峰（实测会顶到 0dBFS），压到 2ms 才能真的守住上限
     // 频带对齐 EQ 放在固定增益之后、限幅之前：如果放在压缩之前，压缩器会把被削掉的高频
     // 又相对抬回来（实测整链 4.8~7k 只降了 1.7dB，放末端能降 4.3dB），也避免增益把它放大。
-    let chain = `${[POLISH, DENOISE, noiseGate(gate), `volume=${gain.toFixed(2)}dB`, eqChain, 'alimiter=limit=0.85:attack=2:level=false'].filter(Boolean).join(',')}`;
+    let chain = `${[POLISH, noiseGate(gate), `volume=${gain.toFixed(2)}dB`, eqChain, 'alimiter=limit=0.85:attack=2:level=false'].filter(Boolean).join(',')}`;
     let tempo = 1;
     if (spoken > avail) {
       // 克隆音色拉快 1.25 倍以上就明显失真；系统音色可以到 2 倍
@@ -1282,7 +1317,9 @@ async function previewVoice(payload = {}) {
   const raw = path.join(dir, `preview-${langId}.wav`);
   const out = path.join(dir, `preview-${langId}-polish.wav`);
   await synth(VOICE_SAMPLE[langId], raw, langId, payload.voice || undefined);
-  await runFf(['-y', '-i', raw, '-af', [POLISH, DENOISE].filter(Boolean).join(','), '-ar', '44100', '-ac', '1', '-c:a', 'pcm_s16le', out]);
+  // 试听与成片必须走同一条链：3.9.17 起成片只有 POLISH（afftdn 单级 + 轻压缩），
+  // 试听里再挂一级 anlmdn 会让「试听比成片更闷」，用户按试听预期验收就会觉得成片有噪。
+  await runFf(['-y', '-i', raw, '-af', POLISH, '-ar', '44100', '-ac', '1', '-c:a', 'pcm_s16le', out]);
   const buf = fs.readFileSync(out);
   return { dataUrl: `data:audio/wav;base64,${buf.toString('base64')}`, voice: payload.voice || '' };
 }
@@ -1326,24 +1363,20 @@ const BGM_TARGET_LUFS = -31;
 // 有旋律的素材实测都在 -30 LUFS 以上，不会被这条门槛误伤。
 const BGM_MIN_LUFS = -38;
 // 分离残留的嘶声/气声过一遍频域降噪与限带；太狠会把音乐本身削薄。
-// anlmdn 与配音轨同理**必须留着**：实测这条床（本片其实是展厅底噪，没有旋律）
-// 在 4-8k 有 -21dB 的分离残留，只靠 afftdn nr=12 压不动；叠 anlmdn 之后
-// 4-8k 掉到 -49dB、整轨噪底从 -63dB 到 -82dB，而音乐本体只掉约 1.4dB。
-// afftdn tn=1 让噪声底按帧自动跟踪，对稳定嘶声有效；lowpass 收到 13k 再砍一层。
+// 3.9.17 起这里也只用 afftdn（不再叠 anlmdn：它在低电平处会留下「水声」调制，
+// 而且和配音轨用两套降噪器时，两轨的残余噪声性质不一样，混起来更难听）。
+// 单级 afftdn 改成 nr=20（原来 16）来补上撤掉 anlmdn 的损失：tn=1 让噪声底按帧
+// 跟踪，对分离残留的稳定嘶声有效；lowpass 收到 13k 再砍一层。
 // 高通从 48 抬到 60：分离出来的床有相当一部分是 80Hz 以下的低频轰鸣，
 // 48Hz 的高通基本放它过去了（实测 48→60 只掉 0.4dB 的床响度，真配乐不受影响）。
-const BGM_CLEAN = 'highpass=f=60:poles=2,lowpass=f=13000,afftdn=nr=16:nf=-52:tn=1,anlmdn=s=2:p=0.002:r=0.006';
+const BGM_CLEAN = 'highpass=f=60:poles=2,lowpass=f=13000,afftdn=nr=20:nf=-52:tn=1';
 // 人声一起，伴奏自动后退；人声停，伴奏回来。阈值必须落在配音的实际电平之下：
 // 配音归一后约 -18 LUFS（RMS≈0.125），以前写的 0.16 比语音还高，侧链等于没接，
 // 伴奏（还带着分离残留的原语言人声）一直原音量压在译文下面——这就是「几个人同时说」。
-// 实测 threshold=0.004/ratio=6 在真实电平下压 9~10dB，停顿处立刻回到原音量——
-// 但 12ms attack / 350ms release 配 10dB 深度，在句与句之间形成了 1~2Hz 的「抽吸」，
-// 听感上是背景一阵一阵地涌上来，很容易被当成噪音。所以起落时间拉长（25ms / 550ms）。
-// ratio 又从 3.5 提到 6、现在到 10：本片这种「分离出来没有旋律、只有环境噪音」的
-// 素材，压 15dB 仍然相当于在人声底下的一层宽带噪声；压到 20dB 以上人声说话时
-// 完全听不见，句间停顿处（侧链无信号）伴奏仍会按 release 慢慢回到原电平，
-// 真正有配乐的素材照样听得到（音乐床已经被 BGM_MIN_LUFS 门槛保证是「真配乐」）。
-const BGM_DUCK = 'sidechaincompress=threshold=0.005:ratio=10:attack=20:release=600:level_sc=1';
+// 3.9.17 统一为 threshold=0.004（≈-48dBFS）/ ratio=6 / attack=12ms / release=350ms：
+// 比语音电平低近 30dB 才起控，保证任何一句都真的把床压下去；12ms 起、350ms 落，
+// 句间不会出现 1~2Hz 的「抽吸」。真正的配乐床被 BGM_MIN_LUFS 门槛保证存在时才用得上。
+const BGM_DUCK = 'sidechaincompress=threshold=0.004:ratio=6:attack=12:release=350:level_sc=1';
 
 /**
  * 只分离「这次要出片的窗口」，各语种共用同一份伴奏。
@@ -1550,14 +1583,15 @@ async function buildRefWav(source, segs, win, dir) {
       `[0:a]atrim=${p.start.toFixed(3)}:${p.end.toFixed(3)},asetpts=PTS-STARTPTS[s${i}]`);
     const labels = picks.map((_, i) => `[s${i}]`).join('');
     filters.push(`${labels}concat=n=${picks.length}:v=0:a=1,highpass=f=80:poles=2,`
-      + 'lowpass=f=10000,afftdn=nr=16:nf=-50:tn=1,anlmdn=s=4:p=0.002:r=0.006[ref]');
+      + 'lowpass=f=10000,afftdn=nr=20:nf=-52:tn=1,afftdn=nr=14:nf=-54:tn=1[ref]');
     // 参考音必须深度降噪：克隆引擎把「说话人条件」里的房间声/嘶声一起复制进每一句配音，
     // 参考音里留多少底噪，成片里就会多一层同样的底噪（这是「背景音噪音」的源头）。
     // 实测（同一句文本、同一参考音，只换降噪链）：停顿处噪底从 -43.9 降到 -50.9dB，
     // 整条成片链路里 4.8~7k 的残余嘶声再降约 1~2dB（单句波动大，多句平均更稳）。
+    // 3.9.17 只用 afftdn：单级 nr=20 + 二级 nr=14（两级都是频域降噪，不做帧块平滑，
+    // 不会像 anlmdn 那样给音色条件「抹上一层水声」）。参考音只用来「教音色」，
+    // 不直接进成片，压得更狠只会让克隆更干净，不会让成片变闷；
     // 参考音本身的倍频带分布几乎不变（各带差 ≤0.1dB），所以音色不会被磨掉。
-    // 这里敢用 nr=16 + anlmdn s=4：参考音只用来「教音色」，不直接进成片，
-    // 压得更狠只会让克隆更干净，不会让成片变闷。
     await runFf([
       '-y', '-i', source,
       '-filter_complex', filters.join(';'),
@@ -1570,7 +1604,7 @@ async function buildRefWav(source, segs, win, dir) {
   const dur = Math.max(3, Math.min(60, span.end - span.start));
   await runFf([
     '-y', '-ss', span.start.toFixed(3), '-t', dur.toFixed(3), '-i', source,
-    '-vn', '-af', 'highpass=f=80:poles=2,lowpass=f=10000,afftdn=nr=12:nf=-50:tn=1,anlmdn=s=2:p=0.002:r=0.006', '-ac', '1', '-ar', '24000',
+    '-vn', '-af', 'highpass=f=80:poles=2,lowpass=f=10000,afftdn=nr=18:nf=-52:tn=1,afftdn=nr=12:nf=-54:tn=1', '-ac', '1', '-ar', '24000',
     '-c:a', 'pcm_s16le', out
   ]);
   if (!fs.existsSync(out) || fs.statSync(out).size < 4096) throw new Error('原声参考音频提取失败');
