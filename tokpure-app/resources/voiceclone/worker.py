@@ -43,6 +43,11 @@ _SAY_SEM = threading.Semaphore(VC_CONC)
 # 每句的 token 上限：上游 generate() 里把 max_new_tokens 写死成 1000，
 # 只能通过线程本地变量传给自实现的推理循环，避免多线程串值。
 _CAP = threading.local()
+# 句内进度：逐 token 生成期间每隔一小段就回一次「已生成多少 token」，
+# 上层据此让进度条在句子内部真正动起来（否则一句要跑 1~2 分钟，
+# 界面只能看到「已生成 95s」，进度条像卡死）。
+_PROG = threading.local()
+_PROG_EVERY = 1.2  # 秒；太密会把 JSON 协议流刷爆，太稀进度条又会顿
 
 # 单句硬超时（秒）：token 上限只限制「生成多长」，限制不了「生成多慢」。
 # 一旦某句落进异常的重复循环，它会把一个并发槽位永久占住，上层看到的就是
@@ -170,6 +175,7 @@ def patch_fast_inference():
 
     def fast_inference(self, t3_cond, text_tokens, max_new_tokens=None, temperature=0.8, top_p=1.0,
                        min_p=0.05, repetition_penalty=2.0, cfg_weight=0.5, **_):
+        t_inf = time.time()
         text_tokens = torch.atleast_2d(text_tokens).to(dtype=torch.long, device=self.device)
         # 上游为 CFG 固定复制成两路（cond / uncond）。cfg=0 时第二路完全用不上，
         # 直接砍成单路前向，每步计算量减半，速度接近翻倍。
@@ -205,7 +211,16 @@ def patch_fast_inference():
         if cap <= 0:
             cap = min(1000, int(25 * (len(text_tokens[0]) / 12.0 * 1.7 + 1.5)) + 24)
         deadline = getattr(_DEADLINE, "t", None)
+        last_prog = 0.0
         for i in range(cap):
+            # 句内进度上报：带 tag（句子序号）回给上层，界面上就能看到
+            # 「第 3/32 句 · 合成 42%」在动，而不是一直停在同一个百分数
+            now = time.time()
+            rid_now = getattr(_PROG, "rid", None)
+            if rid_now is not None and now - last_prog >= _PROG_EVERY:
+                last_prog = now
+                send({"event": "progress", "id": rid_now, "tag": getattr(_PROG, "tag", None),
+                      "tokens": len(preds), "cap": cap})
             # 硬超时：必须放在「已经有 token」之后判断，否则空序列会让上层拿到 0 帧音频
             if preds and deadline and time.time() >= deadline:
                 _DEADLINE.trunc = True
@@ -233,6 +248,8 @@ def patch_fast_inference():
             out = backend(inputs_embeds=e, past_key_values=past,
                           use_cache=True, output_attentions=False, return_dict=True)
             past = out.past_key_values
+        _PROG.generated = len(preds)
+        _PROG.gen_sec = time.time() - t_inf
         return torch.cat(preds, dim=1)
 
     T3.inference = fast_inference
@@ -240,13 +257,16 @@ def patch_fast_inference():
 
 def tune_vocoder(model):
     """flow matching 默认 10 步；6 步听感几乎无差，但解码耗时降四成。"""
-    if VC_STEPS >= 10:
-        return
     orig = model.s3gen.inference
 
     def wrapped(*args, **kwargs):
+        t = time.time()
         kwargs.setdefault("n_cfm_timesteps", VC_STEPS)
-        return orig(*args, **kwargs)
+        try:
+            return orig(*args, **kwargs)
+        finally:
+            # 声码器耗时单独记账：只有量出来才知道该压步数还是该压 token 生成
+            _PROG.dec_sec = float(getattr(_PROG, "dec_sec", 0.0) or 0.0) + (time.time() - t)
 
     model.s3gen.inference = wrapped
 
@@ -347,7 +367,7 @@ def main():
         max_s = min(900.0, max(20.0, max_s))
         t0 = time.time()
         truncated = False
-        send({"event": "saying", "id": rid, "chars": len(text)})
+        send({"event": "saying", "id": rid, "tag": msg.get("tag"), "chars": len(text)})
         try:
             # 心跳必须从「排队」阶段就开始：并发槽位被占满时这一句要等前面合成完，
             # 期间没有任何事件，上层会以为进程卡死并把整句判超时。
@@ -363,18 +383,34 @@ def main():
                     # 超时从「真正开始算」这一刻起算：排队等待不算这一句的账
                     _DEADLINE.trunc = False
                     _DEADLINE.t = time.time() + max_s
+                    # 句内进度上报需要 id 与句子序号（tag）
+                    _PROG.rid = rid
+                    _PROG.tag = msg.get("tag")
+                    _PROG.generated = 0
+                    _PROG.gen_sec = 0.0
+                    _PROG.dec_sec = 0.0
                     try:
                         wav = model.generate(text, **kwargs)
                     finally:
                         truncated = bool(getattr(_DEADLINE, "trunc", False))
                         _DEADLINE.t = None
                         _CAP.n = None
+                        tokens = int(getattr(_PROG, "generated", 0) or 0)
+                        gen_sec = round(float(getattr(_PROG, "gen_sec", 0.0) or 0.0), 2)
+                        dec_sec = round(float(getattr(_PROG, "dec_sec", 0.0) or 0.0), 2)
+                        _PROG.rid = None
+                        _PROG.tag = None
+                        _PROG.generated = 0
             write_wav(out, wav, sr)
             send({
                 "event": "done",
                 "id": rid,
+                "tag": msg.get("tag"),
                 "sec": round(time.time() - t0, 2),
                 "dur": round(float(wav.shape[-1]) / sr, 2),
+                "tokens": tokens,
+                "gen_sec": gen_sec,
+                "dec_sec": dec_sec,
                 "truncated": truncated,
             })
         except Exception as e:

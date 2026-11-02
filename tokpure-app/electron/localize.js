@@ -1136,6 +1136,61 @@ function wavDuration(file) {
   }
 }
 
+/** 配音进度桥：把「逐句完成」和「句内 token 进度」合成一个只增不减的百分比
+ *
+ *  以前一句克隆要跑 1~2 分钟，进度条只在「整句完成」时跳一格，五分钟才动 2%，
+ *  看上去就是「卡在 26% 不动」。现在三段信息都用起来：
+ *  - 每句按文字长度分权重（≈ 语音长度），长句占的份额大，整段推进才匀速；
+ *  - worker 逐 token 回报「本句已生成多少 / 上限多少」，句内就能持续推进；
+ *  - 并发合成多句时按各自进度累加，句与句不会互相盖住。
+ *  没有 token 进度（云端音色 / 旧版 worker）时退回「本句已用时」推近 97%。 */
+function makeTtsProgress({ weights, ttsFrom, ttsWidth, langEmit, totalSegs }) {
+  const wsum = Math.max(1, weights.reduce((a, b) => a + b, 0));
+  const inflight = new Map();
+  let doneW = 0;
+  let shown = ttsFrom;
+  const emit = (frac, detail) => {
+    const f = Math.max(0, Math.min(1, frac));
+    // 只增不减：并发回传的顺序是无序的，进度条绝不能往回退
+    shown = Math.max(shown, ttsFrom + ttsWidth * f);
+    langEmit('合成配音', 'tts', shown, detail || '');
+  };
+  return {
+    // 整句完成（buildNarration 回传 percent = 已完成权重占比，index = 句子下标）
+    onDone(p) {
+      const f = Math.min(1, (Number(p && p.percent) || 0) / 100);
+      doneW = wsum * f;
+      if (p && p.index != null) inflight.delete(p.index);
+      emit(f, (p && p.detail) || '');
+    },
+    // 句内 token 进度
+    onProgress(tag, tokens, cap) {
+      if (tag == null || !(Number(cap) > 0) || tag < 0 || tag >= weights.length) return;
+      inflight.set(tag, Math.min(0.97, Math.max(0, Number(tokens) / Number(cap))));
+      let part = 0;
+      inflight.forEach((v, k) => { part += weights[k] * v; });
+      const pct = Math.round((Number(tokens) / Number(cap)) * 100);
+      emit((doneW + Math.min(part, wsum - doneW)) / wsum,
+        `第 ${tag + 1}/${totalSegs} 句 · 合成 ${Math.min(100, pct)}%`);
+    },
+    // 心跳兜底：无 token 进度时按本句用时推近
+    onBeat(tag, sec) {
+      const s = Math.max(0, Number(sec) || 0);
+      const known = tag != null && weights[tag];
+      const w = known ? weights[tag] : wsum / Math.max(1, totalSegs);
+      const creep = 0.97 * (1 - Math.exp(-s / 100));
+      emit((doneW + w * creep) / wsum,
+        known ? `第 ${tag + 1}/${totalSegs} 句 · 已生成 ${Math.round(s)}s`
+          : `合成中 · 已生成 ${Math.round(s)}s`);
+    },
+    sink(info) {
+      if (!info) return;
+      if (info.tokens != null) this.onProgress(info.tag, info.tokens, info.cap);
+      else if (info.elapsed != null) this.onBeat(info.tag, info.elapsed);
+    }
+  };
+}
+
 /** 逐句合成后按原时间轴拼接为整条配音轨 */
 async function buildNarration(segs, duration, langId, dir, emit, from, to, opts = {}) {
   const ttsDir = path.join(dir, `tts-${langId}`);
@@ -1155,6 +1210,10 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
 
   // 合成阶段与拼接阶段拆开：本地克隆很吃算力，可以让 2 路 worker 同时合成不同句子
   const raws = new Array(segs.length);
+  // 进度权重：按文字长度近似语音长度（长句占的份额大），总权重用于换算百分比
+  const weights = segs.map((s) => Math.max(3, String((s && s.text) || '').length));
+  const wsum = Math.max(1, weights.reduce((a, b) => a + b, 0));
+  let doneWeight = 0;
   if (opts.synthFn) {
     const workers = Math.max(1, Math.min(opts.synthConcurrency || 1, segs.length));
     // 长句优先：并发合成时最后几句往往是长句，会把收尾拖成「只剩一句但还要几分钟」
@@ -1180,7 +1239,7 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
         const maxSeconds = Math.min(600, Math.max(60, Math.round(slot * 40) + 60));
         let voice;
         try {
-          const r = await opts.synthFn(seg.text, raw, i, { maxTokens, maxSeconds });
+          const r = await opts.synthFn(seg.text, raw, i, { maxTokens, maxSeconds, tag: i });
           if (r && r.truncated) truncatedUsed += 1;
           voice = opts.voice || '';
         } catch (e) {
@@ -1195,10 +1254,12 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
         if (!voiceUsed) voiceUsed = voice;
         raws[i] = raw;
         done += 1;
+        doneWeight += weights[i];
         // 只报「第几句」，已用/剩余交给渲染层统一算：
         // 两边各算一次会出现「已用…」重复两遍，把卡片文字挤爆。
         emit({
-          percent: from + (to - from) * (done / segs.length),
+          percent: from + (to - from) * (doneWeight / wsum),
+          index: i,
           detail: `第 ${done}/${segs.length} 句${truncatedUsed ? ` · ${truncatedUsed} 句截断` : ''}`
         });
       }
@@ -1746,20 +1807,30 @@ async function concatWav(files, out) {
     关键约束：克隆模式下「保不住原声」就等于失败，所以这里绝不用系统音色顶替，
     只做整句重试 → 拆句重试 → 如实报错。 */
 function makeLocalSynth({ ctx, langId }) {
+  // 引擎重建状态（按这一段配音计）：上次重建时刻 + 已重建次数
+  const restart = { at: 0, n: 0 };
   const speakOnce = async (slot, text, out, opts = {}) => {
     const session = ctx.sessions[slot];
     return session.speak(text, out, langId, {
       maxTokens: opts.maxTokens,
-      maxSeconds: opts.maxSeconds
+      maxSeconds: opts.maxSeconds,
+      tag: opts.tag
     });
   };
   return async (text, outWav, index, opts = {}) => {
     const slot = ctx.sessions.length ? (index || 0) % ctx.sessions.length : 0;
+    // tag 直接传句子下标：worker 的句内进度事件会原样带回，用于把
+    // 「这一句已生成多少 token」折算到进度条的正确位置（并发时多句同时在跑）
+    const callOpts = { ...opts, tag: opts.tag != null ? opts.tag : index };
     let lastErr = null;
+    // 引擎重建限流：一个坏掉的 worker 会在几秒内反复起/死，每起一次都要
+    // 加载约 2.5GB 权重并占满 CPU，实测能把整机拖进换页（load 上百），
+    // 界面就停在同一个百分数上不动。所以冷却 15 秒、每段配音最多重建 3 次。
     for (let attempt = 0; attempt < 2; attempt += 1) {
       checkCanceled();
       try {
-        const r = await speakOnce(slot, text, outWav, opts);
+        const r = await speakOnce(slot, text, outWav, callOpts);
+        restart.n = 0;
         return { truncated: !!(r && r.truncated) };
       } catch (e) {
         checkCanceled();
@@ -1767,6 +1838,11 @@ function makeLocalSynth({ ctx, langId }) {
         lastErr = e;
         // worker 进程挂了：重建这一路会话再继续，避免后面整段都掉成系统音色
         if (/已退出|已关闭|无响应|超时/.test(e.message) && ctx.refAudio) {
+          if (Date.now() - restart.at < 15000 || restart.n >= 3) {
+            throw new Error('本地克隆引擎连续异常，已暂停重启以免拖慢整机，请重新开始这条任务');
+          }
+          restart.at = Date.now();
+          restart.n += 1;
           try { ctx.sessions[slot].close(); } catch (_) {}
           try {
             const s = await voicelocal.openSession({
@@ -1792,13 +1868,13 @@ function makeLocalSynth({ ctx, langId }) {
         for (let k = 0; k < clauses.length; k += 1) {
           checkCanceled();
           const p = `${outWav.replace(/\.wav$/i, '')}.c${k}.wav`;
-          const cap = Number(opts.maxTokens) > 0
-            ? Math.max(24, Math.round(Number(opts.maxTokens) / clauses.length * 1.4))
+          const cap = Number(callOpts.maxTokens) > 0
+            ? Math.max(24, Math.round(Number(callOpts.maxTokens) / clauses.length * 1.4))
             : 0;
-          const sec = Number(opts.maxSeconds) > 0
-            ? Math.max(30, Math.round(Number(opts.maxSeconds) / clauses.length + 20))
+          const sec = Number(callOpts.maxSeconds) > 0
+            ? Math.max(30, Math.round(Number(callOpts.maxSeconds) / clauses.length + 20))
             : 0;
-          await speakOnce(slot, clauses[k], p, { maxTokens: cap, maxSeconds: sec });
+          await speakOnce(slot, clauses[k], p, { ...callOpts, maxTokens: cap, maxSeconds: sec });
           files.push(p);
         }
         await concatWav(files, outWav);
@@ -1879,14 +1955,20 @@ async function start(payload, proxy, emit) {
   const MEM_GB = Math.max(1, Math.floor(os.totalmem() / (1024 ** 3)));
   const CPU_N = Math.max(2, (os.cpus() || []).length || 4);
   const LOCAL_WORKERS = MEM_GB >= 40 ? 2 : 1;
-  const LOCAL_CONC = MEM_GB >= 32 ? 4 : 3;
-  // 进程内并发已经占用了多个线程，torch 每进程线程数不能按满核给，
-  // 否则 3 句并发 × 4 线程 = 12 线程抢 8 核，反而集体变慢。
-  const LOCAL_THREADS = Math.max(2, Math.floor(CPU_N / LOCAL_CONC));
+  const LOCAL_CONC = MEM_GB >= 32 ? 8 : 5;
+  // 实测（M1 16GB / Metal）：进程内并发 1 路约 2~3 token/s、5 路约 9~15 token/s，
+  // 逐 token 解码时 Python 侧的等待正好被 GPU 掩盖；再往上加收益见顶，只增延迟。
+  // CPU 回退时上层会把并发降到 3，避免 5 句 × 多线程抢核反而更慢。
+  const LOCAL_THREADS = Math.max(2, Math.floor(CPU_N / 3));
   // flow-matching 的采样步数：6 步虽然快，但 vocoder 会留下颗粒感/沙沙的底噪，
   // 8 步的听感明显干净，时间只多约一成，质量优先。
   const LOCAL_STEPS = 8;
   const localPool = [];
+  /* GPU 上把并发取满，CPU 回退时降到 3 路（CPU 上 3 路吞吐最高，再多只会抢核） */
+  const concOf = (sess) => {
+    const dev = (sess && sess.device) || 'cpu';
+    return dev === 'mps' ? LOCAL_CONC : Math.min(3, LOCAL_CONC);
+  };
   try {
     const hasUrl = payload.url && /^https?:\/\//i.test(payload.url);
     if (!hasUrl && (!payload.input || !fs.existsSync(payload.input))) throw new Error('请先选择本地视频或填写视频链接');
@@ -1962,7 +2044,11 @@ async function start(payload, proxy, emit) {
           steps: LOCAL_STEPS,
           onLog: (l) => {
             if (!l) return;
-            if (l.elapsed != null && beatBus.sink) { beatBus.sink(l.elapsed); return; }
+            if (l.progress && beatBus.sink) {
+              beatBus.sink({ tag: l.tag, tokens: l.tokens, cap: l.cap });
+              return;
+            }
+            if (l.elapsed != null && beatBus.sink) { beatBus.sink({ tag: l.tag, elapsed: l.elapsed }); return; }
             if (l.stage) emit({ stage: l.stage, percent: 46 });
           }
         });
@@ -2177,35 +2263,19 @@ async function start(payload, proxy, emit) {
               langId
             });
           // 并发上限 = 会话数 × 每进程并发句数，与 worker 内部信号量一致
-          const synthConcurrency = isLocal ? Math.max(1, localPool.length * LOCAL_CONC) : 3;
+          const synthConcurrency = isLocal ? Math.max(1, localPool.length * concOf(localPool[0])) : 3;
           const totalSegs = Math.max(1, outSegs.length);
-          const share = W_TTS / totalSegs;   // 每句在进度条上占的份额
-          let doneFrac = ttsFrom;            // 已真正完成的句子对应的进度
-          let shownFrac = ttsFrom;           // 已展示的进度（含句内心跳），只增不减
-          let doneSegs = 0;
-          const onTts = (p) => {
-            const f = Math.min(1, (Number(p.percent) || 0) / 100);
-            doneFrac = ttsFrom + W_TTS * f;
-            doneSegs = Math.round(f * totalSegs);
-            shownFrac = Math.max(shownFrac, doneFrac);
-            langEmit('合成配音', 'tts', shownFrac, p.detail || '');
-          };
-          // 本地引擎每 5 秒一次心跳。克隆是逐 token 生成，一句要几十秒：
-          // 以前心跳只把同一句的百分比原样再发一遍，于是「数字在走、进度条不动」。
-          // 现在按「本句已用时」把这一句的份额持续推近 97%（时间常数 100s：
-          // 30s→25%、60s→44%、120s→67%、240s→88%），整句完成时再由 onTts
-          // 跳到真实进度。条与「已生成 Ns」一起走，哪怕一句跑了 5 分钟也不会早停。
-          beatBus.sink = isLocal
-            ? (elapsed) => {
-              const sec = Math.max(0, Number(elapsed) || 0);
-              const creep = 0.97 * (1 - Math.exp(-sec / 100));
-              shownFrac = Math.max(shownFrac, doneFrac + share * creep);
-              const cur = Math.min(totalSegs, doneSegs + 1);
-              langEmit('合成配音', 'tts', shownFrac, `第 ${cur}/${totalSegs} 句 · 已生成 ${Math.round(sec)}s`);
-            }
-            : null;
+          // 进度桥：句间按文字长度加权，句内用 worker 的 token 进度（见 makeTtsProgress）
+          const ttsProg = makeTtsProgress({
+            weights: outSegs.map((s) => Math.max(3, String(s.text || '').length)),
+            ttsFrom,
+            ttsWidth: W_TTS,
+            langEmit,
+            totalSegs
+          });
+          beatBus.sink = isLocal ? (info) => ttsProg.sink(info) : null;
           const built = await buildNarration(outSegs, winDur, langId, dir,
-            onTts, 0, 100,
+            ttsProg.onDone, 0, 100,
             // 克隆模式下「保不住原声」就是失败：整句失败只会拆句重试，
             // 绝不再退化成系统音色（那会出现两个人声混在同一条片子里）。
             { synthFn, voice: 'clone', allowFallback: false, synthConcurrency, refAudio: isLocal ? cloneRef : '' });
@@ -2559,10 +2629,17 @@ async function startOral(payload, proxy, emit) {
   const pool = [];
   const MEM_GB = Math.max(1, Math.floor(os.totalmem() / (1024 ** 3)));
   const CPU_N = Math.max(2, (os.cpus() || []).length || 4);
-  const LOCAL_CONC = MEM_GB >= 32 ? 4 : 3;
-  const LOCAL_THREADS = Math.max(2, Math.floor(CPU_N / LOCAL_CONC));
+  const LOCAL_CONC = MEM_GB >= 32 ? 8 : 5;
+  const LOCAL_THREADS = Math.max(2, Math.floor(CPU_N / 3));
   const LOCAL_STEPS = 8;
   const beatBus = { sink: null };
+
+  /* 实际并发 = 会话数 × 每进程并发句数；GPU 上取满，CPU 回退时降到 3 路
+     （实测 CPU 上 3 路吞吐最高，再多只会互相抢核，单句反而更慢）。 */
+  const concOf = (sess) => {
+    const dev = (sess && sess.device) || 'cpu';
+    return dev === 'mps' ? LOCAL_CONC : Math.min(3, LOCAL_CONC);
+  };
 
   try {
     /* 1) 本地引擎 */
@@ -2613,7 +2690,11 @@ async function startOral(payload, proxy, emit) {
       steps: LOCAL_STEPS,
       onLog: (l) => {
         if (!l) return;
-        if (l.elapsed != null && beatBus.sink) { beatBus.sink(l.elapsed); return; }
+        if (l.progress && beatBus.sink) {
+          beatBus.sink({ tag: l.tag, tokens: l.tokens, cap: l.cap });
+          return;
+        }
+        if (l.elapsed != null && beatBus.sink) { beatBus.sink({ tag: l.tag, elapsed: l.elapsed }); return; }
         if (l.stage) emit({ stage: l.stage, percent: 28 });
       }
     });
@@ -2748,6 +2829,7 @@ async function startOral(payload, proxy, emit) {
       let ttsError = '';
       if (!sameLanguage) {
         try {
+          const sess0 = pool[0];
           const synthFn = makeLocalSynth({
             ctx: {
               sessions: pool,
@@ -2758,27 +2840,17 @@ async function startOral(payload, proxy, emit) {
             },
             langId
           });
-          const synthConcurrency = Math.max(1, pool.length * LOCAL_CONC);
+          const synthConcurrency = Math.max(1, pool.length * concOf(sess0));
           const totalSegs = Math.max(1, outSegs.length);
-          const share = W_TTS / totalSegs;
-          let doneFrac = W_TR;
-          let shownFrac = W_TR;
-          let doneSegs = 0;
-          const onTts = (p) => {
-            const f = Math.min(1, (Number(p.percent) || 0) / 100);
-            doneFrac = W_TR + W_TTS * f;
-            doneSegs = Math.round(f * totalSegs);
-            shownFrac = Math.max(shownFrac, doneFrac);
-            langEmit('合成配音', 'tts', shownFrac, p.detail || '');
-          };
-          beatBus.sink = (elapsed) => {
-            const sec = Math.max(0, Number(elapsed) || 0);
-            const creep = 0.97 * (1 - Math.exp(-sec / 100));
-            shownFrac = Math.max(shownFrac, doneFrac + share * creep);
-            const cur = Math.min(totalSegs, doneSegs + 1);
-            langEmit('合成配音', 'tts', shownFrac, `第 ${cur}/${totalSegs} 句 · 已生成 ${Math.round(sec)}s`);
-          };
-          const built = await buildNarration(outSegs, dur, langId, dir, onTts, 0, 100,
+          const ttsProg = makeTtsProgress({
+            weights: outSegs.map((s) => Math.max(3, String(s.text || '').length)),
+            ttsFrom: W_TR,
+            ttsWidth: W_TTS,
+            langEmit,
+            totalSegs
+          });
+          beatBus.sink = (info) => ttsProg.sink(info);
+          const built = await buildNarration(outSegs, dur, langId, dir, ttsProg.onDone, 0, 100,
             { synthFn, voice: 'clone', allowFallback: false, synthConcurrency, refAudio: refWav });
           beatBus.sink = null;
           narration = built.file;

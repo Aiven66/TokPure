@@ -198,6 +198,10 @@ async function openSession({ refAudio, lang, onLog, threads, conc, steps } = {})
   }
   // 多路并行时给每路分配固定线程，避免 8 核上线程数远超核数互相抢
   if (threads) env.VC_THREADS = String(threads);
+  // 设备自动选择：Apple Silicon 优先走 Metal(MPS)，实测同一批句子吞吐约为
+  // CPU 的 3~5 倍（逐 token 解码时 Python 侧的等待被 GPU 掩盖）；MPS 不可用
+  // 或加载失败时 worker 会自动退回 cpu，不会让任务失败。
+  if (!env.VC_DEVICE) env.VC_DEVICE = 'auto';
   // 进程内并发句数：0.5B 模型逐 token 解码时 Python 线程经常在等矩阵乘，
   // 同时跑 2~3 句能把空闲核利用起来（上游 alignment 分析器已在上层替换为无状态实现）
   if (conc) env.VC_CONC = String(conc);
@@ -269,7 +273,16 @@ async function openSession({ refAudio, lang, onLog, threads, conc, steps } = {})
     if (msg.event === 'beat') {
       const p = pending.get(msg.id);
       if (p && p.arm) p.arm();
-      log({ stage: '合成中', beat: true, elapsed: msg.elapsed || 0 });
+      // 带上句子序号：并发合成时心跳不知道该算到哪一句，上层就没法把进度放对位置
+      log({ stage: '合成中', beat: true, elapsed: msg.elapsed || 0, tag: p && p.tag });
+      return;
+    }
+    // 句内进度：worker 逐 token 生成时会回「本句已生成多少 / 上限多少」，
+    // 上层据此让进度条在句子内部平滑推进，而不是一格一格地跳
+    if (msg.event === 'progress') {
+      const p = pending.get(msg.id);
+      if (p && p.arm) p.arm();
+      log({ stage: '合成中', progress: true, tokens: msg.tokens || 0, cap: msg.cap || 0, tag: msg.tag });
       return;
     }
     if (msg.event === 'ref_ok') { settle(msg.id, null, msg); return; }
@@ -315,8 +328,9 @@ async function openSession({ refAudio, lang, onLog, threads, conc, steps } = {})
   child.stdin.on('error', () => {});
 
   armReady();
+  let readyMsg = null;
   try {
-    await readyPromise;
+    readyMsg = await readyPromise;
   } catch (e) {
     if (readyTimer) { clearTimeout(readyTimer); readyTimer = null; }
     // 加载失败/超时也要立刻回收进程：留着就是个吃 2GB 的僵尸 worker，
@@ -329,7 +343,7 @@ async function openSession({ refAudio, lang, onLog, threads, conc, steps } = {})
   const request = (payload, timeout, label) => new Promise((resolve, reject) => {
     if (closed) { reject(new Error('本地克隆引擎已关闭')); return; }
     const id = ++seq;
-    const entry = { resolve, reject, timer: null };
+    const entry = { resolve, reject, timer: null, tag: payload && payload.tag };
     // 心跳每来一次就把超时往后推，只有「长时间完全没有响应」才算卡死
     entry.arm = () => {
       if (entry.timer) clearTimeout(entry.timer);
@@ -347,6 +361,9 @@ async function openSession({ refAudio, lang, onLog, threads, conc, steps } = {})
 
   session = {
     ready,
+    // 实际生效的设备（mps / cpu）：上层据此决定并发句数——
+    // GPU 上 5 路同时解码吞吐最高，CPU 上超过 3 路只会互相抢核
+    device: (readyMsg && readyMsg.device) || 'cpu',
     async prepare(ref) {
       const r = await request({ cmd: 'ref', ref }, REF_TIMEOUT, '准备参考音色超时');
       return r;
@@ -365,6 +382,9 @@ async function openSession({ refAudio, lang, onLog, threads, conc, steps } = {})
       // 既不无限占住槽位，也不至于让整句掉成系统音色。
       const maxS = Number(opts && opts.maxSeconds) || 0;
       if (maxS > 0) payload.max_seconds = Math.round(maxS);
+      // 句子序号：worker 的进度事件会原样回传，上层才能把「这一句已生成多少」
+      // 折算到整条进度条的正确位置（并发合成时多句同时在跑）
+      if (opts && opts.tag != null) payload.tag = opts.tag;
       const r = await request(payload, IDLE_TIMEOUT, '本地引擎长时间无响应（合成中断）');
       return r;
     },
