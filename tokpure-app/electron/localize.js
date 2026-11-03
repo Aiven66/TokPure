@@ -843,15 +843,12 @@ function polishGraph(input) {
    用这条把「抬噪」封在 -34dB 以内，宁可那几句轻一点。 */
 const GAIN_NOISE_CEIL = -34;
 
-/** 停顿噪声门：阈值以下直接压到 -inf（range=0），停顿里是**真静音**而不是「压低」。
-    range=0.06 那版保留 -24dB 残余，实测成片最低电平 p05 从 -67dB 抬到 -52dB，
-    比上一版整整吵了一档，用户听感上就是「非常明显的噪音」——所以退回 range=0。
-    为了不出现「全静音 → 满电平」的硬跳变：knee=1 让开合有过渡（与上一版同值），
-    attack 20ms / release 500ms：release 从 260ms 拉长到 500ms 之后，词间的爆破闭口、
-    气口这类 30~100ms 的短暂下跌来不及把门关死（增益按 500ms 时间常数慢慢回落），
-    门就只会在真正长停顿处关上，不会把一句话切成碎片。
-    注意 gate 排在 volume 之前：底噪在被抬起之前就已经被压到底，抬增益不会再抬噪。 */
-const noiseGate = (db) => `agate=threshold=${Math.pow(10, db / 20).toFixed(5)}:ratio=8:range=0:attack=20:release=500:knee=1`;
+/* 3.9.25：每句的停顿噪声门（agate range=0）已移除。
+   它只认电平：克隆引擎的气口底噪是 -33dBFS 的低频闷响，比轻声说话还响，门根本不开；
+   而 release=500ms 又让门在气口之后迟迟不回开，把下一个音节的起音压掉 6~10dB ——
+   用户听到的「说话吞吞吐吐、模模糊糊」有它一份。
+   气口噪声现在由 denoise.js 的逐频点谱减 + 整帧电平斜坡处理（-46~-64dBFS，且不留洞）。
+   注意：AGATE 这个词不要再用回来，也不要用 anlmdn。 */
 
 /* ---------------- 音色频带对齐（仅预置/近似模式） ----------------
    3.9.22 起克隆模式不再走这条链：静态倒角 CLEAN_SHELF 已按克隆引擎实测标定
@@ -969,22 +966,9 @@ async function measureSegment(file) {
   return { lufs, floor: at(0.12), speech: at(0.9), frames: frames.length };
 }
 
-/** 停顿噪声门阈值（作用于「实测塑形链」之后的原始电平，单位 dB）。
-    取「噪底 + 12dB」，同时压到「语音 - 10dB」以下，保证任何一句都不会吃字；
-    阈值随每句实测浮动，不做写死常数——不同音色、不同语速的噪底差 20dB 以上，
-    固定阈值要么漏噪、要么把气声切碎。
-    3.9.21：下限从 -70 放宽到 -80。新链的句间缝隙只有 -84~-111dBFS（旧链是 -61dBFS），
-    再按 -70 关门等于把「已经低到听不见的底」也强行切成数字零。
-    3.9.21b：阈值再封顶到 -50，并要求至少比本句语音低 18dB。
-    实测三句原始克隆音（过了新链）：12% 分位「噪底」分别是 -43.5 / -50.0 / -51.0dB，
-    而 90% 分位语音只有 -21~-22dB —— 按「噪底+12dB」算出来的阈值是 -31~-39dB，
-    只比语音低 10dB，等于把弱辅音、气口、词尾都当噪音切掉（成片实测 38 段
-    30~130ms 的数字零碎片就夹在这些位置），听感是「断断续续/沙沙」。
-    克隆音真正的句间底噪是 -104dBFS，根本不需要这么激进的门；封顶 -50 只切真静音。 */
-function gateDb(level) {
-  if (!level || level.floor == null || level.speech == null) return -50;
-  return Math.max(-80, Math.min(-50, Math.min(level.floor + 6, level.speech - 18)));
-}
+/** 3.9.25：gateDb 已随每句 agate 一起移除（见上方 noiseGate 注释）。
+    留一句说明，避免后来者又按「噪底+12dB / 语音-18dB」把门加回来：
+    那条阈值在克隆音上只比语音低 10dB，会把弱辅音、气口、词尾切成数字零碎片。 */
 
 /** 把配音的音高推向原片说话人（asetrate 会连同共振峰一起平移，更像换了个人） */
 function pitchChain(srcF0, ttsF0) {
@@ -1179,12 +1163,18 @@ function decodeFloat(file) {
   });
 }
 
-/** 把一句克隆音做「噪声帧静音」，返回可继续进清洁链的文件路径 */
+/** 把一句克隆音做「谱减 + 句尾裁剪」，返回可继续进清洁链的文件路径 */
 async function cleanCloneVoice(raw, out) {
   const pcm = await decodeFloat(raw);
   const r = denoise.suppressNoise(pcm, DENOISE_RATE);
   denoise.writeWavS16(out, r.pcm, DENOISE_RATE);
-  return { file: out, mutedSec: r.mutedSec, spans: r.spans, noiseFrames: r.noiseFrames };
+  return {
+    file: out,
+    mutedSec: r.mutedSec,
+    spans: r.spans,
+    trimmedSec: r.trimmedSec,
+    noiseFrames: r.noiseFrames
+  };
 }
 
 /** 配音进度桥：把「逐句完成」和「句内 token 进度」合成一个只增不减的百分比
@@ -1380,26 +1370,32 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
     const nextStart = i + 1 < segs.length ? segs[i + 1].start : duration;
     const avail = Math.max(0.2, Math.min(duration, nextStart) - seg.start - SEG_GAP);
     const nominal = Math.max(0.45, seg.end - seg.start);
-    // 3.9.24：克隆音先做「噪声帧静音」，再去清洁链。
-    // 这一句的词间气口/句尾噪声在清洁链之后是 -30dBFS 级别（音量上跟轻声说话分不开），
-    // 只有周期性 + 高频占比能区分；识不出来就原样用 raw，不让降噪失败拖垮整条任务。
-    // 响度与门限仍按 raw 实测 —— 与 3.9.23 的增益算法完全一致，只是气口变成真静音。
+    // 3.9.25：克隆音先做「谱减 + 句尾裁剪」，再去清洁链。
+    // 3.9.24 的「噪声帧整段拉数字静音」被证明是错的：判据把带谐波的低频闷响判成人声
+    // 放过、却把真实的 100~200ms 气口切成空洞，成片听感是「说话断断续续 + 噪音还在」。
+    // 现在谱减把气口压到 -46~-64dBFS（逐句增益之后仍在 -40dB 以下），并且**不留数字洞**；
+    // 句尾那截 0.5~3.6s 的噪声尾被整段裁掉，所以下面 spoken 必须用裁剪后的时长，
+    // 否则顶层会按虚长的时长算 atempo（顶到 1.25 上限）并 afade/atrim 截断真语音 ——
+    // 「说话模糊不清、不连贯」的另一半原因（成片实测 17 句被压缩/截断）。
     let src = raw;
     if (opts.synthFn) {
       try {
         const dn = await cleanCloneVoice(raw, path.join(ttsDir, `${i}-clean.wav`));
-        if (dn.spans > 0 && fs.existsSync(dn.file)) src = dn.file;
+        if ((dn.spans > 0 || dn.trimmedSec > 0) && fs.existsSync(dn.file)) src = dn.file;
       } catch (_) {
         src = raw;
       }
     }
-    const spoken = wavDuration(raw) || Math.min(nominal, avail);
-    // 每句：限带/降噪/静态倒角/收口（polishGraph）→ 停顿门限 → 固定增益 → 频带对齐 → 限幅 → 变速 → 首尾微淡入淡出 → 定位。
+    const spoken = wavDuration(src) || Math.min(nominal, avail);
+    // 每句：限带/降噪/静态倒角/收口（polishGraph）→ 固定增益 → 频带对齐 → 限幅 → 变速 → 首尾微淡入淡出 → 定位。
     // 以前这里是单遍 loudnorm（动态归一），它会把句内停顿处的底噪一起抬起来，
     // 成片里就是一阵一阵的「呼吸声/沙沙声」，这是本次噪音问题的主因。
-    // 现在：整句只用一个增益（不泵动），并且在这个增益之前先把停顿压死，
+    // 现在：整句只用一个增益（不泵动），噪底已经在 cleanCloneVoice 里逐频点压到 -60dBFS 以下，
     // 所以「抬增益」再也不会把噪底抬到能听见。
-    const level = await measureSegment(raw);
+    // 3.9.25 去掉每句的 agate：agate=range=0:release=500 会在词间气口之后把下一个音节
+    // 的起音一起压住（起音力度掉 6~10dB），听感就是「说话吞吞吐吐、模模糊糊」；
+    // 而且它只认得电平、认不出克隆引擎那层 -33dB 的低频闷响，本来就没起作用。
+    const level = await measureSegment(src);
     // 几乎没有有效语音（-inf 或低于 -70 LUFS）：不放大，避免把整段底噪拉满
     let gain = level.lufs == null || level.lufs < -70
       ? 0
@@ -1420,13 +1416,12 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
       gain = Math.max(prevGain - 3, Math.min(prevGain + 3, gain));
     }
     if (gain !== 0) prevGain = gain;
-    const gate = gateDb(level);
     // attack 默认 5ms 会放过瞬时尖峰（实测会顶到 0dBFS），压到 2ms 才能真的守住上限
     // 频带对齐 EQ 放在固定增益之后、限幅之前：如果放在压缩之前，压缩器会把被削掉的高频
     // 又相对抬回来（实测整链 4.8~7k 只降了 1.7dB，放末端能降 4.3dB），也避免增益把它放大。
     // 3.9.21：链首 polishGraph 是纯线性图（限带 + 单级温和降噪 + 固定倒角 + 压缩），
-    // 后面这一段是「门限 → 固定增益 → 频带对齐 → 限幅 → 变速 → 淡入淡出 → 定位」。
-    let tail = [noiseGate(gate), `volume=${gain.toFixed(2)}dB`, eqChain, 'alimiter=limit=0.85:attack=2:level=false'].filter(Boolean).join(',');
+    // 后面这一段是「固定增益 → 频带对齐 → 限幅 → 变速 → 淡入淡出 → 定位」。
+    let tail = [`volume=${gain.toFixed(2)}dB`, eqChain, 'alimiter=limit=0.85:attack=2:level=false'].filter(Boolean).join(',');
     let tempo = 1;
     if (spoken > avail) {
       // 克隆音色拉快 1.25 倍以上就明显失真；系统音色可以到 2 倍

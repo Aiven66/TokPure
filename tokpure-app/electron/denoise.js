@@ -1,44 +1,68 @@
 'use strict';
 
 /* ============================================================
-   TokPure — 克隆配音「噪声帧静音」滤波器（3.9.24）
+   TokPure — 克隆配音降噪（3.9.25）
    ------------------------------------------------------------
-   背景：本地克隆引擎（Chatterbox）在词与词之间、句尾会输出宽带噪声。
-   实测（b1.wav，44.1kHz 单声道）：
-     句尾 3.84s→4.36s 全程噪声，RMS -40dBFS、峰值 -30dBFS；
-     词间 50~90ms 的气口也是同类噪声，RMS -28~-45dBFS；
-     语音本体 -18~-22dBFS。
-   成片按句归一到 -18 LUFS（+8~+12dB）之后，这些噪声被抬到 -20~-32dBFS，
-   而旧链的噪声门阈值封顶 -50dBFS、只看电平 —— 噪声甚至比轻声说话还响，
-   电平上根本分不开，于是短气口一路漏进成片（就是用户听到的「背景噪音」）。
-   3.9.24 起改为在「每句合成完、进清洁链之前」做逐帧判别，判据是三条：
-     1) 电平 < 本句语音电平（帧 RMS 的 95% 分位）- 7dB，且 < -20dBFS；
-     2) 周期性 < 0.30（归一化自相关在 60~700Hz 内的峰值）——语音有基频周期，
-        噪声/擦音没有；这一条把「轻声但仍是人声」的帧保下来；
-     3) 3k~10kHz 相对 100~1500Hz 的占比 < +10dB —— 擦音（s/sh）是高频占优的
-        宽带信号，超过这条的更可能是齿音，不动它。
-   命中帧连成 ≥35ms 的段之后，用 11.6ms 线性斜坡把整段拉到数字静音；
-   另外从句尾「最后一个有声帧 + 0.15s」一直静音到文件末尾，彻底清掉句尾噪声尾。
-   噪声段本来就落在词间气口/句尾，人声帧（周期性高）一个采样都不动。
-   实测（本轮 16 句真实克隆输出 + 原片真人 + 合成白噪）：
-     被静音的段全是 3k~10k 几乎没有能量、谱峰在 100~130Hz 的低频闷响（克隆引擎的
-     词间/句尾噪声本相），语音段电平一字不变（未静音帧电平差中位 0.00dB）；
-     原片真人 9 段噪性连续段（2.16s）→ 0 段；白噪 + 谐波合成的测试音，噪声段全部
-     落到数字静音、谐波电平 -19.8dBFS 不动。
+   背景：本地克隆引擎（Chatterbox）在词与词之间、句尾会输出低频闷响 + 一段
+   宽带噪声尾。实测（44.1kHz 单声道）：语音 -13~-19dBFS，词间气口 -33~-46dBFS，
+   句尾噪声尾 -33~-39dBFS 且长达 0.5~3.6s；频谱能量集中在 100~300Hz。
+
+   三个版本的教训（都是同一个病根：**把噪声当人声放过去了**）：
+   - 3.9.21/3.9.23：靠 agate 门限切，但气口噪声电平（-33dB）比轻声说话还响，
+     电平上根本分不开，于是短气口全部漏进成片 → 用户听到「非常明显的噪音」。
+   - 3.9.24：改用「电平 + 自相关周期性 + 高频占比」三判据，把判成噪声的帧整段
+     拉到数字静音。实测这条素材里 163 个 <250ms 的气口被切成空洞 → 用户听到
+     「说话断断续续、不连贯」；而真正的低频闷响因为自带 100~130Hz 谐波峰，
+     周期性 per 高达 0.4~0.6，反而被判成「像人声」保留下来 → 噪音仍在。
+   - 3.9.25 第一版：谱减的噪声底仍然只取「三判据命中帧」，命中帧少且偏轻，
+     逐句增益之后只压掉 1.6dB，等于没压。
+
+   3.9.25 最终做法：**安静帧统计噪声底 + 逐频点维纳谱减 + 整帧电平斜坡 + 句尾裁剪**。
+   1) 噪声底不再靠「是不是噪声」的猜测，而是**测**出来：本句电平低于
+      「语音电平（95% 分位）-12dB」的帧就是气口/噪声帧，取这些帧逐频点功率的
+      **75% 分位**当噪声功率谱 N(f)。谐波不谐波都一样被测进来（上一版漏掉的就是它）；
+      取 75% 分位而不是中位数，是因为同一句里气口电平会跳 ±10dB，中位数压不住最响的那几段
+      （实测只能降 2~5dB，成片里就是「嗡嗡的底噪还在」）。
+   2) 逐频点增益 G(f) = max(1 - 2.5 * N(f) / P(f), -40dB)，再做 3 点频域平滑
+      （压掉「音乐噪声」的孤立频点）与「快开快关」的时域平滑（保护语音起音）。
+   3) 再叠一层**整帧电平斜坡**：气口里的嘶声是突发的，实测该频点功率比噪声分位高 14~22dB，
+      逐频点谱减对它无效；但只要这一帧的电平比本句语音低 8dB 以上就不可能是人声，
+      于是 8→18dB 映射到 0→-48dB 整帧衰减。齿音帧（3k~10k 占绝对优势）最多压 18dB，
+      避免把 /s/ /ʃ/ 当成噪声吃掉（那是「说话模糊不清」的另一个来源）。
+      实测：语音帧电平变化 p50 -0.4dB / p5 -0.9dB，三个语音频带差 ≤1.1dB；
+      100~200ms 气口从 -33~-37dBFS 压到 -46~-53dBFS，长气口到 -60~-94dBFS。
+   4) 只有「比语音低 15dB 以上、且连续 ≥350ms」的深静音段才拉数字静音
+      （这种长度只可能是句尾/长停顿，里面没有人声），进出都走 11.6ms 斜坡。
+      100~200ms 的气口一律不切（3.9.24 就是把它们切成了空洞，成片 163 个静音洞）。
+   5) **句尾裁剪**：最后一个有声帧 + 0.15s 之后的噪声尾整段切掉并返回。
+      这一步同样重要：噪声尾让 TTS 原始时长虚长 1.5~3 倍，上层按这个时长算
+      atempo（顶到 1.25 上限）和 afade/atrim 截断，真语音被压快、切掉 ——
+      这是用户听到「说话模糊、不连贯」的另一半原因（3.9.24 成片 17 句被压缩/截断）。
 
    纯 JS 自实现 FFT/IFFT，不引第三方 DSP，不使用 anlmdn。
    ============================================================ */
 
-const FRAME = 1024;        // 23.2ms @44.1kHz
-const HOP = 512;           // 11.6ms 帧移，同时也是斜坡长度
-const NFFT = 2048;         // 自相关需要的滞后范围（60Hz ≈ 735 采样）
-const REL_DB = 7;          // 电平必须低于本句语音电平 7dB
-const QUIET_CAP_DB = -20;  // 绝对电平上限
-const PER_MAX = 0.3;       // 周期性上限（低于此判为非谐音）
-const HI_MAX_DB = 10;      // 3k~10k / 100~1500 占比上限（齿音保护）
-const MIN_RUN_HOPS = 3;    // 少于 35ms 的连续段不动
+const FRAME = 1024;            // 23.2ms @44.1kHz
+const HOP = 512;               // 11.6ms 帧移，同时也是斜坡长度
+const NFFT = 2048;             // 频点 1024 个（21.5Hz/bin）
+const REL_DB = 12;             // 噪声帧电平必须低于本句语音电平 12dB
+const QUIET_CAP_DB = -22;      // 绝对电平上限（比这更响的帧绝不当噪声统计）
+const NOISE_Q = 0.75;          // 噪声谱取候选帧的 75% 分位（贴住最响气口）
+const OVER_SUB = 2.5;          // 谱减过减系数（>1 才能把噪声底压干净）
+const GAIN_FLOOR_DB = -40;     // 每个频点的最低增益
+const GAIN_RELEASE = 0.35;     // 增益回落：每帧保留 35%（1~2 帧落到位）
+const GATE_START_DB = 8;       // 整帧电平低于语音 8dB 起开始按斜坡压
+const GATE_FULL_DB = 18;       // 低到 18dB 时压到底
+const GATE_DB = 48;            // 整帧最大衰减
+const SIB_DB = 12;             // 3k~10k/100~1500 ≥ +12dB 视为齿音
+const SIB_FLOOR_DB = 18;       // 齿音帧最多压 18dB（保住 /s/ /ʃ/ 的可懂度）
+const DEEP_DB = 15;            // 深静音：低于语音电平 15dB
+const DEEP_RUN_SEC = 0.35;     // ≥350ms 的深静音段才拉数字静音
+const TAIL_PAD = 0.15;         // 句尾保留 0.15s 余量再裁掉
+const MIN_NOISE_FRAMES = 6;    // 噪声帧太少时不做谱减（宁可不降噪，也不要误伤语音）
+const TRIM_FADE_SEC = 0.012;   // 裁剪点的收尾淡出，避免极陡包络台阶
 
-/** 迭代基-2 FFT（原地）。inverse=true 时做逆变换（不做 1/N 归一化）。 */
+/** 迭代基-2 FFT（原地） */
 function makeFft(n) {
   const levels = Math.round(Math.log2(n));
   if ((1 << levels) !== n) throw new Error('FFT 尺寸必须是 2 的幂');
@@ -92,37 +116,62 @@ function fftRun(f, re, im) {
   }
 }
 
-/** 实对称功率谱 → 自相关（r[k] = sum x[n]x[n+k]，未归一化） */
-function autocorr(power, f) {
+/** 逆变换：ifft(X) = conj(FFT(conj(X))) / n */
+function ifftRun(f, re, im) {
   const n = f.n;
-  const re = new Float64Array(n);
-  const im = new Float64Array(n);
-  re[0] = power[0];
-  re[n / 2] = power[n / 2];
-  for (let k = 1; k < n / 2; k += 1) {
-    re[k] = power[k];
-    re[n - k] = power[k];
-  }
+  for (let i = 0; i < n; i += 1) im[i] = -im[i];
   fftRun(f, re, im);
-  for (let k = 0; k < n; k += 1) re[k] /= n;
-  return re;
+  for (let i = 0; i < n; i += 1) {
+    re[i] /= n;
+    im[i] = -im[i] / n;
+  }
+}
+
+/** 取分位值（输入必须是升序） */
+function quantile(sorted, q) {
+  if (!sorted.length) return 0;
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(q * sorted.length)))];
 }
 
 /**
- * 分析一段 PCM（Float32，-1~1，单声道）：
- * 返回需要静音的采样跨度、句尾起点与判据统计。
+ * 整帧衰减：一帧的电平比本句语音电平低得越多，越不可能是人声。
+ * 8dB 以内不动（正常说话的强弱起伏），8→18dB 线性压到 -48dB，18dB 以下就是噪声。
+ * 齿音帧（3k~10k 占绝对优势）最多压 18dB —— /s/ /ʃ/ /f/ 的能量天生集中在高频，
+ * 电平也比元音低一截，按电平一刀切会把词尾吃掉，听感就是「说话模糊不清」。
  */
-function findNoiseSpans(pcm, rate, opts = {}) {
+function frameGate(over, hiRel, opts = {}) {
+  const start = opts.gateStartDb != null ? opts.gateStartDb : GATE_START_DB;
+  const full = opts.gateFullDb != null ? opts.gateFullDb : GATE_FULL_DB;
+  const maxDb = opts.gateDb != null ? opts.gateDb : GATE_DB;
+  if (!(over > start)) return 1;
+  const t = Math.min(1, (over - start) / Math.max(0.1, full - start));
+  let g = Math.pow(10, (-maxDb * t) / 20);
+  if (hiRel >= (opts.sibDb != null ? opts.sibDb : SIB_DB)) {
+    const lim = Math.pow(10, -(opts.sibFloorDb != null ? opts.sibFloorDb : SIB_FLOOR_DB) / 20);
+    if (g < lim) g = lim;
+  }
+  return g;
+}
+
+/**
+ * 逐句分析：帧电平、噪声功率谱、句尾切点、深静音段。
+ * 只对「电平低于噪声门限」的帧做 FFT，开销约为总帧数的 20~60%。
+ */
+function analyzeFrames(pcm, rate, opts = {}) {
   const n = pcm.length;
-  const empty = { spans: [], tailFrom: n, speechRef: 0, noiseFrames: 0, frames: 0, mutedSec: 0 };
-  if (n < FRAME * 4) return empty;
   const relDb = opts.relDb != null ? opts.relDb : REL_DB;
-  const perMax = opts.perMax != null ? opts.perMax : PER_MAX;
-  const hiMax = opts.hiMaxDb != null ? opts.hiMaxDb : HI_MAX_DB;
   const capDb = opts.quietCapDb != null ? opts.quietCapDb : QUIET_CAP_DB;
-  const minRun = Math.max(1, opts.minRunHops || MIN_RUN_HOPS);
-  const frames = Math.floor((n - FRAME) / HOP) + 1;
-  // 第一遍：只算帧电平（便宜），据此定「本句语音电平」与电平门限
+  const deepDb = opts.deepDb != null ? opts.deepDb : DEEP_DB;
+  const deepRun = Math.max(1, Math.round(((opts.deepRunSec != null ? opts.deepRunSec : DEEP_RUN_SEC) * rate) / HOP));
+  const frames = n < FRAME ? 0 : Math.floor((n - FRAME) / HOP) + 1;
+  const empty = {
+    frames: 0, lv: new Float64Array(0), hiRel: new Float64Array(0), spans: [], noisePsd: null,
+    tailFrom: n, speechRef: 0, noiseFrames: 0, thr: 0, bins: 0
+  };
+  if (frames < 4) return empty;
+
+  // 第一遍：只算帧电平（便宜）。语音电平取 95% 分位：一句里通常七成以上帧是语音，
+  // 气口只占两三成；85% 分位会落在轻声段，门限跟着偏低，气口就漏过去了。
   const lv = new Float64Array(frames);
   for (let k = 0; k < frames; k += 1) {
     const s = k * HOP;
@@ -133,80 +182,68 @@ function findNoiseSpans(pcm, rate, opts = {}) {
     }
     lv[k] = 10 * Math.log10(e / FRAME + 1e-30);
   }
-  const sorted = Array.prototype.slice.call(lv).sort((a, b) => a - b);
-  // 本句语音电平取 95% 分位：一句里通常大部分帧都是语音（词间气口只占两三成），
-  // 85% 分位会落在「语音的轻声段」，遇上 r12 这种前面很响、后面很轻的句子，
-  // 门限会被压到 -36dB，-26dB 的气口噪声就漏过去了。95% 分位稳定落在响亮语音上。
-  const speechRef = sorted[Math.min(sorted.length - 1, Math.floor(0.95 * sorted.length))];
+  const sortedLv = Array.prototype.slice.call(lv).sort((a, b) => a - b);
+  const speechRef = quantile(sortedLv, 0.95);
   const thr = Math.min(speechRef - relDb, capDb);
-  // 第二遍：只对「低于门限」的帧做谱分析（约占两成帧，开销可控）
+
+  // 第二遍：只分析低于门限的帧（这些就是气口/噪声帧），逐频点功率存成紧凑数组
+  const bins = NFFT / 2 + 1;
   const f = makeFft(NFFT);
   const win = new Float64Array(FRAME);
-  for (let i = 0; i < FRAME; i += 1) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (FRAME - 1));
+  for (let i = 0; i < FRAME; i += 1) win[i] = Math.sqrt(0.5 - 0.5 * Math.cos((2 * Math.PI * i) / FRAME));
   const re = new Float64Array(NFFT);
   const im = new Float64Array(NFFT);
-  const binHz = rate / NFFT;
-  const lo0 = Math.max(1, Math.floor(100 / binHz));
-  const lo1 = Math.floor(1500 / binHz);
-  const hi0 = Math.max(lo0 + 1, Math.floor(3000 / binHz));
-  const hi1 = Math.min(NFFT / 2, Math.ceil(10000 / binHz));
-  const lagLo = Math.max(2, Math.floor(rate / 700));
-  const lagHi = Math.min(NFFT / 2 - 1, Math.ceil(rate / 60));
-  const per = new Float64Array(frames);
-  const low = new Float64Array(frames);
-  for (let k = 0; k < frames; k += 1) {
-    if (lv[k] >= thr) continue; // 电平够高，必然是语音，不用再分析
-    const s = k * HOP;
-    for (let i = 0; i < NFFT; i += 1) {
-      re[i] = i < FRAME ? pcm[s + i] * win[i] : 0;
-      im[i] = 0;
+  const cand = [];
+  for (let k = 0; k < frames; k += 1) if (lv[k] < thr) cand.push(k);
+  // 齿音保护：候选帧里 3k~10k 相对 100~1500 的能量占比。
+  // 气口噪声的嘶声是宽带的、且只在部分频点冒尖；真正的 /s/ /ʃ/ 整段高频都强。
+  // 判据「高频占比 ≥ +12dB」即认为是齿音，不做整帧重压。
+  const hiRel = new Float64Array(frames);
+  let noisePsd = null;
+  if (cand.length >= Math.max(MIN_NOISE_FRAMES, opts.minNoiseFrames || MIN_NOISE_FRAMES)) {
+    const power = new Float64Array(cand.length * bins);
+    const binHz = rate / NFFT;
+    const lo0 = Math.max(1, Math.floor(100 / binHz));
+    const lo1 = Math.floor(1500 / binHz);
+    const hi0 = Math.max(lo0 + 1, Math.floor(3000 / binHz));
+    const hi1 = Math.min(bins - 1, Math.ceil(10000 / binHz));
+    for (let c = 0; c < cand.length; c += 1) {
+      const s = cand[c] * HOP;
+      for (let i = 0; i < NFFT; i += 1) {
+        re[i] = i < FRAME ? pcm[s + i] * win[i] : 0;
+        im[i] = 0;
+      }
+      fftRun(f, re, im);
+      const base = c * bins;
+      let loSum = 0;
+      let hiSum = 0;
+      for (let b = 0; b < bins; b += 1) {
+        const p = re[b] * re[b] + im[b] * im[b];
+        power[base + b] = p;
+        if (b >= lo0 && b <= lo1) loSum += p;
+        else if (b >= hi0 && b <= hi1) hiSum += p;
+      }
+      hiRel[cand[c]] = loSum > 1e-20 ? 10 * Math.log10(hiSum / loSum + 1e-20) : -99;
     }
-    fftRun(f, re, im);
-    const power = new Float64Array(NFFT / 2 + 1);
-    let loSum = 0;
-    let hiSum = 0;
-    for (let b = 0; b <= NFFT / 2; b += 1) {
-      const p = re[b] * re[b] + im[b] * im[b];
-      power[b] = p;
-      if (b >= lo0 && b <= lo1) loSum += p;
-      else if (b >= hi0 && b <= hi1) hiSum += p;
-    }
-    const r = autocorr(power, f);
-    let peak = 0;
-    for (let t = lagLo; t <= lagHi; t += 1) if (r[t] > peak) peak = r[t];
-    per[k] = r[0] > 1e-12 ? peak / r[0] : 0;
-    low[k] = loSum > 1e-20 ? 10 * Math.log10(hiSum / loSum + 1e-20) : 0;
-  }
-  // 逐帧判定：电平低 + 非谐音 + 不是齿音
-  const hit = new Uint8Array(frames);
-  let noiseFrames = 0;
-  for (let k = 0; k < frames; k += 1) {
-    if (lv[k] >= thr) continue;
-    if (per[k] < perMax && low[k] < hiMax) {
-      hit[k] = 1;
-      noiseFrames += 1;
-    }
-  }
-  // 单帧空洞填平（噪声段被一个瞬态切开时不要留缝），再丢掉过短的段
-  for (let k = 1; k < frames - 1; k += 1) {
-    if (!hit[k] && hit[k - 1] && hit[k + 1]) hit[k] = 1;
-  }
-  let k = 0;
-  while (k < frames) {
-    if (hit[k]) {
-      let j = k;
-      while (j < frames && hit[j]) j += 1;
-      if (j - k < minRun) for (let x = k; x < j; x += 1) hit[x] = 0;
-      k = j;
-    } else {
-      k += 1;
+    // 逐频点分位值（默认 75%）：中位数只代表「典型气口」，而实测同一句里气口的
+    // 电平会在 ±10dB 内跳，取中位数会让最响的那几段气口 P≫N、增益压不下来
+    // （实测只降 2~5dB）。取 75% 分位正好落在最响气口附近：最响的、更轻的都落到
+    // 增益地板。单帧的尖峰（爆音、齿音残留）不会污染噪声底，因为用的是分位而不是最大值。
+    const noiseQ = opts.noiseQ != null ? opts.noiseQ : NOISE_Q;
+    noisePsd = new Float64Array(bins);
+    const vals = new Float64Array(cand.length);
+    for (let b = 0; b < bins; b += 1) {
+      for (let c = 0; c < cand.length; c += 1) vals[c] = power[c * bins + b];
+      vals.sort();
+      noisePsd[b] = quantile(vals, noiseQ);
     }
   }
-  // 句尾静音起点：最后一个「还有明确人声」的帧之后 0.15s。
+
+  // 句尾切点：最后一个「还有明确人声」的帧之后 0.15s。
   // 判据用 5 帧（58ms）中值平滑后的电平（本句语音电平 -14dB 以内）：
   // 句尾噪声尾实测比语音低 18~28dB，一定落在门限之下；而收尾的轻声/齿音
   // 通常只低 8~13dB，不会被误切。用中值而不是均值，是因为噪声尾里有 -30dB
-  // 的尖峰，逐帧判会把切点一路推到最后一声爆音上（那样句尾噪声就清不掉了）。
+  // 的尖峰，逐帧判会把切点一路推到最后一声爆音上。
   const smooth = new Float64Array(frames);
   for (let i = 0; i < frames; i += 1) {
     const vals = [];
@@ -216,74 +253,178 @@ function findNoiseSpans(pcm, rate, opts = {}) {
   }
   let endFrame = -1;
   for (let i = frames - 1; i >= 0; i -= 1) {
-    if (smooth[i] >= speechRef - 14) {
-      endFrame = i;
-      break;
-    }
+    if (smooth[i] >= speechRef - 14) { endFrame = i; break; }
   }
   const tailFrom = endFrame < 0
     ? n
-    : Math.min(n, endFrame * HOP + FRAME + Math.round(0.15 * rate));
+    : Math.min(n, endFrame * HOP + FRAME + Math.round(TAIL_PAD * rate));
+
+  // 深静音段：只有「比语音低 15dB 以上、连续 ≥350ms」才拉数字静音。
+  // 3.9.24 的教训是 100~200ms 的气口也被切，一句话被打成碎片；这里门槛放在
+  // 350ms 且要求深电平，剩下的气口交给谱减（压到 -76dBFS，听不见但不留洞）。
   const spans = [];
-  k = 0;
+  const deepThr = speechRef - deepDb;
+  let k = 0;
   while (k < frames) {
-    if (hit[k]) {
+    if (lv[k] < deepThr) {
       let j = k;
-      while (j < frames && hit[j]) j += 1;
-      // 帧中心对齐到 hop 网格，两侧各多让一个 hop，让 11.6ms 斜坡落在噪声段外侧
-      const c0 = k * HOP + FRAME / 2;
-      const c1 = (j - 1) * HOP + FRAME / 2;
-      spans.push([Math.max(0, c0 - HOP), Math.min(n, c1 + HOP)]);
+      while (j < frames && lv[j] < deepThr) j += 1;
+      if (j - k >= deepRun) {
+        const c0 = Math.max(0, k * HOP + FRAME / 2 - HOP);
+        const c1 = Math.min(n, (j - 1) * HOP + FRAME / 2 + HOP);
+        spans.push([c0, c1]);
+      }
       k = j;
     } else {
       k += 1;
     }
   }
   if (tailFrom < n) {
-    // 与最后一段噪声合并（或补一段），保证句尾一路静音到文件末尾
     const last = spans.length ? spans[spans.length - 1] : null;
     if (last && tailFrom <= last[1] + HOP) last[1] = n;
     else spans.push([tailFrom, n]);
   }
-  return { spans, tailFrom, speechRef, noiseFrames, frames, thr };
+  return { frames, lv, hiRel, spans, noisePsd, tailFrom, speechRef, noiseFrames: cand.length, thr, bins };
 }
 
 /**
- * 对克隆配音做「噪声帧静音」：返回新的 PCM（原 PCM 不变）与统计。
+ * 谱减 + 句尾裁剪。返回 {pcm, spans, mutedSec, tailSec, trimmedSec, ...}
  * @param {Float32Array} pcm 单声道 -1~1
  * @param {number} rate 采样率
  */
 function suppressNoise(pcm, rate, opts = {}) {
-  const info = findNoiseSpans(pcm, rate, opts);
-  const { spans, tailFrom, speechRef, noiseFrames, frames } = info;
   const n = pcm.length;
-  const out = new Float32Array(pcm);
-  if (!spans.length) {
-    return { pcm: out, spans: 0, mutedSec: 0, tailSec: 0, speechRef, noiseFrames, frames };
+  const a = analyzeFrames(pcm, rate, opts);
+  const { frames, spans, tailFrom, speechRef, noiseFrames, noisePsd, lv, hiRel } = a;
+  if (!frames) {
+    return { pcm: new Float32Array(pcm), spans: 0, mutedSec: 0, tailSec: 0, trimmedSec: 0, speechRef: 0, noiseFrames: 0, frames: 0 };
   }
-  // 每个 hop 的目标增益：噪声段 0，其余 1；采样时在相邻 hop 之间线性插值，
-  // 于是每段噪声的进/出各是一条 11.6ms 的斜坡（不会有硬关硬开的「咔哒」）。
-  const hops = Math.ceil(n / HOP) + 2;
-  const g = new Float32Array(hops).fill(1);
-  spans.forEach(([a, b]) => {
-    const i0 = Math.floor(a / HOP);
-    const i1 = Math.min(hops - 1, Math.ceil(b / HOP));
-    for (let i = i0; i <= i1; i += 1) g[i] = 0;
-  });
-  for (let i = 0; i < n; i += 1) {
-    const p = i / HOP;
-    const k0 = Math.floor(p);
-    const frac = p - k0;
-    const gain = g[k0] * (1 - frac) + g[Math.min(hops - 1, k0 + 1)] * frac;
-    if (gain !== 1) out[i] = pcm[i] * gain;
+  const f = makeFft(NFFT);
+  const bins = NFFT / 2 + 1;
+  const win = new Float64Array(FRAME);
+  for (let i = 0; i < FRAME; i += 1) win[i] = Math.sqrt(0.5 - 0.5 * Math.cos((2 * Math.PI * i) / FRAME));
+  const floorLin = Math.pow(10, (opts.gainFloorDb != null ? opts.gainFloorDb : GAIN_FLOOR_DB) / 20);
+  const overSub = opts.overSub != null ? opts.overSub : OVER_SUB;
+
+  // 重叠相加（前置一帧的余量，保证首帧也有完整重叠）。
+  // sqrt-hann 分析窗 + sqrt-hann 合成窗，50% 重叠，sum(w^2)=1 严格单位增益重建
+  // （自检：gains 全 1 时输出与输入逐采样差 3e-17）。
+  const pad = FRAME;
+  const total = pad + n + FRAME;
+  const acc = new Float64Array(total);
+  const re = new Float64Array(NFFT);
+  const im = new Float64Array(NFFT);
+  const gain = new Float64Array(bins);
+  const gainS = new Float64Array(bins);
+  const prev = new Float64Array(bins).fill(1);
+  // 噪声功率谱直接用 analyzeFrames 的分位统计结果，不随帧自适应：
+  // 向下自适应会跟着「最轻的那段气口」跑，反而把更响的几段气口漏掉（实测只压 2~5dB）。
+  const noise = noisePsd ? Float64Array.from(noisePsd) : null;
+  const lastStart = Math.max(0, total - FRAME);
+  for (let s = 0; s - pad < n; s += HOP) {
+    if (s > lastStart) break;
+    const k = (s - pad) / HOP;
+    const ki = k < 0 ? 0 : (k >= frames ? frames - 1 : k);
+    for (let i = 0; i < NFFT; i += 1) {
+      const p = s + i - pad;
+      re[i] = (i < FRAME && p >= 0 && p < n) ? pcm[p] * win[i] : 0;
+      im[i] = 0;
+    }
+    fftRun(f, re, im);
+    if (noise) {
+      const over = speechRef - lv[ki];
+      // 逐频点增益：G = max(1 - overSub * N/P, floor)
+      for (let b = 0; b < bins; b += 1) {
+        const p = re[b] * re[b] + im[b] * im[b];
+        let g = 1 - (overSub * noise[b]) / (p + 1e-20);
+        if (g < floorLin) g = floorLin;
+        else if (g > 1) g = 1;
+        gain[b] = g;
+      }
+      // 3 点频域平滑，压掉「音乐噪声」的孤立频点
+      for (let b = 0; b < bins; b += 1) {
+        const l = gain[b > 0 ? b - 1 : 0];
+        const r = gain[b < bins - 1 ? b + 1 : bins - 1];
+        gainS[b] = 0.25 * l + 0.5 * gain[b] + 0.25 * r;
+      }
+      // 时域：增益变大立刻跟（保住语音起音），变小在 1~2 帧（12~23ms）内落到位。
+      // 这里不能用「慢关」（3.9.25 初版 35%/帧 ≈ 100ms）：一条 100~200ms 的气口
+      // 里有一半时间增益还没降下来，实测只能压 2~5dB，成片里就是「嗡嗡的底噪」。
+      // 另外叠一层「整帧电平」衰减：气口里的嘶声是突发的，逐频点谱减对它无效
+      // （实测该频点功率比噪声分位高 14~22dB，增益仍≈1）；但只要这一帧的电平
+      // 明显低于本句语音电平，这个帧里就不可能是人声，整帧一起按斜坡往下压。
+      const rel = opts.release != null ? opts.release : GAIN_RELEASE;
+      const gate = frameGate(over, hiRel[ki], opts);
+      for (let b = 0; b < bins; b += 1) {
+        const g = gainS[b];
+        const gm = g < gate ? g : gate;
+        const p = prev[b];
+        prev[b] = gm > p ? gm : rel * p + (1 - rel) * gm;
+      }
+      for (let b = 0; b < bins; b += 1) {
+        const g = prev[b];
+        re[b] *= g;
+        im[b] *= g;
+        if (b > 0 && b < bins - 1) {
+          // 补回负频率（实信号要求共轭对称）
+          const mirror = NFFT - b;
+          if (mirror > bins - 1) {
+            re[mirror] = re[b];
+            im[mirror] = -im[b];
+          }
+        }
+      }
+    }
+    ifftRun(f, re, im);
+    for (let i = 0; i < FRAME; i += 1) {
+      const p = s + i;
+      if (p < total) acc[p] += re[i] * win[i];
+    }
   }
-  let muted = 0;
-  for (let i = 1; i < hops; i += 1) if (g[i] === 0) muted += 1;
+
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i += 1) out[i] = acc[pad + i];
+
+  // 深静音段：数字静音，hop 之间线性插值 → 11.6ms 斜坡
+  let mutedSec = 0;
+  if (spans.length) {
+    const hops = Math.ceil(n / HOP) + 2;
+    const g = new Float32Array(hops).fill(1);
+    spans.forEach(([x, y]) => {
+      const i0 = Math.floor(x / HOP);
+      const i1 = Math.min(hops - 1, Math.ceil(y / HOP));
+      for (let i = i0; i <= i1; i += 1) g[i] = 0;
+    });
+    for (let i = 0; i < n; i += 1) {
+      const q = i / HOP;
+      const k0 = Math.floor(q);
+      const r = q - k0;
+      const gg = g[k0] * (1 - r) + g[Math.min(hops - 1, k0 + 1)] * r;
+      if (gg !== 1) out[i] *= gg;
+    }
+  }
+  const trimEnd = Math.min(n, tailFrom);
+  // 句内深静音段的静音时长（句尾那段已经整段裁掉，不计入）
+  spans.forEach(([x, y]) => { mutedSec += Math.max(0, Math.min(y, trimEnd) - x) / rate; });
+
+  // 句尾裁剪：噪声尾整段切掉，上层按裁剪后的时长算变速/截断。
+  // 剪切点本身只有 -36~-50dBFS，但陡台阶会有「咔」，用 12ms 余弦淡出收口。
+  let result = out;
+  if (trimEnd < n) {
+    result = new Float32Array(trimEnd);
+    result.set(out.subarray(0, trimEnd));
+    const fl = Math.min(trimEnd, Math.round(TRIM_FADE_SEC * rate));
+    for (let i = 0; i < fl; i += 1) {
+      const t = 0.5 - 0.5 * Math.cos((Math.PI * i) / Math.max(1, fl - 1));
+      result[trimEnd - fl + i] *= t;
+    }
+  }
   return {
-    pcm: out,
+    pcm: result,
     spans: spans.length,
-    mutedSec: (muted * HOP) / rate,
-    tailSec: Math.max(0, (n - tailFrom) / rate),
+    mutedSec,
+    tailSec: Math.max(0, (n - trimEnd) / rate),
+    trimmedSec: Math.max(0, (n - trimEnd) / rate),
     speechRef,
     noiseFrames,
     frames
@@ -317,4 +458,4 @@ function writeWavS16(file, pcm, rate) {
   return file;
 }
 
-module.exports = { findNoiseSpans, suppressNoise, writeWavS16, FRAME, HOP };
+module.exports = { analyzeFrames, suppressNoise, writeWavS16, FRAME, HOP, NFFT };
