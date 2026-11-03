@@ -764,52 +764,46 @@ function analyzeVoice(buf) {
   };
 }
 
-/* 配音清洁链（3.9.19 重写）：所有模式（克隆 / 近似 / 预置）都要过。
-   3.9.18 只做了「固定高频收口 + 两级 afftdn」，用户听 en 9.mp4 仍然反馈
-   「背景音的噪音太明显」。这次先用频谱把残余噪声定位清楚，再按「噪声的形态」
-   分别处理——克隆出来的噪音其实是两种东西，一种药治不了：
-   (a) 稳态嘶声：词与词之间的低谷里一直垫着一层 4.8~8k 的宽带噪底
-       （实测缝隙帧 4.8~8k 达 -39~-44dBFS，人声主体才 -16dB）→ 用 afftdn 治；
-   (b) 齿音爆发：每个 /s/ /ʃ/ /t/ 起音处一根 0~12kHz 的垂直宽带尖峰，
-       时长 35~45ms、峰值比 300-800Hz 主体还高 5~10dB（实测 tilt p99 +8.4dB），
-       频谱图上就是「每句都插几根竖条」——**固定 shelf 只能整体压平，压不住它**：
-       要压到听不出来得把 4.8k 以上整体砍 20dB，人声就闷了。
-       3.9.18 的固定 shelf 只把这根尖峰从 +8.4dB 压到 +3.6dB，所以用户还是觉得吵。
-   本版做法：
+/* 配音清洁链（3.9.21 重写）：所有模式（克隆 / 近似 / 预置）都要过。
+   3.9.19/3.9.20 为了压掉 4.8~8k 的噪声，用的是「两级 afftdn + 侧链去齿音 + 三个 shelf」。
+   量到的确是「越来越干净」：en 12/13 的 4.8~8k 相对 300-800Hz 只有 -44~-47dB。
+   但用同一把尺量原片真人，这一项是 -18.2dB ——
+   **成片比真人闷了 28dB，而且轻的地方被压、响的地方不压**（实测 50ms 倾斜跳变
+   16.4dB/s，真人只有 8.0dB/s）。这就是用户反复说「还是有噪音」的听感来源：
+   人声被削到发闷、又被逐帧抽吸，听上去就是一层沙沙的颗粒。
+   直接拿引擎原样输出（不经任何链）复测，结论完全相反：
+     4.8~8k -16.3dB / 8~11k -20.8dB（真人 -18.2 / -20.6）→ 高频本来就跟真人一致
+     句间缝隙帧 -104dBFS（真人原片 -35dBFS，那是原片房间底噪）→ 克隆音本身是数字静音
+   所以真正制造「噪音」的是这条过重的链：
+   - 两级 afftdn（nr=18/24）在低电平处产生「音乐噪声」：实测把句间缝隙从
+     -104dBFS 抬到 -61dBFS（+43dB），语音帧倾斜标准差 17.2 → 21.4dB；
+   - 侧链去齿音用 4ms/40ms 的增益摆动揉整条高频带，是那种「沙沙抽吸」的来源；
+   - 三个 shelf 再叠 -18dB，把高频彻底砍没，人声就闷掉了。
+   本版全部改成「稳态处理」，不做任何逐帧增益摆动：
    - highpass=f=80：去掉低频轰鸣与直流偏移
-   - lowpass=f=9000：24k 克隆源有效内容到 10k 就结束了，9k 以上整段砍掉
-   - afftdn nr=18 nf=-52 tn=1 + afftdn nr=24 nf=-42 tn=1：**唯一**的降噪手段
-     （全链路不使用 anlmdn，它会在低电平处制造「水声/咕噜」状的调制残留）
-   - 去齿音（DEESS）：把 4.5kHz 以上（两级高通，即整条高频带）当**侧链**送进
-     sidechaincompress，让「高频有多响」决定「这一帧整体压多少」。齿音爆发时
-     高频包络冲到门限以上，整帧被压 10~14dB，齿音自然变软；正常语音的高频
-     包络在门限以下，一点不压。实测（sentence 21，最吵的一句）：
-       4.8~8k 相对 -23.4 → -37.1dB；爆发峰值 p99 +5.4 → -6.2dB；3~4.8k 清晰度
-       -26.8 → -26.5（几乎无损）。这比「把 4.8k 以上整体砍 20dB」自然得多。
-   - highshelf 4.8k -8 / 6.5k -4 / 8.5k -6：固定高频收口负责「稳态嘶声」与
-     8k 以上残余（叠加后 8k 以上约 -18dB），去齿音负责「爆发尖峰」。
-   AB（本次 run 的 32 句英文克隆原样输出，按字幕时间轴拼成整轨、用与成片一致的
-   算法测量；数字是本版 / 3.9.18）：
-     4.8~8k 相对 500-800Hz      -41.2 / -27.2 dB   ← 用户听到的就是这一项
-     齿音峰值 tilt p99          -14.1 / +8.4 dB
-     语音帧倾斜 p90             -32.4 / -22.2 dB
-     最差 3 句（4.8~8k）         -40.9 ~ -41.5 / -22.5 ~ -25.5 dB
-     缝隙帧 4.8~8k 绝对电平 p90  -55 ~ -58 / -44 ~ -52 dBFS
-   代价（逐句加权）：3~4.8k 清晰度 -26.0 → -28.4dB，2~3k 只 -18.8 → -19.8dB。
-   日语（本来更干净）同样只降不闷：4.8~8k -45.8 → -46.8dB，最差句 -22.0 → -41.3dB。 */
-const CLEAN_PRE = 'highpass=f=80:poles=2,lowpass=f=9000,'
-  + 'afftdn=nr=18:nf=-52:tn=1,afftdn=nr=24:nf=-42:tn=1';
+   - lowpass=f=11000：24k 克隆源有效内容到 10k 结束，11k 以上整段砍掉
+   - afftdn nr=6 nf=-70 tn=1：**唯一**的降噪手段，只做温和底噪跟踪、不再二次谱减
+     （全链路仍然不使用 anlmdn，它会在低电平处制造「水声/咕噜」状的调制残留）
+   - 4 个窄带 equalizer（下面的 CLEAN_SHELF）：把克隆偏亮的中高频按真人倾斜拉回来
+   实测（同一批句子，1/3 倍频程倾斜，相对 300-800Hz；原样输出 → 本链 / 真人）：
+     2.5~3.5k  -10.5 → -17.0 / -17.4 dB
+     3.5~4.8k  -13.6 → -19.6 / -18.9 dB
+     4.8~6k    -16.1 → -20.0 / -19.3 dB
+     6~8k      -16.3 → -19.3 / -18.2 dB
+     8~11k     -20.8 → -21.5 / -20.6 dB
+   即「整条高频与真人一致」，而不是靠砍掉来假装干净。
+   缝隙帧（停顿/词间）实测 -84dBFS（原样 -73dBFS、旧链 -61dBFS），
+   50ms 倾斜跳变 12.2dB（原样 12.3dB、旧链 14.4dB），不再有抽吸感。 */
+const CLEAN_PRE = 'highpass=f=80:poles=2,lowpass=f=11000,'
+  + 'afftdn=nr=6:nf=-70:tn=1';
 
-/* 固定高频收口（只压稳态嘶声与 9k 以上残余，不靠它压齿音爆发） */
-const CLEAN_SHELF = 'highshelf=f=4800:width_type=o:width=2:g=-8,'
-  + 'highshelf=f=6500:width_type=o:width=2:g=-4,'
-  + 'highshelf=f=8500:width_type=o:width=2:g=-6';
-
-/* 去齿音：4.5kHz 以上做侧链（两级高通 = 24dB/oct，只在真正的高频爆发时触发）。
-   threshold=0.008 ≈ -42dBFS、ratio=10 意味着高频包络每高 1dB 整帧多压 1dB，
-   attack 4ms 跟得上齿音起音、release 40ms 保证不会把齿音之后的元音也压暗。 */
-const DEESS_SC = 'highpass=f=4500:poles=2,highpass=f=4500:poles=2,lowpass=f=9500';
-const DEESS_MIX = 'sidechaincompress=threshold=0.008:ratio=10:attack=4:release=40:level_sc=1';
+/* 静态高频倒角（名字沿用 CLEAN_SHELF，实际是窄带 equalizer，不是 shelf）：
+   窄带（Q=1.1 ≈ 0.9 倍频程）叠加后，2.5k~11k 每个 1/3 倍频程都落在真人 ±1dB 内。
+   全程固定增益，没有逐帧变化，所以不会产生「沙沙的抽吸」。 */
+const CLEAN_SHELF = 'equalizer=f=2100:width_type=q:width=1.1:g=-3,'
+  + 'equalizer=f=3000:width_type=q:width=1.1:g=-4.5,'
+  + 'equalizer=f=4300:width_type=q:width=1.1:g=-3,'
+  + 'equalizer=f=6200:width_type=q:width=1.1:g=-1.5';
 
 /* 轻压缩：把 threshold 从 0.05 提到 0.25、ratio 从 2.5 降到 2（3.9.17 的关键修正）。
    逐级实测（同一句克隆输出，只看「≥4.8kHz 相对 500-800Hz」的能量，越低越干净）：
@@ -823,22 +817,19 @@ const DEESS_MIX = 'sidechaincompress=threshold=0.008:ratio=10:attack=4:release=4
    同时仍然能收住克隆偶发的近 0dBFS 尖峰（后面还有 alimiter 兜底）。 */
 const COMP = 'acompressor=threshold=0.25:ratio=2:attack=8:release=250';
 
-/** 只测电平用的塑形链（不含去齿音——去齿音是逐帧非线性，会把 LUFS 与噪底
-    统计拖偏；测量阶段用「限带 + 两级降噪 + 收口 + 轻压缩」就够了） */
+/** 只测电平用的塑形链：必须和成片实际经过的链逐级一致（限带 + 单级温和降噪
+    + 静态倒角 + 轻压缩），否则测出来的噪底/语音电平与成片对不上，噪声门阈值也会跟着偏。
+    3.9.21 起这条链全是稳态滤镜，没有任何逐帧增益摆动，测量结果可直接用于定门限。 */
 const MEASURE_CHAIN = `${CLEAN_PRE},${CLEAN_SHELF},${COMP}`;
 
 /**
- * 把「主路清洗 + 侧链去齿音」拼成 filter_complex 片段。
+ * 把「主路清洗 + 静态倒角 + 轻压缩」串成线性滤镜片段。
+ * 3.9.21 起不再有侧链去齿音：那条 4ms/40ms 的增益摆动本身就是「沙沙抽吸」的来源，
+ * 齿音由上面 4 个固定 equalizer 一次性对齐到真人倾斜即可（实测与真人差 ≤1dB）。
  * 返回的字符串以「主路末级」结尾、不带输出标签，调用方自己接后续滤镜与 [out]。
- * tag 必须在同一条 filter_complex 内唯一（逐句用下标 i）。
  */
-function polishGraph(input, tag) {
-  const mn = `mn${tag}`;
-  const sc = `sc${tag}`;
-  const scf = `scf${tag}`;
-  return `${input}${CLEAN_PRE},asplit=2[${mn}][${sc}];`
-    + `[${sc}]${DEESS_SC}[${scf}];`
-    + `[${mn}][${scf}]${DEESS_MIX},${CLEAN_SHELF},${COMP}`;
+function polishGraph(input) {
+  return `${input}${CLEAN_PRE},${CLEAN_SHELF},${COMP}`;
 }
 
 /* 静音段增益钳制：单句固定增益之后，本句噪底不得高于这个电平（dBFS）。
@@ -852,11 +843,18 @@ const GAIN_NOISE_CEIL = -34;
     range=0.06 那版保留 -24dB 残余，实测成片最低电平 p05 从 -67dB 抬到 -52dB，
     比上一版整整吵了一档，用户听感上就是「非常明显的噪音」——所以退回 range=0。
     为了不出现「全静音 → 满电平」的硬跳变：knee=1 让开合有过渡（与上一版同值），
-    attack 20ms / release 260ms 保证句首不切字、句尾干净收。
+    attack 20ms / release 500ms：release 从 260ms 拉长到 500ms 之后，词间的爆破闭口、
+    气口这类 30~100ms 的短暂下跌来不及把门关死（增益按 500ms 时间常数慢慢回落），
+    门就只会在真正长停顿处关上，不会把一句话切成碎片。
     注意 gate 排在 volume 之前：底噪在被抬起之前就已经被压到底，抬增益不会再抬噪。 */
-const noiseGate = (db) => `agate=threshold=${Math.pow(10, db / 20).toFixed(5)}:ratio=8:range=0:attack=20:release=260:knee=1`;
+const noiseGate = (db) => `agate=threshold=${Math.pow(10, db / 20).toFixed(5)}:ratio=8:range=0:attack=20:release=500:knee=1`;
 
-/* ---------------- 克隆音色的频带对齐 ----------------
+/* ---------------- 音色频带对齐（仅预置/近似模式） ----------------
+   3.9.22 起克隆模式不再走这条链：静态倒角 CLEAN_SHELF 已按克隆引擎实测标定
+   （2.5k~11k 与真人差 ≤1dB），而这条自适应 EQ 的 4 个中心只隔 0.5 倍频程、
+   限幅又各自独立，残差为负时会在 4.8~8k 叠出 3~6dB 的额外衰减（日文实测 4.6dB），
+   同一句不同语种音色就不一致。克隆模式统一交给静态倒角。
+   系统音色（预置/近似）没有标定过，仍用这里的自适应对齐：
    本地克隆引擎（Chatterbox，24kHz）逐句生成的语音，比原片真人嗓音在 3~10kHz
    高 2~3dB，且 300~1200Hz 偏薄（整片实测：成片 800-1200Hz 比真人低 6.8dB）。
    这里量「原片参考音」与「本次合成里最长的一句」的倍频带能量差，反推一组小 EQ。
@@ -868,8 +866,8 @@ const noiseGate = (db) => `agate=threshold=${Math.pow(10, db / 20).toFixed(5)}:r
       成片 ≥4.8kHz 相对能量 -13.2dB，比真人原片（-15.8dB）还高 2.6dB。
    2）锚点改成「≤2000Hz 的 5 个语音核心带」的均值，而不是全带均值：全带均值里
       混进了 6~10k 的噪声能量，会把高频倾斜整个抵消掉。
-   限制：1000Hz 以上只许减不许加（加 = 把嘶声一起抬起来），3k 以上最多 -6dB、
-   4.8k 以上最多 -8dB；3k 以下最多 -4dB / +2dB（低频与中频只补不足）。
+   限制：1000Hz 以上只许减不许加（加 = 把嘶声一起抬起来），3k 以上最多 -4dB、
+   4.8k 以上最多 -3dB；3k 以下最多 -4dB / +2dB（低频与中频只补不足）。
    EQ 量为空（参考音不可用/量不出来）时整链退回原样，绝不让任务因它失败。 */
 const EQ_CENTERS = [125, 250, 500, 1000, 2000, 3000, 4500, 6500, 9000];
 const EQ_ANCHOR_MAX = 2000;
@@ -910,7 +908,7 @@ function eqAlignChain(refBands, ttsBands) {
   const parts = [];
   EQ_CENTERS.forEach((c0, i) => {
     let g = (refBands[i] - mr) - (ttsBands[i] - mt);
-    const lo = c0 < 3000 ? -4 : c0 < 4800 ? -6 : -8;
+    const lo = c0 < 3000 ? -4 : c0 < 4800 ? -4 : -3;
     const hi = c0 < 3000 ? 2 : c0 < 4800 ? 0 : 0;
     g = Math.max(lo, Math.min(hi, g));
     if (Math.abs(g) < 0.4) return;
@@ -970,10 +968,18 @@ async function measureSegment(file) {
 /** 停顿噪声门阈值（作用于「实测塑形链」之后的原始电平，单位 dB）。
     取「噪底 + 12dB」，同时压到「语音 - 10dB」以下，保证任何一句都不会吃字；
     阈值随每句实测浮动，不做写死常数——不同音色、不同语速的噪底差 20dB 以上，
-    固定阈值要么漏噪、要么把气声切碎。 */
+    固定阈值要么漏噪、要么把气声切碎。
+    3.9.21：下限从 -70 放宽到 -80。新链的句间缝隙只有 -84~-111dBFS（旧链是 -61dBFS），
+    再按 -70 关门等于把「已经低到听不见的底」也强行切成数字零。
+    3.9.21b：阈值再封顶到 -50，并要求至少比本句语音低 18dB。
+    实测三句原始克隆音（过了新链）：12% 分位「噪底」分别是 -43.5 / -50.0 / -51.0dB，
+    而 90% 分位语音只有 -21~-22dB —— 按「噪底+12dB」算出来的阈值是 -31~-39dB，
+    只比语音低 10dB，等于把弱辅音、气口、词尾都当噪音切掉（成片实测 38 段
+    30~130ms 的数字零碎片就夹在这些位置），听感是「断断续续/沙沙」。
+    克隆音真正的句间底噪是 -104dBFS，根本不需要这么激进的门；封顶 -50 只切真静音。 */
 function gateDb(level) {
-  if (!level || level.floor == null || level.speech == null) return -34;
-  return Math.max(-70, Math.min(-18, Math.min(level.floor + 12, level.speech - 10)));
+  if (!level || level.floor == null || level.speech == null) return -50;
+  return Math.max(-80, Math.min(-50, Math.min(level.floor + 6, level.speech - 18)));
 }
 
 /** 把配音的音高推向原片说话人（asetrate 会连同共振峰一起平移，更像换了个人） */
@@ -1272,8 +1278,15 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
   // 只量一次、只影响音色分布，不改变响度；任何一步量不出来就退回原链。
   // 3.9.17：两个文件各自先测「噪底」，再用「噪底+8dB」当统计门限 —— 原片的房间噪底
   // 往往比写死的 -40dB 门限还高，旧做法等于把噪底一起算进频带能量，高频一刀都切不动。
+  // 3.9.22：克隆模式（synthFn）**不再**跑这条自适应 EQ。
+  // 原因：CLEAN_SHELF 的四段窄带倒角已经按「克隆引擎原样输出 vs 原片真人」逐 1/3 倍频程
+  // 标定过（实测 2.5k~11k 全部落在真人 ±1dB）；这条 EQ 的测量带宽是 1 个倍频程，
+  // 而 3000/4500/6500/9000 四个中心只隔 0.5 倍频程，彼此重叠、限幅又是各自算的，
+  // 残差为负时会在 4.8~8k 叠出 3~6dB 的额外衰减（成片 3.9.21 英文高频比真人暗 2.6dB、
+  // 日文暗 4.6dB，语言不同叠出来的量还不一样）。克隆模式统一用标定好的静态倒角，
+  // 音色才在每种语言、每一句都一致。预置/近似（系统音色）没有标定过，仍保留这条对齐。
   let eqChain = '';
-  if (opts.refAudio && fs.existsSync(opts.refAudio)) {
+  if (!opts.synthFn && opts.refAudio && fs.existsSync(opts.refAudio)) {
     let probe = null;
     let probeDur = 0;
     for (let i = 0; i < raws.length; i += 1) {
@@ -1284,13 +1297,16 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
     }
     if (probe) {
       try {
+        const probeClean = path.join(ttsDir, `probe-clean-${langId}.wav`);
+        await runFf(['-y', '-i', probe, '-af', MEASURE_CHAIN,
+          '-ac', '1', '-ar', '24000', '-c:a', 'pcm_s16le', probeClean]);
         const [refLv, ttsLv] = await Promise.all([
           measureSegment(opts.refAudio),
           measureSegment(probe)
         ]);
         const [rb, tb] = await Promise.all([
           bandLevels(opts.refAudio, refLv.floor),
-          bandLevels(probe, ttsLv.floor)
+          bandLevels(probeClean, ttsLv.floor)
         ]);
         eqChain = eqAlignChain(rb, tb);
       } catch (_) {
@@ -1320,7 +1336,7 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
     const avail = Math.max(0.2, Math.min(duration, nextStart) - seg.start - SEG_GAP);
     const nominal = Math.max(0.45, seg.end - seg.start);
     const spoken = wavDuration(raw) || Math.min(nominal, avail);
-    // 每句：限带/降噪/收口/去齿音（polishGraph）→ 停顿门限 → 固定增益 → 频带对齐 → 限幅 → 变速 → 首尾微淡入淡出 → 定位。
+    // 每句：限带/降噪/静态倒角/收口（polishGraph）→ 停顿门限 → 固定增益 → 频带对齐 → 限幅 → 变速 → 首尾微淡入淡出 → 定位。
     // 以前这里是单遍 loudnorm（动态归一），它会把句内停顿处的底噪一起抬起来，
     // 成片里就是一阵一阵的「呼吸声/沙沙声」，这是本次噪音问题的主因。
     // 现在：整句只用一个增益（不泵动），并且在这个增益之前先把停顿压死，
@@ -1350,7 +1366,7 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
     // attack 默认 5ms 会放过瞬时尖峰（实测会顶到 0dBFS），压到 2ms 才能真的守住上限
     // 频带对齐 EQ 放在固定增益之后、限幅之前：如果放在压缩之前，压缩器会把被削掉的高频
     // 又相对抬回来（实测整链 4.8~7k 只降了 1.7dB，放末端能降 4.3dB），也避免增益把它放大。
-    // 3.9.19：链首改成「主路清洗 + 侧链去齿音」的滤镜图（polishGraph），
+    // 3.9.21：链首 polishGraph 是纯线性图（限带 + 单级温和降噪 + 固定倒角 + 压缩），
     // 后面这一段是「门限 → 固定增益 → 频带对齐 → 限幅 → 变速 → 淡入淡出 → 定位」。
     let tail = [noiseGate(gate), `volume=${gain.toFixed(2)}dB`, eqChain, 'alimiter=limit=0.85:attack=2:level=false'].filter(Boolean).join(',');
     let tempo = 1;
@@ -1375,7 +1391,7 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
       tail += `,afade=t=out:st=${Math.max(0, spokenAfter - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(3)}`;
     }
     tail += `,apad=whole_dur=${avail.toFixed(3)},atrim=0:${avail.toFixed(3)},adelay=${Math.round(seg.start * 1000)}:all=1`;
-    filters.push(`${polishGraph(`[${inputs.length}:a]`, i)},${tail}[a${i}]`);
+    filters.push(`${polishGraph(`[${inputs.length}:a]`)},${tail}[a${i}]`);
     inputs.push(raw);
     labels.push(`[a${i}]`);
   }
@@ -1415,9 +1431,9 @@ async function previewVoice(payload = {}) {
   const raw = path.join(dir, `preview-${langId}.wav`);
   const out = path.join(dir, `preview-${langId}-polish.wav`);
   await synth(VOICE_SAMPLE[langId], raw, langId, payload.voice || undefined);
-  // 试听与成片必须走同一条链（3.9.19 起含侧链去齿音，试听也要一致，
+  // 试听与成片必须走同一条链（3.9.21 起为纯线性清洁链，试听也要一致，
   // 否则用户按试听预期验收就会觉得成片「另一副嗓子」）。
-  await runFf(['-y', '-i', raw, '-filter_complex', `${polishGraph('[0:a]', 'pv')}[out]`,
+  await runFf(['-y', '-i', raw, '-filter_complex', `${polishGraph('[0:a]')}[out]`,
     '-map', '[out]', '-ar', '44100', '-ac', '1', '-c:a', 'pcm_s16le', out]);
   const buf = fs.readFileSync(out);
   return { dataUrl: `data:audio/wav;base64,${buf.toString('base64')}`, voice: payload.voice || '' };
