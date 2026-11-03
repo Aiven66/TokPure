@@ -20,6 +20,7 @@ const net = require('./net');
 const aijobs = require('./aijobs');
 const voiceclone = require('./voiceclone');
 const voicelocal = require('./voicelocal');
+const denoise = require('./denoise');
 const audiosep = require('./audiosep');
 const lipsync = require('./lipsync');
 
@@ -782,8 +783,12 @@ function analyzeVoice(buf) {
    本版全部改成「稳态处理」，不做任何逐帧增益摆动：
    - highpass=f=80：去掉低频轰鸣与直流偏移
    - lowpass=f=11000：24k 克隆源有效内容到 10k 结束，11k 以上整段砍掉
-   - afftdn nr=6 nf=-70 tn=1：**唯一**的降噪手段，只做温和底噪跟踪、不再二次谱减
-     （全链路仍然不使用 anlmdn，它会在低电平处制造「水声/咕噜」状的调制残留）
+   - 3.9.24 起这里**不再有 afftdn**。逐级实测：同一句克隆音、同一条链，
+     只把 afftdn 放进/移出，噪声段电平只差 1~3dB，但 afftdn 会把已经拉到
+     数字静音的段落重新「填」上 -26dBFS 的残余噪声（tn=1 的谱减在纯静音处
+     仍按帧估计噪声谱，等于往空白里撒噪点）。克隆音的噪声改由
+     electron/denoise.js 的「噪声帧静音」处理（见那边的说明），效果是
+     词间气口确认为数字静音，这里只保留限带这条纯线性部分。
    - 4 个窄带 equalizer（下面的 CLEAN_SHELF）：把克隆偏亮的中高频按真人倾斜拉回来
    实测（同一批句子，1/3 倍频程倾斜，相对 300-800Hz；原样输出 → 本链 / 真人）：
      2.5~3.5k  -10.5 → -17.0 / -17.4 dB
@@ -794,8 +799,7 @@ function analyzeVoice(buf) {
    即「整条高频与真人一致」，而不是靠砍掉来假装干净。
    缝隙帧（停顿/词间）实测 -84dBFS（原样 -73dBFS、旧链 -61dBFS），
    50ms 倾斜跳变 12.2dB（原样 12.3dB、旧链 14.4dB），不再有抽吸感。 */
-const CLEAN_PRE = 'highpass=f=80:poles=2,lowpass=f=11000,'
-  + 'afftdn=nr=6:nf=-70:tn=1';
+const CLEAN_PRE = 'highpass=f=80:poles=2,lowpass=f=11000';
 
 /* 静态高频倒角（名字沿用 CLEAN_SHELF，实际是窄带 equalizer，不是 shelf）：
    窄带（Q=1.1 ≈ 0.9 倍频程）叠加后，2.5k~11k 每个 1/3 倍频程都落在真人 ±1dB 内。
@@ -1142,6 +1146,47 @@ function wavDuration(file) {
   }
 }
 
+/* ---------------- 克隆配音降噪（3.9.24） ----------------
+   克隆引擎在词间/句尾会输出一段宽带噪声（实测 -28~-36dBFS、谱平坦度 -5~-12dB），
+   按句归一到 -18 LUFS 后这段噪声被抬到 -20~-26dBFS；旧链的噪声门阈值封顶 -50dBFS，
+   电平上根本分不开（噪声甚至比轻声说话还响），所以短气口一路漏进成片。
+   处理放在「每句合成完、进入清洁链之前」：用「电平 + 自相关周期性 + 高频占比」
+   三条判据找出纯噪声帧，再用 11.6ms 斜坡把整段拉到数字静音（见 electron/denoise.js）。
+   识别不出来就原样返回，绝不因为降噪失败而中断整条任务。 */
+const DENOISE_RATE = 44100;
+
+function decodeFloat(file) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(ffmpegMod.getFfmpegPath(), [
+      '-v', 'error', '-i', file, '-vn', '-ac', '1', '-ar', String(DENOISE_RATE),
+      '-f', 'f32le', 'pipe:1'
+    ], { windowsHide: true });
+    if (activeJob && activeJob.children) activeJob.children.add(child);
+    const chunks = [];
+    child.stdout.on('data', (c) => chunks.push(c));
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error('配音解码失败'));
+        return;
+      }
+      const buf = Buffer.concat(chunks);
+      const n = Math.floor(buf.length / 4);
+      const pcm = new Float32Array(n);
+      for (let i = 0; i < n; i += 1) pcm[i] = buf.readFloatLE(i * 4);
+      resolve(pcm);
+    });
+  });
+}
+
+/** 把一句克隆音做「噪声帧静音」，返回可继续进清洁链的文件路径 */
+async function cleanCloneVoice(raw, out) {
+  const pcm = await decodeFloat(raw);
+  const r = denoise.suppressNoise(pcm, DENOISE_RATE);
+  denoise.writeWavS16(out, r.pcm, DENOISE_RATE);
+  return { file: out, mutedSec: r.mutedSec, spans: r.spans, noiseFrames: r.noiseFrames };
+}
+
 /** 配音进度桥：把「逐句完成」和「句内 token 进度」合成一个只增不减的百分比
  *
  *  以前一句克隆要跑 1~2 分钟，进度条只在「整句完成」时跳一格，五分钟才动 2%，
@@ -1335,6 +1380,19 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
     const nextStart = i + 1 < segs.length ? segs[i + 1].start : duration;
     const avail = Math.max(0.2, Math.min(duration, nextStart) - seg.start - SEG_GAP);
     const nominal = Math.max(0.45, seg.end - seg.start);
+    // 3.9.24：克隆音先做「噪声帧静音」，再去清洁链。
+    // 这一句的词间气口/句尾噪声在清洁链之后是 -30dBFS 级别（音量上跟轻声说话分不开），
+    // 只有周期性 + 高频占比能区分；识不出来就原样用 raw，不让降噪失败拖垮整条任务。
+    // 响度与门限仍按 raw 实测 —— 与 3.9.23 的增益算法完全一致，只是气口变成真静音。
+    let src = raw;
+    if (opts.synthFn) {
+      try {
+        const dn = await cleanCloneVoice(raw, path.join(ttsDir, `${i}-clean.wav`));
+        if (dn.spans > 0 && fs.existsSync(dn.file)) src = dn.file;
+      } catch (_) {
+        src = raw;
+      }
+    }
     const spoken = wavDuration(raw) || Math.min(nominal, avail);
     // 每句：限带/降噪/静态倒角/收口（polishGraph）→ 停顿门限 → 固定增益 → 频带对齐 → 限幅 → 变速 → 首尾微淡入淡出 → 定位。
     // 以前这里是单遍 loudnorm（动态归一），它会把句内停顿处的底噪一起抬起来，
@@ -1392,7 +1450,7 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
     }
     tail += `,apad=whole_dur=${avail.toFixed(3)},atrim=0:${avail.toFixed(3)},adelay=${Math.round(seg.start * 1000)}:all=1`;
     filters.push(`${polishGraph(`[${inputs.length}:a]`)},${tail}[a${i}]`);
-    inputs.push(raw);
+    inputs.push(src);
     labels.push(`[a${i}]`);
   }
 
