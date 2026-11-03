@@ -197,7 +197,22 @@ function run(bin, args, opts = {}) {
   });
 }
 
-const runFf = (args, onLine, cwd) => run(ffmpegMod.getFfmpegPath(), args, { onLine, cwd });
+/* 3.9.26：应用被更新覆盖时，进程里缓存的安装包路径会失效（spawn ENOENT）。
+   getFfmpegPath() 本身已会复核文件，这里再加一次「重新解析后重跑」，
+   免得一个已经跑了半小时的任务因为一次路径失效整条作废。 */
+const runFf = async (args, onLine, cwd) => {
+  const bin = ffmpegMod.getFfmpegPath();
+  try {
+    return await run(bin, args, { onLine, cwd });
+  } catch (e) {
+    if (e && e.code === 'ENOENT') {
+      ffmpegMod.invalidate();
+      const next = ffmpegMod.getFfmpegPath();
+      if (next && next !== bin) return run(next, args, { onLine, cwd });
+    }
+    throw e;
+  }
+};
 
 /* ---------------- 媒体探测 ---------------- */
 async function probe(input) {
@@ -2711,6 +2726,14 @@ async function startOral(payload, proxy, emit) {
   };
 
   try {
+    /* 0) FFmpeg 预检：缺失/被覆盖时在开跑前就报清楚，而不是跑到渲染出片才 spawn ENOENT */
+    emit({ stage: '检查本地组件', percent: 1 });
+    const ffReady = await ffmpegMod.ensure();
+    if (!ffReady.ok) {
+      throw new Error('未找到可执行的 FFmpeg（应用内 resources/bin/ffmpeg 缺失或已损坏），请重新安装 TokPure 后再试');
+    }
+    checkCanceled();
+
     /* 1) 本地引擎 */
     emit({ stage: '准备本地引擎', percent: 1 });
     const whisperModel = await ensureWhisper(proxy, emit, 1, 5);

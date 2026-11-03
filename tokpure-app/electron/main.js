@@ -497,6 +497,12 @@ app.whenReady().then(async () => {
   buildMenu();
   registerIpc();
   wireDownloader();
+  // 3.9.26：启动时把安装包内的 FFmpeg 复制到 userData 并验证可执行。
+  // 这样应用以后被新版本覆盖/移动，正在跑的任务也不会再 spawn ENOENT。
+  try {
+    const ff = await ffmpeg.ensure();
+    if (!ff.ok) console.error('[ffmpeg] 自检失败：本地处理将不可用', ff);
+  } catch (_) {}
   // 登录态变化（浏览器回跳 / 退出登录）实时推给渲染层刷新账号 UI
   auth.onSessionChange((session) => sendToRenderer('auth:changed', session));
   await refreshSystemProxy(true);
