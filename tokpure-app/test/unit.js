@@ -358,34 +358,98 @@ test('groupForFlow：相邻短句并成整句，长停口/超长文本不并', (
   assert.strictEqual(en[0].text, 'Hello there. How are you?');
 });
 
-test('segmentGain：整句归一、噪底封顶、句间台阶 ≤3dB', () => {
-  const segmentGain = new Function('GAIN_NOISE_CEIL',
-    `return (${extractFn('segmentGain')})`)(-34);
-  // 正常语音 -24 LUFS → +6dB
-  assert.strictEqual(segmentGain({ lufs: -24 }, null), 6);
+test('segmentGain：按语音分位归一到固定目标、噪底封顶、不再有跨句台阶', () => {
+  const segmentGain = new Function('TARGET_SPEECH_DB', 'GAIN_NOISE_CEIL',
+    `return (${extractFn('segmentGain')})`)(-15.5, -34);
+  // 语音 0.9 分位 -21.5dBFS → +6dB
+  assert.strictEqual(segmentGain({ speech: -21.5 }), 6);
+  // 同一句语音电平，哪怕停顿多、LUFS 低得多，增益也完全一致（这就是「忽大忽小」的解）
+  assert.strictEqual(segmentGain({ speech: -21.5, lufs: -34 }), 6);
   // 噪底 -35dB 的气声句：抬高会到 -24，被 -34 上限压回到 +1dB
-  assert.strictEqual(segmentGain({ lufs: -30, floor: -35 }, null), 1);
-  // 几乎无声（-80 LUFS）不放大，避免把底噪拉满
-  assert.strictEqual(segmentGain({ lufs: -80 }, null), 0);
-  // 相邻句台阶：上一句 +6dB，本句算出来 +12dB → 限到 +9dB
-  assert.strictEqual(segmentGain({ lufs: -30 }, 6), 9);
-  assert.strictEqual(segmentGain({ lufs: -20 }, 0), 2);
+  assert.strictEqual(segmentGain({ speech: -21.5, floor: -35 }), 1);
+  // 没有分帧数据时退回整句 LUFS 口径
+  assert.strictEqual(segmentGain({ lufs: -24 }), 6);
+  // 几乎无声不放大，避免把整段底噪拉满
+  assert.strictEqual(segmentGain({ speech: -80 }), 0);
+  assert.strictEqual(segmentGain(null), 0);
+  // 上限 +12dB
+  assert.strictEqual(segmentGain({ speech: -40 }), 12);
 });
 
-test('buildFlowNarration：整片最多一次变速、停顿串接、字幕随实际语音重排', () => {
+test('speakableText：中文/日文/韩文里的拉丁缩写按字母名读，英文语种与混合词不转', () => {
+  const m = locSrc.match(/const LETTER_NAMES = (\{[\s\S]*?\n\});/);
+  assert.ok(m, '源码里找不到 LETTER_NAMES');
+  const LETTER_NAMES = new Function(`return (${m[1]})`)();
+  const speakableText = new Function('LETTER_NAMES', `return (${extractFn('speakableText')})`)(LETTER_NAMES);
+  // 中文：AI 不能按拼音读成「爱」
+  assert.strictEqual(speakableText('这个 AI 工具很好用', 'zh'), '这个 诶艾 工具很好用');
+  // 缩写串与数字前缀（5G）
+  assert.strictEqual(speakableText('GPT-4 和 5G 都支持', 'zh'), '吉皮提-4 和 5吉 都支持');
+  // 单个字母
+  assert.strictEqual(speakableText('A 股', 'zh'), '诶 股');
+  // 日文 / 韩文各用自己的字母名
+  assert.strictEqual(speakableText('AI 技術', 'ja'), 'エーアイ 技術');
+  assert.strictEqual(speakableText('AI 기술', 'ko'), '에이아이 기술');
+  // 英文语种原样返回（模型本来就按英文读）
+  assert.strictEqual(speakableText('AI is great', 'en'), 'AI is great');
+  // 大小写混合/连续小写的单词不能被拆开（OpenAI / iPhone / TikTok / ChatGPT）
+  assert.strictEqual(speakableText('OpenAI 的 iPhone 和 TikTok', 'zh'), 'OpenAI 的 iPhone 和 TikTok');
+  assert.strictEqual(speakableText('ChatGPT 很聪明', 'zh'), 'ChatGPT 很聪明');
+  // 空值不炸
+  assert.strictEqual(speakableText('', 'zh'), '');
+  assert.strictEqual(speakableText(null, 'zh'), '');
+});
+
+test('tightenPauses：句内长死气口压到 0.14s，语音样本一个不丢', () => {
+  const tightenPauses = new Function('DENOISE_RATE',
+    `return (${extractFn('tightenPauses')})`)(44100);
+  const sr = 44100;
+  const build = (gapSec) => {
+    const n = () => Math.round(0.5 * sr);
+    const out = new Float32Array(n() * 2 + Math.round(gapSec * sr));
+    const tone = (base) => {
+      for (let i = 0; i < n(); i += 1) out[base + i] = 0.2 * Math.sin(i * 0.3);
+    };
+    tone(0);
+    tone(n() + Math.round(gapSec * sr));
+    return out;
+  };
+  // 0.44s 的死气口 → 压到 0.14s，总长从 1.44s 变成 ~1.14s（边界上恰好过零的样本会有 ±几样本出入）
+  const a = build(0.44);
+  const ta = tightenPauses(a, sr);
+  assert.ok(Math.abs(ta.length - Math.round(1.14 * sr)) <= 4, `总长 ${ta.length} 不在 1.14s±4`);
+  // 语音样本原样保留（前 0.5s 正弦逐样本一致）
+  for (let i = 0; i < Math.round(0.5 * sr); i += 997) assert.strictEqual(ta[i], a[i]);
+  // 后半句也没有丢：最后一个样本必须还在
+  assert.strictEqual(ta[ta.length - 1], a[a.length - 1]);
+  // 0.1s 的正常呼吸口不折（不是长死气口）
+  const b = build(0.1);
+  const tb = tightenPauses(b, sr);
+  assert.strictEqual(tb.length, b.length);
+  // 没有死气口时原样返回（不复制、不改写）
+  const c = build(0);
+  assert.strictEqual(tightenPauses(c, sr), c);
+});
+
+test('buildFlowNarration：整片一次变速、连续语流串接、字幕随实际语音重排', () => {
   const flow = locSrc.slice(locSrc.indexOf('async function buildFlowNarration'),
     locSrc.indexOf('/** 逐句合成后按原时间轴拼接为整条配音轨 */'));
   assert.ok(flow.length > 2000, 'buildFlowNarration 源码切取失败');
   // 合成上限按「语速估算的语音时长 × 25 token/秒」算，不再按字幕窗口
   assert.ok(/25 \* estSec \* 1\.35/.test(flow), '生成上限没有按语速估算（会被 token 上限截断）');
   assert.ok(!/round\(25 \* slot/.test(flow), '仍在按字幕窗口算 token 上限');
-  // 时间轴优先落回原片语段起点，气口按原片保留
-  assert.ok(/starts\[i\] = Math\.max\(at, Number\(units\[i\]\.start\)/.test(flow), '没有按原片语段时间轴定位');
-  assert.ok(!/pauses\[/i.test(flow), '仍在用逐句停顿数组拼时间轴');
-  // per-sentence atempo 必须消失：只在整片 post 链里出现一次
+  // 混读：送进合成的文本必须过 speakableText，字幕仍用原文
+  assert.ok(/speakableText\(unit\.text, langId\)/.test(flow), '中文配音没有做中英混读归一');
+  // 连续语流：气口夹在 0.12~0.5s，不再锚回原片起点（长停顿会把配音拆成一段段）
+  assert.ok(/const pauses = \[\]/.test(flow), '缺少连续语流的气口数组');
+  assert.ok(/Math\.max\(0\.12, Math\.min\(0\.5, want\)\)/.test(flow), '气口没有被夹到 0.12~0.5s');
+  assert.ok(!/starts\[i\] = Math\.max\(at, Number\(units\[i\]\.start\)/.test(flow), '仍在按原片起点锚定');
+  // 整片最多一次变速，且放慢（<1）也要真的执行
   const tempoUse = flow.match(/atempo=/g) || [];
   assert.strictEqual(tempoUse.length, 1, `buildFlowNarration 出现了 ${tempoUse.length} 处 atempo`);
-  assert.ok(/tempo = Math\.min\(1\.35, total \/ duration\)/.test(flow), '整体变速上限不是 1.35');
+  assert.ok(/MIN_TEMPO = 0\.90/.test(flow) && /MAX_TEMPO = 1\.20/.test(flow), '整片变速区间不是 0.90~1.20');
+  assert.ok(/Math\.abs\(tempo - 1\) > 0\.005/.test(flow), '放慢没有接 atempo');
+  assert.ok(/normalizeTrack\(voiceFile\)/.test(flow), '整轨没有做响度收口');
   // 每段有自己的定位与静音补位，amix 后再统一限幅
   assert.ok(/adelay=/.test(flow) && /amix=inputs=/.test(flow), '缺少按时间轴定位拼接');
   assert.ok(/apad=whole_dur=/.test(flow), '缺少补静音');

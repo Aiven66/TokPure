@@ -172,18 +172,27 @@ function analyzeFrames(pcm, rate, opts = {}) {
 
   // 第一遍：只算帧电平（便宜）。语音电平取 95% 分位：一句里通常七成以上帧是语音，
   // 气口只占两三成；85% 分位会落在轻声段，门限跟着偏低，气口就漏过去了。
+  // 同时算一条「一阶差分」的帧能量：它等价于 +6dB/oct 高通，
+  // 100~300Hz 的句尾闷响被压掉十几 dB，而人声的 500Hz~4kHz 基本不损。
   const lv = new Float64Array(frames);
+  const hp = new Float64Array(frames);
   for (let k = 0; k < frames; k += 1) {
     const s = k * HOP;
     let e = 0;
+    let h = 0;
     for (let i = 0; i < FRAME; i += 1) {
       const v = pcm[s + i];
       e += v * v;
+      const d = v - (s + i > 0 ? pcm[s + i - 1] : 0);
+      h += d * d;
     }
     lv[k] = 10 * Math.log10(e / FRAME + 1e-30);
+    hp[k] = 10 * Math.log10(h / FRAME + 1e-30);
   }
   const sortedLv = Array.prototype.slice.call(lv).sort((a, b) => a - b);
   const speechRef = quantile(sortedLv, 0.95);
+  const sortedHp = Array.prototype.slice.call(hp).sort((a, b) => a - b);
+  const hpRef = quantile(sortedHp, 0.95);
   const thr = Math.min(speechRef - relDb, capDb);
 
   // 第二遍：只分析低于门限的帧（这些就是气口/噪声帧），逐频点功率存成紧凑数组
@@ -240,20 +249,29 @@ function analyzeFrames(pcm, rate, opts = {}) {
   }
 
   // 句尾切点：最后一个「还有明确人声」的帧之后 0.15s。
-  // 判据用 5 帧（58ms）中值平滑后的电平（本句语音电平 -14dB 以内）：
-  // 句尾噪声尾实测比语音低 18~28dB，一定落在门限之下；而收尾的轻声/齿音
-  // 通常只低 8~13dB，不会被误切。用中值而不是均值，是因为噪声尾里有 -30dB
-  // 的尖峰，逐帧判会把切点一路推到最后一声爆音上。
+  // 3.9.30 之前只看电平（本句语音 -14dB 以内），判决被句尾噪声尾里的「低频闷响」
+  // 一路推到最后：同一条 14 字句子合成出 5.68s，其中后 3.2s 是 -30~-55dBFS 的
+  // 100~300Hz 液压声，电平只比语音低十几 dB，听感就是「嗡嗡的噪音」。
+  // 现在再加一条高通能量判据：噪声尾几乎没有 500Hz 以上的能量，
+  // 人声（包括轻声收尾）高频占比正常，两者一测就能分开（实测切点 5.68s → 2.35s）。
+  // 两条都取 5 帧中值平滑，避免一个爆音把切点拖到最后。
   const smooth = new Float64Array(frames);
+  const smoothHp = new Float64Array(frames);
   for (let i = 0; i < frames; i += 1) {
     const vals = [];
-    for (let j = Math.max(0, i - 2); j <= Math.min(frames - 1, i + 2); j += 1) vals.push(lv[j]);
+    const valsHp = [];
+    for (let j = Math.max(0, i - 2); j <= Math.min(frames - 1, i + 2); j += 1) {
+      vals.push(lv[j]);
+      valsHp.push(hp[j]);
+    }
     vals.sort((a, b) => a - b);
+    valsHp.sort((a, b) => a - b);
     smooth[i] = vals[Math.floor(vals.length / 2)];
+    smoothHp[i] = valsHp[Math.floor(valsHp.length / 2)];
   }
   let endFrame = -1;
   for (let i = frames - 1; i >= 0; i -= 1) {
-    if (smooth[i] >= speechRef - 14) { endFrame = i; break; }
+    if (smooth[i] >= speechRef - 17 && smoothHp[i] >= hpRef - 24) { endFrame = i; break; }
   }
   const tailFrom = endFrame < 0
     ? n
