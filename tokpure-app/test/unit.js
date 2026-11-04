@@ -258,7 +258,7 @@ test('主进程注册 vt:* IPC，进度走独立通道', () => {
 test('视频翻译复用识别/翻译/配音/混音链，不复制一份', () => {
   assert.ok(/async function startTranslate/.test(locSrc), '缺少 startTranslate');
   const start = locSrc.slice(locSrc.indexOf('async function startTranslate'));
-  for (const fn of ['ensureWhisper(', 'transcribe(', 'translateSegments(', 'buildNarration(', 'makeLocalSynth(', 'separateBgm(', 'verifyOutput(', 'buildSrt(', 'ensureCloneReady(']) {
+  for (const fn of ['ensureWhisper(', 'transcribe(', 'translateSegments(', 'buildFlowNarration(', 'groupForFlow(', 'makeLocalSynth(', 'separateBgm(', 'verifyOutput(', 'buildSrt(', 'ensureCloneReady(']) {
     assert.ok(start.includes(fn), `视频翻译没有复用 ${fn}`);
   }
   const render = locSrc.slice(locSrc.indexOf('async function renderVoiceSwap'), locSrc.indexOf('async function renderSwapForTest'));
@@ -305,6 +305,107 @@ test('进度只增不减：全局百分比有单调整闸，配音阶段不再�
   assert.ok(/out\.percent = Math\.max\(lastPct/.test(start), '进度没有夹成只增不减');
   assert.ok(/let cloneLoaded = false/.test(start), '缺少克隆加载完成标记');
   assert.ok(/if \(l\.stage && !cloneLoaded\)/.test(start), '配音阶段仍会回退阶段文案');
+});
+
+/* ---------------- 5.1 3.9.29 连续语流（不再断断续续 / 更自然） ---------------- */
+/** 从源码里切出一个函数声明（按花括号配对），用于直接跑纯函数 */
+function extractFn(name) {
+  const start = locSrc.indexOf(`function ${name}(`);
+  assert.ok(start >= 0, `localize.js 里找不到 ${name}`);
+  let i = locSrc.indexOf('{', start);
+  const begin = i;
+  let depth = 0;
+  for (; i < locSrc.length; i += 1) {
+    if (locSrc[i] === '{') depth += 1;
+    else if (locSrc[i] === '}') {
+      depth -= 1;
+      if (depth === 0) { i += 1; break; }
+    }
+  }
+  assert.ok(depth === 0 && i > begin, `${name} 的花括号不配对`);
+  return locSrc.slice(start, i);
+}
+
+test('groupForFlow：相邻短句并成整句，长停口/超长文本不并', () => {
+  const groupForFlow = new Function(`return (${extractFn('groupForFlow')})`)();
+  // 相邻、停顿 0.2s、总长 12 字 → 合并，句间不加空格（中文）
+  const zh = groupForFlow([
+    { start: 0, end: 2, text: '大家好，' },
+    { start: 2.2, end: 5, text: '今天聊三件事。' }
+  ], 'zh');
+  assert.strictEqual(zh.length, 1, '相邻短句没有合并');
+  assert.strictEqual(zh[0].text, '大家好，今天聊三件事。');
+  assert.strictEqual(zh[0].cues.length, 2, '字幕条目必须保留为 2 条');
+  assert.strictEqual(zh[0].cues[1].offset, 4, '第二条字幕的字符偏移不对');
+  // 停顿 0.8s → 不并（气口本身就是语义分句）
+  const longGap = groupForFlow([
+    { start: 0, end: 2, text: '第一段。' },
+    { start: 2.8, end: 5, text: '第二段。' }
+  ], 'zh');
+  assert.strictEqual(longGap.length, 2, '长停顿不应合并');
+  // 合并后超过 84 字 → 不并，避免单句生成时间翻倍
+  const big = '啊'.repeat(60);
+  const tooLong = groupForFlow([
+    { start: 0, end: 4, text: big },
+    { start: 4.1, end: 8, text: big }
+  ], 'zh');
+  assert.strictEqual(tooLong.length, 2, '超长文本不应合并');
+  // 英文相邻句用空格连接
+  const en = groupForFlow([
+    { start: 0, end: 1, text: 'Hello there.' },
+    { start: 1.1, end: 3, text: 'How are you?' }
+  ], 'en');
+  assert.strictEqual(en[0].text, 'Hello there. How are you?');
+});
+
+test('segmentGain：整句归一、噪底封顶、句间台阶 ≤3dB', () => {
+  const segmentGain = new Function('GAIN_NOISE_CEIL',
+    `return (${extractFn('segmentGain')})`)(-34);
+  // 正常语音 -24 LUFS → +6dB
+  assert.strictEqual(segmentGain({ lufs: -24 }, null), 6);
+  // 噪底 -35dB 的气声句：抬高会到 -24，被 -34 上限压回到 +1dB
+  assert.strictEqual(segmentGain({ lufs: -30, floor: -35 }, null), 1);
+  // 几乎无声（-80 LUFS）不放大，避免把底噪拉满
+  assert.strictEqual(segmentGain({ lufs: -80 }, null), 0);
+  // 相邻句台阶：上一句 +6dB，本句算出来 +12dB → 限到 +9dB
+  assert.strictEqual(segmentGain({ lufs: -30 }, 6), 9);
+  assert.strictEqual(segmentGain({ lufs: -20 }, 0), 2);
+});
+
+test('buildFlowNarration：整片最多一次变速、停顿串接、字幕随实际语音重排', () => {
+  const flow = locSrc.slice(locSrc.indexOf('async function buildFlowNarration'),
+    locSrc.indexOf('/** 逐句合成后按原时间轴拼接为整条配音轨 */'));
+  assert.ok(flow.length > 2000, 'buildFlowNarration 源码切取失败');
+  // 合成上限按「语速估算的语音时长 × 25 token/秒」算，不再按字幕窗口
+  assert.ok(/25 \* estSec \* 1\.35/.test(flow), '生成上限没有按语速估算（会被 token 上限截断）');
+  assert.ok(!/round\(25 \* slot/.test(flow), '仍在按字幕窗口算 token 上限');
+  // 时间轴优先落回原片语段起点，气口按原片保留
+  assert.ok(/starts\[i\] = Math\.max\(at, Number\(units\[i\]\.start\)/.test(flow), '没有按原片语段时间轴定位');
+  assert.ok(!/pauses\[/i.test(flow), '仍在用逐句停顿数组拼时间轴');
+  // per-sentence atempo 必须消失：只在整片 post 链里出现一次
+  const tempoUse = flow.match(/atempo=/g) || [];
+  assert.strictEqual(tempoUse.length, 1, `buildFlowNarration 出现了 ${tempoUse.length} 处 atempo`);
+  assert.ok(/tempo = Math\.min\(1\.35, total \/ duration\)/.test(flow), '整体变速上限不是 1.35');
+  // 每段有自己的定位与静音补位，amix 后再统一限幅
+  assert.ok(/adelay=/.test(flow) && /amix=inputs=/.test(flow), '缺少按时间轴定位拼接');
+  assert.ok(/apad=whole_dur=/.test(flow), '缺少补静音');
+  // 字幕按实际语音时长重映射，并保证单调、最短 0.35s
+  assert.ok(/timing\.push\(\{/.test(flow), '没有重排字幕时间轴');
+  assert.ok(/c\.start = Math\.max\(c\.start, prevEnd\)/.test(flow), '字幕没有单调约束');
+  assert.ok(/c\.end = c\.start \+ 0\.35/.test(flow), '字幕没有最短停留');
+});
+
+test('视频翻译的配音调用点已切到连续语流，字幕在配音后按实况重建', () => {
+  const start = locSrc.slice(locSrc.indexOf('async function startTranslate'));
+  assert.ok(/const units = groupForFlow\(outSegs, langId\)/.test(start), '没有把字幕并成语段');
+  assert.ok(/buildFlowNarration\(units, dur, langId, dir, ttsProg\.onDone/.test(start), '仍在调用旧的逐句 buildNarration');
+  // SRT 必须在配音之后写：配音前写会让字幕卡在原片窗口，与并段后的语音对不上
+  const writeAt = start.indexOf("fs.writeFileSync(srtPath");
+  const ttsAt = start.indexOf('const built = await buildFlowNarration');
+  assert.ok(ttsAt >= 0 && writeAt > ttsAt, 'SRT 写入位置不在配音之后');
+  assert.ok(/const built\.timing/.test(start) || /built\.timing && built\.timing\.length/.test(start), '没有用实际语音时间轴重建字幕');
+  assert.ok(/整体语速已微调/.test(start), '变速提示文案未更新');
+  assert.ok(!/句偏长，已收紧时长以贴合画面/.test(start), '仍在用旧的「句偏长」提示');
 });
 
 /* ---------------- 6. 硬约束 ---------------- */

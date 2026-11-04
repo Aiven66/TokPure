@@ -115,6 +115,7 @@ async function main() {
 
   /* 6) AI 视频翻译：画面直拷 + 单条配音音轨；声音样本导入 → 列表 → 删除 */
   const tmpFiles = [];
+  let flowDir = '';
   try {
     const ffmpegPath = ffmpeg.getFfmpegPath();
     const dir = path.join(app.getPath('temp'), 'tokpure-smoke-vt');
@@ -155,6 +156,38 @@ async function main() {
       assertTrue(Math.abs(dur - 3) < 0.6, `${label} 时长 ${dur.toFixed(2)}s（原片 3.00s）`);
     }
 
+    // 连续语流配音（3.9.29）：相邻短句并段 → 一条连续音轨 → 字幕随实际语音重排
+    const flow = await localize.flowNarrationForTest({
+      langId: 'en',
+      duration: 6,
+      segs: [
+        { start: 0, end: 1.2, text: 'First sentence.' },
+        { start: 1.3, end: 2.4, text: 'Second one follows.' },
+        { start: 3.2, end: 4.2, text: 'And a third one after a pause.' }
+      ]
+    });
+    tmpFiles.push(flow.file);
+    flowDir = flow.dir;
+    const flowOk = fs.existsSync(flow.file) && fs.statSync(flow.file).size > 40000;
+    assertTrue(flowOk, `连续语流配音：${flowOk ? fs.statSync(flow.file).size + ' 字节' : '文件缺失'}`);
+    assertTrue(flow.units === 2, `相邻短句已并成 2 段（字幕仍 3 条，实际 ${flow.units} 段）`);
+    const timingOk = flow.timing.length === 3
+      && flow.timing.every((c, i, a) => c.end > c.start && (i === 0 || c.start >= a[i - 1].end));
+    assertTrue(timingOk, `字幕时间轴单调且 3 条齐全（${flow.timing.length} 条）`);
+    if (flowOk) {
+      const info = await runCapture(ffmpegPath, ['-hide_banner', '-i', flow.file]);
+      const dm = info.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      const dur = dm ? Number(dm[1]) * 3600 + Number(dm[2]) * 60 + Number(dm[3]) : 0;
+      assertTrue(Math.abs(dur - 6) < 0.3, `配音轨时长 ${dur.toFixed(2)}s（目标 6.00s）`);
+      // 不再断断续续：语音区间内不应出现 ≥0.8s 的硬静音（片尾铺底不计入）
+      const cut = Math.max(0.5, flow.timing[flow.timing.length - 1].end - 0.05);
+      const sd = await runCapture(ffmpegPath, ['-hide_banner', '-i', flow.file, '-t', cut.toFixed(2),
+        '-af', 'silencedetect=noise=-40dB:d=0.8', '-f', 'null', '-']);
+      const silences = (sd.match(/silence_duration:\s*(\d+(?:\.\d+)?)/g) || []).length;
+      const starts = (sd.match(/silence_start:\s*(\d+(?:\.\d+)?)/g) || []);
+      assertTrue(silences === 0, `语音区间内无 0.8s 以上硬静音（检出 ${silences} 段${starts.length ? '，起于 ' + starts.join(' / ') : ''}）`);
+    }
+
     // 声音样本导入：8 秒「连续说话」（用真实 TTS 循环拼接），验证去静音/降噪/索引
     const sampleWav = path.join(dir, 'voice-sample.wav');
     tmpFiles.push(sampleWav);
@@ -174,6 +207,7 @@ async function main() {
   } finally {
     tmpFiles.forEach((f) => { try { fs.unlinkSync(f); } catch (_) {} });
     try { fs.rmSync(path.join(app.getPath('temp'), 'tokpure-smoke-vt'), { recursive: true, force: true }); } catch (_) {}
+    if (flowDir) { try { fs.rmSync(flowDir, { recursive: true, force: true }); } catch (_) {} }
   }
 
   console.log(`[smoke] ${failures.length ? 'FAILED' : 'PASSED'} (${failures.length} 项失败)`);

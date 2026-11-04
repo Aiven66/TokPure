@@ -1287,6 +1287,270 @@ function makeTtsProgress({ weights, ttsFrom, ttsWidth, langEmit, totalSegs }) {
   };
 }
 
+/** 单句固定增益：按整句 LUFS 归一，噪底封顶，相邻句台阶限到 ±3dB
+ *  口播与视频翻译两条配音链共用这一份判定，音色/响度口径才不会分叉。 */
+function segmentGain(level, prevGain) {
+  // 几乎没有有效语音（-inf 或低于 -70 LUFS）：不放大，避免把整段底噪拉满
+  let gain = level.lufs == null || level.lufs < -70 ? 0 : Math.max(-24, Math.min(12, -18 - level.lufs));
+  // 静音段增益钳制：把「本句噪底抬升后」的水位钉在 -34dBFS 以内
+  if (Number.isFinite(level.floor)) gain = Math.min(gain, GAIN_NOISE_CEIL - level.floor);
+  if (gain !== 0 && prevGain != null) gain = Math.max(prevGain - 3, Math.min(prevGain + 3, gain));
+  return gain;
+}
+
+/* 裁掉一段合成语音首尾的静音（只裁 -45dB 以下的边缘，保留气口）。
+   返回裁后文件；裁不动或裁得太短（可能整段没声）则退回原文件。 */
+async function trimSpeechEdges(src, out) {
+  const chain = 'silenceremove=start_periods=1:start_duration=0.03:start_threshold=-45dB,'
+    + 'areverse,silenceremove=start_periods=1:start_duration=0.03:start_threshold=-45dB,areverse';
+  await runFf(['-y', '-i', src, '-af', chain, '-ac', '1', '-ar', '44100',
+    '-c:a', 'pcm_s16le', out]);
+  return wavDuration(out) >= 0.15 ? out : src;
+}
+
+/* ---------------- AI 视频翻译：连续语流拼接（3.9.29） ----------------
+   逐句克隆有三个听感硬伤，会同时表现为「断断续续 + 不自然」：
+   1) 每一句都被当成新句子从零起调：句尾降调、句首重音重置，句子越短越像念稿；
+   2) 生成上限按「字幕窗口 ×1.5」算，译文一长就在句子中途被 token 上限截断；
+   3) 为了塞回窗口，每句单独 atempo 最高 1.25，再顶不住就在窗口末尾淡出硬切，
+      词尾被削掉——这正是用户听到的「断断续续」。
+   视频翻译不需要配音逐句对齐字幕（字幕是单独一条轨），所以这里换一套拼法：
+   相邻短句先并成「一个完整句」再合成（句调连贯、不被 token 截断），
+   再用自然停顿串成一条连续音轨，全片最多做一次轻微整体变速（≤1.35），
+   最后按实际语音时长重映射字幕时间轴。 */
+
+/** 相邻短句合并成「语段」：只用于合成，字幕条目保持原样 */
+function groupForFlow(segs, langId) {
+  const CJK = langId === 'zh' || langId === 'ja' || langId === 'ko';
+  const units = [];
+  for (const seg of segs) {
+    const text = String((seg && seg.text) || '').trim();
+    if (!text) continue;
+    const last = units[units.length - 1];
+    // 只并「停顿短、整体不长」的相邻句：并得太长会让单句生成时间翻倍
+    const canMerge = !!last
+      && (Number(seg.start) - last.end) <= 0.4
+      && (last.text.length + text.length) <= 84
+      && (Number(seg.end) - last.start) <= 9;
+    if (canMerge) {
+      // 西文并句必须补空格，否则合成出来的两个词会黏成一个（"there.How" 读错）；
+      // 中日韩本身不用空格，直接拼
+      const sep = CJK ? '' : ' ';
+      last.cues.push({
+        start: Number(seg.start), end: Number(seg.end), text, offset: last.text.length + sep.length
+      });
+      last.text += sep + text;
+      last.end = Number(seg.end);
+    } else {
+      units.push({
+        start: Number(seg.start),
+        end: Number(seg.end),
+        text,
+        cues: [{ start: Number(seg.start), end: Number(seg.end), text, offset: 0 }]
+      });
+    }
+  }
+  return units.filter((u) => u.text);
+}
+
+/** 连续语流配音：合成 → 逐段清洁/增益 → 自然停顿串接 → 全片最多一次轻微变速 */
+async function buildFlowNarration(units, duration, langId, dir, emit, opts = {}) {
+  const ttsDir = path.join(dir, `tts-flow-${langId}`);
+  fs.mkdirSync(ttsDir, { recursive: true });
+  if (!units.length) throw new Error('该片段没有可用语音');
+
+  const weights = units.map((u) => Math.max(3, u.text.length));
+  const wsum = Math.max(1, weights.reduce((a, b) => a + b, 0));
+  let doneWeight = 0;
+  let fallbackUsed = 0;
+  let truncatedUsed = 0;
+  const raws = new Array(units.length);
+
+  /* 1) 合成：上限按「这段话要说多久」算，不再按字幕窗口算 —— 句子必须说完 */
+  const workers = Math.max(1, Math.min(opts.synthConcurrency || 1, units.length));
+  const order = units.map((_, i) => i)
+    .sort((a, b) => (units[b].end - units[b].start) - (units[a].end - units[a].start));
+  let next = 0;
+  let done = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = order[next];
+      next += 1;
+      if (i == null) return;
+      checkCanceled();
+      const unit = units[i];
+      const chars = Math.max(4, unit.text.length);
+      // 克隆引擎每秒约 25 个语音 token，按语速估「这句话要说多久」，
+      // 再给 1.35 倍余量：上限给小了会在句中截断（听感就是「半句没了」）
+      const estSec = chars / (langId === 'zh' || langId === 'ja' || langId === 'ko' ? 4 : 15);
+      const maxTokens = Math.min(1400, Math.round(25 * estSec * 1.35) + 24);
+      const maxSeconds = Math.min(600, Math.max(60, Math.round(estSec * 22) + 60));
+      const raw = path.join(ttsDir, `${i}.wav`);
+      try {
+        if (opts.synthFn) {
+          const r = await opts.synthFn(unit.text, raw, i, { maxTokens, maxSeconds, tag: i });
+          if (r && r.truncated) truncatedUsed += 1;
+        } else {
+          await synth(unit.text, raw, langId, opts.voice);
+        }
+      } catch (e) {
+        checkCanceled();
+        if (!opts.allowFallback) throw e;
+        fallbackUsed += 1;
+        await synth(unit.text, raw, langId, undefined);
+      }
+      raws[i] = raw;
+      done += 1;
+      doneWeight += weights[i];
+      emit({
+        percent: 100 * (doneWeight / wsum),
+        index: i,
+        detail: `第 ${done}/${units.length} 段${truncatedUsed ? ` · ${truncatedUsed} 段截断` : ''}`
+      });
+    }
+  };
+  await Promise.all(Array.from({ length: workers }, worker));
+
+  /* 2) 逐段清洁与电平 */
+  const spoken = new Array(units.length).fill(0);
+  const gains = new Array(units.length).fill(0);
+  let prevGain = null;
+  const sources = new Array(units.length);
+  for (let i = 0; i < units.length; i += 1) {
+    checkCanceled();
+    let src = raws[i];
+    if (opts.synthFn) {
+      try {
+        const dn = await cleanCloneVoice(raws[i], path.join(ttsDir, `${i}-clean.wav`));
+        if ((dn.spans > 0 || dn.trimmedSec > 0) && fs.existsSync(dn.file)) src = dn.file;
+      } catch (_) {
+        src = raws[i];
+      }
+    }
+    // 裁掉合成结果首尾的静音（TTS/clone 都会在文件尾垫几百毫秒），
+    // 否则这段底噪会被算进「语音时长」，再叠上一段气口，就成了一处明显的空档。
+    // 只裁 -45dB 以下的边缘，轻声的气口与句内停顿都保留。
+    try {
+      src = await trimSpeechEdges(src, path.join(ttsDir, `${i}-trim.wav`));
+    } catch (_) { /* 裁不动就用原文件 */ }
+    const level = await measureSegment(src);
+    const gain = segmentGain(level, prevGain);
+    if (gain !== 0) prevGain = gain;
+    spoken[i] = Math.max(0.3, wavDuration(src) || (units[i].end - units[i].start));
+    gains[i] = gain;
+    sources[i] = src;
+  }
+
+  /* 3) 时间轴：语段起点尽量对上原片（配音跟得上画面），语音超出就顺延。
+     译文比原片短时，长气口留在原处——那本来就是说话人停下来的地方。 */
+  const starts = new Array(units.length).fill(0);
+  let at = Math.max(0, Math.min(0.35, Number(units[0].start) || 0));
+  for (let i = 0; i < units.length; i += 1) {
+    starts[i] = Math.max(at, Number(units[i].start) || 0);
+    at = starts[i] + spoken[i] + 0.10;
+  }
+  let total = starts[units.length - 1] + spoken[units.length - 1];
+  let tempo = 1;
+  if (total > duration + 0.02) {
+    // 超片长先只做一次整片变速；还放不下才压缩语段间的气口（最小 0.08s）
+    tempo = Math.min(1.35, total / duration);
+    const need = total / tempo - duration;
+    if (need > 0.02 && units.length > 1) {
+      const gaps = [];
+      for (let i = 0; i < units.length - 1; i += 1) {
+        gaps.push(Math.max(0.08, starts[i + 1] - (starts[i] + spoken[i])));
+      }
+      const gapSum = gaps.reduce((a, b) => a + b, 0);
+      const minSum = 0.08 * gaps.length;
+      const cut = Math.min(need, Math.max(0, gapSum - minSum));
+      const keep = gapSum > 0 ? (gapSum - cut) / gapSum : 1;
+      let cur = starts[0];
+      for (let i = 1; i < units.length; i += 1) {
+        cur += spoken[i - 1] + Math.max(0.08, gaps[i - 1] * keep);
+        starts[i] = cur;
+      }
+      total = starts[units.length - 1] + spoken[units.length - 1];
+      if (total > duration + 0.02) tempo = Math.min(1.35, total / duration);
+    }
+  }
+
+  /* 4) 一段一张滤镜：清洁链 + 固定增益 + 限幅 + 首尾微淡入淡出 + 补静音定位 */
+  const inputs = [];
+  const filters = [];
+  const labels = [];
+  for (let i = 0; i < units.length; i += 1) {
+    const s = sources[i];
+    const durI = spoken[i];
+    const fadeIn = 0.012;
+    const fadeOut = Math.min(0.05, Math.max(0.02, durI * 0.04));
+    const parts = [
+      polishGraph(`[${inputs.length}:a]`),
+      `volume=${gains[i].toFixed(2)}dB`,
+      'alimiter=limit=0.85:attack=2:level=false',
+      `afade=t=in:st=0:d=${fadeIn.toFixed(3)}`
+    ];
+    if (durI > fadeOut + 0.02) {
+      parts.push(`afade=t=out:st=${(durI - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(3)}`);
+    }
+    const slot = (i + 1 < units.length ? starts[i + 1] : starts[i] + durI) - starts[i];
+    parts.push(`apad=whole_dur=${slot.toFixed(3)}`);
+    parts.push(`adelay=${Math.round(starts[i] * 1000)}:all=1`);
+    filters.push(`${parts.join(',')}[a${i}]`);
+    inputs.push(s);
+    labels.push(`[a${i}]`);
+  }
+
+  const head = inputs.length > 1 ? `${labels.join('')}amix=inputs=${inputs.length}:normalize=0:duration=longest` : labels[0];
+  const post = [
+    tempo > 1.005 ? `atempo=${tempo.toFixed(3)}` : '',
+    'aresample=44100',
+    'alimiter=limit=0.89:attack=2:level=false',
+    `apad=whole_dur=${duration.toFixed(3)}`,
+    `atrim=0:${duration.toFixed(3)}`
+  ].filter(Boolean).join(',');
+  const filter = `${filters.join(';')};${head},${post}[out]`;
+  const args = ['-y'];
+  inputs.forEach((f) => args.push('-i', f));
+  args.push('-filter_complex', filter, '-map', '[out]', '-ar', '44100', '-ac', '1',
+    '-c:a', 'pcm_s16le', path.join(dir, `voice-${langId}.wav`));
+  await runFf(args);
+
+  /* 6) 字幕时间轴按实际语音重映射：每句在本语段里的字位比例 → 实际时刻 */
+  const timing = [];
+  for (let i = 0; i < units.length; i += 1) {
+    const unit = units[i];
+    const chars = Math.max(1, unit.text.length);
+    const startPre = starts[i];
+    for (const cue of unit.cues) {
+      const cs = Math.max(0, Math.min(chars, cue.offset));
+      const ce = Math.max(cs + 1, Math.min(chars, cue.offset + cue.text.length));
+      timing.push({
+        start: (startPre + spoken[i] * (cs / chars)) / tempo,
+        end: (startPre + spoken[i] * (ce / chars)) / tempo,
+        text: cue.text
+      });
+    }
+  }
+  // 单调 + 最短 0.35s + 不越过片长：字幕在最长也不会闪回或压到下一句
+  let prevEnd = 0;
+  for (const c of timing) {
+    c.start = Math.max(c.start, prevEnd);
+    if (c.end < c.start + 0.35) c.end = c.start + 0.35;
+    c.start = Math.min(duration - 0.05, c.start);
+    c.end = Math.min(duration, Math.max(c.start + 0.2, c.end));
+    prevEnd = c.end;
+  }
+
+  return {
+    file: path.join(dir, `voice-${langId}.wav`),
+    timing,
+    tempo,
+    units: units.length,
+    fallbackUsed,
+    truncatedUsed
+  };
+}
+
 /** 逐句合成后按原时间轴拼接为整条配音轨 */
 async function buildNarration(segs, duration, langId, dir, emit, from, to, opts = {}) {
   const ttsDir = path.join(dir, `tts-${langId}`);
@@ -1451,25 +1715,7 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
     // 的起音一起压住（起音力度掉 6~10dB），听感就是「说话吞吞吐吐、模模糊糊」；
     // 而且它只认得电平、认不出克隆引擎那层 -33dB 的低频闷响，本来就没起作用。
     const level = await measureSegment(src);
-    // 几乎没有有效语音（-inf 或低于 -70 LUFS）：不放大，避免把整段底噪拉满
-    let gain = level.lufs == null || level.lufs < -70
-      ? 0
-      : Math.max(-24, Math.min(12, -18 - level.lufs));
-    // 静音段增益钳制：把「本句噪底抬升后」的水位钉在 -34dBFS 以内。
-    // 克隆出来的句子噪底通常很低（实测 -48dB），这条不生效；
-    // 个别气声/气泡音很重的句子（实测有 -35dB 的）会被自动少抬，
-    // 避免「某一句突然把底噪抬到能听见」——这正是「噪音一阵一阵」的来源之一。
-    if (Number.isFinite(level.floor)) {
-      gain = Math.min(gain, GAIN_NOISE_CEIL - level.floor);
-    }
-    // 相邻句子的增益**限幅到 ±3dB 的台阶**。克隆引擎同一句话的电平会飘
-    // 6~14dB（实测有的句子 -32 LUFS、有的 -20 LUFS），每句都归一一次，
-    // 句与句之间就出现一串 10dB 级的电平台阶；听感上像「背景噪音一阵一阵涌上来」，
-    // 也正是成片里 50ms 窗电平跳变数量远多于句数的原因。这里让增益逐步靠拢，
-    // 十几句之后自然回到目标响度，而任何相邻两句都不会突变。
-    if (gain !== 0 && prevGain != null) {
-      gain = Math.max(prevGain - 3, Math.min(prevGain + 3, gain));
-    }
+    const gain = segmentGain(level, prevGain);
     if (gain !== 0) prevGain = gain;
     // attack 默认 5ms 会放过瞬时尖峰（实测会顶到 0dBFS），压到 2ms 才能真的守住上限
     // 频带对齐 EQ 放在固定增益之后、限幅之前：如果放在压缩之前，压缩器会把被削掉的高频
@@ -3603,13 +3849,12 @@ async function startTranslate(payload, proxy, emit) {
       }
       const outSegs = segs.map((s, k) => ({ start: s.start, end: s.end, text: texts[k] || '' }))
         .filter((s) => s.text.trim());
-      const srt = buildSrt(outSegs);
       const srtPath = uniqueOut(outDir, langId, 'srt');
-      fs.writeFileSync(srtPath, '\ufeff' + srt, 'utf8');
       checkCanceled();
 
       /* 我的声音配音（所有语言都合成，原语言同语种也一样换掉原人声） */
       let narration = null;
+      let finalSegs = outSegs;
       let ttsNote = '';
       let ttsError = '';
       try {
@@ -3625,24 +3870,31 @@ async function startTranslate(payload, proxy, emit) {
           langId
         });
         const synthConcurrency = Math.max(1, pool.length * concOf(sess0));
+        // 连续语流：短句先并成完整语段再合成，避免逐句起调与窗口截断（3.9.29）
+        const units = groupForFlow(outSegs, langId);
         const ttsProg = makeTtsProgress({
-          weights: outSegs.map((s) => Math.max(3, String(s.text || '').length)),
+          weights: units.map((u) => Math.max(3, u.text.length)),
           ttsFrom: W_TR,
           ttsWidth: W_TTS,
           langEmit,
-          totalSegs: Math.max(1, outSegs.length)
+          totalSegs: Math.max(1, units.length)
         });
         beatBus.sink = (info) => ttsProg.sink(info);
-        const built = await buildNarration(outSegs, dur, langId, dir, ttsProg.onDone, 0, 100,
-          { synthFn, voice: 'clone', allowFallback: false, synthConcurrency, refAudio: profile.absRef });
+        const built = await buildFlowNarration(units, dur, langId, dir, ttsProg.onDone,
+          { synthFn, synthConcurrency, allowFallback: false });
         narration = built.file;
-        if (built.squeezed) ttsNote = `${built.squeezed} 句偏长，已收紧时长以贴合画面`;
+        if (built.timing && built.timing.length) finalSegs = built.timing;
+        if (built.tempo > 1.005) ttsNote = `整体语速已微调 ${built.tempo.toFixed(2)}× 以贴合画面`;
       } catch (e) {
         checkCanceled();
         ttsError = String((e && e.message) || e || '配音失败').replace(/\s+/g, ' ').slice(0, 120);
       } finally {
         beatBus.sink = null;
       }
+      // 字幕按「实际语音时长」重排：并段后语音不再逐句卡原片窗口，
+      // 字幕必须跟着重映射，否则会出现字幕与声音对不上（失败时仍用原片时间轴）
+      const srt = buildSrt(finalSegs);
+      fs.writeFileSync(srtPath, '\ufeff' + srt, 'utf8');
       if (ttsError) {
         files[i] = {
           lang: langId,
@@ -3721,6 +3973,23 @@ async function startTranslate(payload, proxy, emit) {
   }
 }
 
+/* 自动化测试用：直接跑一遍连续语流配音（系统音色），回传音轨与字幕时间轴。
+   真实任务走克隆合成，但拼接/停顿/变速/字幕重映射是同一份代码，这里能验到。 */
+async function flowNarrationForTest(payload = {}) {
+  const langId = payload.langId || 'en';
+  const duration = Math.max(0.5, Number(payload.duration) || 5);
+  const dir = payload.dir || path.join(app.getPath('temp'), `tokpure-flow-${Date.now()}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const segs = (payload.segs || []).map((s) => ({
+    start: Number(s.start) || 0,
+    end: Number(s.end) || 0,
+    text: String(s.text || '')
+  })).filter((s) => s.text.trim());
+  const units = groupForFlow(segs, langId);
+  const built = await buildFlowNarration(units, duration, langId, dir, () => {}, {});
+  return { ...built, dir, srt: buildSrt(built.timing) };
+}
+
 module.exports = {
   status,
   start,
@@ -3747,5 +4016,6 @@ module.exports = {
   removeVoice,
   previewProfile,
   renderSwapForTest,
+  flowNarrationForTest,
   probeVideo
 };
