@@ -1512,9 +1512,11 @@ async function buildFlowNarration(units, duration, langId, dir, emit, opts = {})
       if (i == null) return;
       checkCanceled();
       const unit = units[i];
-      const chars = Math.max(4, unit.text.length);
       // 混读：字幕保持原文，送进合成的是「字母名展开版」（AI → 诶艾 / エーアイ / 에이아이）
       const spokenText = speakableText(unit.text, langId);
+      // 按展开后的字数估时长：缩写多的句子（AI、GPT、API）展开后会明显变长，
+      // 仍按原文字数算会把 token 上限给小、句子被截断
+      const chars = Math.max(4, spokenText.length);
       // 克隆引擎每秒约 25 个语音 token，按语速估「这句话要说多久」，
       // 再给 1.35 倍余量：上限给小了会在句中截断（听感就是「半句没了」）
       const estSec = chars / (langId === 'zh' || langId === 'ja' || langId === 'ko' ? 4 : 15);
