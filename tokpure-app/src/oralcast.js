@@ -177,7 +177,7 @@
       </div>`;
     const depsPending = s.deps == null;
     host.innerHTML = [
-      row('声音克隆', !!(s.engine && s.python), s.engine ? 'Chatterbox · 本地离线' : '需在「桌面引擎」安装「本地声音克隆」'),
+      row('声音克隆', !!(s.engine && s.python), s.engine ? 'Chatterbox · 本地离线' : '首次运行自动安装（约 2GB，需 Python 3.9–3.13）'),
       row('口型依赖', !!s.deps, depsPending ? '正在探测 OpenCV 依赖' : 'OpenCV 人脸检测 · 复用克隆引擎', depsPending),
       row('口型模型', !!s.weights, s.weights ? 'Wav2Lip GAN · 96×96' : '首次约 416MB，仅一次'),
       row('嘴部清晰度', true, '原片高清嘴型回贴 · 取真实唇部纹理，无需超分权重'),

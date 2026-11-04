@@ -1,7 +1,7 @@
 {
   "name": "tokpure",
   "productName": "TokPure",
-  "version": "3.9.26",
+  "version": "3.9.27",
   "description": "TokPure — TikTok local video engine & no-watermark downloader",
   "main": "electron/main.js",
   "author": "TokPure",
@@ -9,7 +9,9 @@
   "scripts": {
     "start": "electron .",
     "dist:mac": "electron-builder --mac --arm64 -c.directories.output=/tmp/tokpure-dist",
-    "dist:win": "electron-builder --win --x64"
+    "dist:win": "electron-builder --win --x64",
+    "test": "node test/unit.js",
+    "test:smoke": "electron test/smoke.js"
   },
   "build": {
     "appId": "com.tokpure.desktop",
@@ -95,6 +97,18 @@
         {
           "from": "resources/audio",
           "to": "resources/audio"
+        },
+        {
+          "from": "resources/voiceclone",
+          "to": "resources/voiceclone",
+          "filter": [
+            "**/*",
+            "!**/__pycache__/**"
+          ]
+        },
+        {
+          "from": "resources/audiosep",
+          "to": "resources/audiosep"
         },
         {
           "from": "resources/lipsync",

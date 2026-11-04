@@ -11,8 +11,12 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const os = require('os');
+const { spawn, execFile } = require('child_process');
 const { app } = require('electron');
+
+const isWin = process.platform === 'win32';
+const SPAWN_OPTS = isWin ? { windowsHide: true } : {};
 
 const READY_TIMEOUT = 240000;
 // 本地克隆是 8~12 倍实时，一句长句可能要好几分钟；只要有心跳就不算超时，
@@ -406,6 +410,188 @@ async function openSession({ refAudio, lang, onLog, threads, conc, steps } = {})
   return session;
 }
 
+/* ---------------- 引擎安装（3.9.27） ----------------
+   macOS 与 Windows 走同一套流程：找系统 Python 3.9+ → 建 venv →
+   pip 装 torch / chatterbox → 校验 import。Windows 用 torch 的 CPU 轮子源
+   （官方 PyPI 的默认轮子在 Windows 上依赖 CUDA 运行库，普通机器装完起不来）。 */
+const PY_PKGS = [
+  'numpy==1.26.4',
+  'transformers==4.46.3',
+  'chatterbox-tts==0.1.7',
+  'librosa==0.11.0',
+  'soundfile==0.14.0',
+  'opencv-python-headless==4.10.0.84'
+];
+const TORCH_PKGS = ['torch==2.6.0', 'torchaudio==2.6.0'];
+const PYPI_MIRROR = 'https://pypi.tuna.tsinghua.edu.cn/simple';
+const TORCH_CPU_INDEX = 'https://download.pytorch.org/whl/cpu';
+
+function execCapture(cmd, args, timeout = 30000) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { ...SPAWN_OPTS, timeout, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve(String(stdout || ''));
+    });
+  });
+}
+
+function runStream(bin, args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(bin, args, { env: opts.env || process.env, windowsHide: true });
+    if (opts.onChild) opts.onChild(child);
+    let tail = '';
+    const onData = (buf) => {
+      const s = buf.toString();
+      tail = (tail + s).slice(-4000);
+      if (opts.onLine) s.split(/\r?\n/).forEach((l) => { if (l.trim()) opts.onLine(l.trim()); });
+    };
+    child.stdout.on('data', onData);
+    child.stderr.on('data', onData);
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) resolve(tail);
+      else reject(new Error(`安装命令失败（退出码 ${code}）\n${tail.slice(-800)}`));
+    });
+  });
+}
+
+/** 找可用的系统 Python（3.9–3.13）。
+    不能随便挑：本机 homebrew 默认的 python3 可能是 3.14，而 torch 2.6 只发到 cp313，
+    选错了用户会看到一长串「no matching distribution」。所以按「越接近 3.11 越优先」排。 */
+function pyCandidates() {
+  const versions = ['3.11', '3.12', '3.10', '3.13', '3.9'];
+  if (process.platform === 'win32') {
+    const list = versions.map((v) => ({ cmd: 'py', args: [`-${v}`] }));
+    return [...list, { cmd: 'py', args: ['-3'] }, { cmd: 'python', args: [] }, { cmd: 'python3', args: [] }];
+  }
+  const home = os.homedir();
+  const prefixes = [path.join(home, '.pyenv', 'shims'), '/opt/homebrew/bin', '/usr/local/bin'];
+  const list = [];
+  prefixes.forEach((dir) => versions.forEach((v) => list.push({ cmd: path.join(dir, `python${v}`), args: [] })));
+  return [
+    ...list,
+    { cmd: '/opt/homebrew/bin/python3', args: [] },
+    { cmd: '/usr/local/bin/python3', args: [] },
+    { cmd: '/usr/bin/python3', args: [] },
+    { cmd: 'python3', args: [] }
+  ];
+}
+
+const PY_MIN = [3, 9];
+const PY_MAX = [3, 13];
+
+async function findPython() {
+  let tooNew = '';
+  let tooOld = '';
+  for (const c of pyCandidates()) {
+    try {
+      const out = await execCapture(c.cmd, [...c.args, '-c', "import sys;print('%d.%d' % sys.version_info[:2])"]);
+      const [maj, min] = out.trim().split('.').map(Number);
+      if (maj !== 3 || Number.isNaN(min)) continue;
+      const version = `${maj}.${min}`;
+      if (min > PY_MAX[1]) { tooNew = version; continue; }
+      if (min < PY_MIN[1]) { tooOld = version; continue; }
+      return { ok: true, cmd: c.cmd, args: c.args, version };
+    } catch (_) { /* 该候选不可用，继续试下一个 */ }
+  }
+  const reason = tooNew
+    ? `检测到 Python ${tooNew}，版本过高：PyTorch 2.6 只支持 3.9–3.13，请安装 Python 3.11 或 3.12 后重试`
+    : tooOld
+      ? `检测到 Python ${tooOld}，版本过低：需要 3.9 及以上`
+      : (process.platform === 'win32'
+        ? '未找到可用的 Python。请安装 Python 3.11/3.12（https://www.python.org/downloads/windows/ ，安装时勾选「Add python.exe to PATH」）后重试'
+        : '未找到可用的 Python。请安装 Python 3.11/3.12（https://www.python.org/downloads/macos/ ）后重试');
+  return { ok: false, version: tooNew || tooOld, reason };
+}
+
+function pipEnv(proxy) {
+  const env = {
+    ...process.env,
+    PIP_DISABLE_PIP_VERSION_CHECK: '1',
+    PIP_NO_INPUT: '1',
+    PYTHONUNBUFFERED: '1',
+    PYTHONDONTWRITEBYTECODE: '1'
+  };
+  if (proxy && proxy.host) {
+    const url = `http://${proxy.host}:${proxy.port}`;
+    env.HTTP_PROXY = url;
+    env.HTTPS_PROXY = url;
+  }
+  delete env.PYTHONHOME;
+  return env;
+}
+
+async function pipInstall(py, args, { proxy, onLine, onChild }) {
+  try {
+    return await runStream(py, ['-m', 'pip', 'install', '--no-input', '--disable-pip-version-check', ...args], {
+      env: pipEnv(proxy),
+      onLine,
+      onChild
+    });
+  } catch (e) {
+    // 公司网络 / 大陆网络直连 PyPI 常见超时：换清华镜像再试一次（torch 源不换，官方没有镜像）
+    if (args.includes(TORCH_CPU_INDEX) || args.includes('--index-url')) throw e;
+    return runStream(py, ['-m', 'pip', 'install', '--no-input', '--disable-pip-version-check', '-i', PYPI_MIRROR, ...args], {
+      env: pipEnv(proxy),
+      onLine,
+      onChild
+    });
+  }
+}
+
+/**
+ * 安装本地克隆引擎。
+ * opts: { proxy, onProgress({stage, percent}), onChild(child) }
+ * 返回 status()；失败时抛出带中文说明的错误。
+ */
+async function install(opts = {}) {
+  const emit = (stage, percent) => { if (opts.onProgress) opts.onProgress({ stage, percent }); };
+  emit('检查 Python 环境', 3);
+  const py = await findPython();
+  if (!py.ok) throw new Error(py.reason);
+
+  const root = engineRoot();
+  fs.mkdirSync(root, { recursive: true });
+  const venv = path.join(root, 'venv');
+  emit('创建独立运行环境（venv）', 8);
+  try {
+    await runStream(py.cmd, [...py.args, '-m', 'venv', venv], { env: pipEnv(opts.proxy), onChild: opts.onChild });
+  } catch (e) {
+    // 上一次装到一半留下的残缺 venv 会导致这里失败，--clear 重建
+    await runStream(py.cmd, [...py.args, '-m', 'venv', '--clear', venv], { env: pipEnv(opts.proxy), onChild: opts.onChild });
+  }
+
+  const vpy = venvPython();
+  if (!fs.existsSync(vpy)) throw new Error('创建 Python 虚拟环境失败（venv 里没有解释器）');
+
+  emit('下载 PyTorch 运行时（约 1.5GB，仅一次）', 15);
+  const torchArgs = [...TORCH_PKGS, '--index-url', TORCH_CPU_INDEX];
+  await pipInstall(vpy, torchArgs, {
+    proxy: opts.proxy,
+    onChild: opts.onChild,
+    onLine: (line) => {
+      if (/Downloading|Collecting/.test(line)) emit('下载 PyTorch 运行时（约 1.5GB，仅一次）', 35);
+    }
+  });
+
+  emit('安装语音克隆依赖（约 400MB）', 62);
+  await pipInstall(vpy, PY_PKGS, {
+    proxy: opts.proxy,
+    onChild: opts.onChild,
+    onLine: (line) => {
+      if (/Downloading|Collecting|Installing/.test(line)) emit('安装语音克隆依赖（约 400MB）', 78);
+    }
+  });
+
+  emit('校验运行环境', 92);
+  await runStream(vpy, ['-c', 'import torch, numpy, librosa, cv2, soundfile, chatterbox; print("ok")'], {
+    env: pipEnv(opts.proxy),
+    onChild: opts.onChild
+  });
+  emit('本地克隆引擎已就绪', 100);
+  return status();
+}
+
 module.exports = {
   status,
   requireEngine,
@@ -413,5 +599,9 @@ module.exports = {
   closeAll,
   size: sizeAsync,
   engineRoot,
-  hfCache
+  hfCache,
+  install,
+  findPython,
+  probe,
+  venvPython
 };

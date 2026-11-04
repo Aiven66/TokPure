@@ -23,6 +23,7 @@ const voicelocal = require('./voicelocal');
 const denoise = require('./denoise');
 const audiosep = require('./audiosep');
 const lipsync = require('./lipsync');
+const sapi = require('./sapi');
 
 const isWin = process.platform === 'win32';
 const OUT_ROOT = 'TokPure-AI多语切片';
@@ -1018,12 +1019,39 @@ function listSayVoices() {
   });
 }
 
+let sapiCache = null;
+/** 枚举 Windows 已安装的 SAPI 音色（3.9.27 起与 macOS 的 `say -v ?` 对齐） */
+function listSapiVoices() {
+  if (sapiCache) return Promise.resolve(sapiCache);
+  return new Promise((resolve) => {
+    const script = [
+      'Add-Type -AssemblyName System.Speech;',
+      '$s = New-Object System.Speech.Synthesis.SpeechSynthesizer;',
+      "$s.GetInstalledVoices() | ForEach-Object { if ($_.Enabled) { '{0}|{1}|{2}' -f $_.VoiceInfo.Name, $_.VoiceInfo.Culture.Name, $_.VoiceInfo.Gender } };",
+      '$s.Dispose();'
+    ].join(' ');
+    const child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true });
+    let out = '';
+    child.stdout.on('data', (d) => { out += d.toString(); });
+    child.on('error', () => resolve([]));
+    child.on('close', () => {
+      sapiCache = sapi.parseSapiVoices(out);
+      resolve(sapiCache);
+    });
+  });
+}
+
 /** 各语言的可用优质音色（已按听感排序，剔除卡通/机器人音色） */
 async function voiceCatalog() {
   const out = {};
   if (isWin) {
+    const rows = await listSapiVoices();
     LANGS.forEach((l) => {
-      out[l.id] = { default: null, list: [{ name: null, base: '', gender: '', style: '', tier: 0, label: '系统默认音色' }] };
+      const list = rows.filter((r) => sapi.cultureLang(r.culture) === l.win).map(sapi.voiceEntry);
+      out[l.id] = {
+        default: list.length ? sapi.chooseVoice(rows, l.win) : null,
+        list: list.length ? list : [sapi.DEFAULT_ENTRY]
+      };
     });
     return out;
   }
@@ -1061,10 +1089,15 @@ async function voiceCatalog() {
 
 async function pickVoice(langId, gender, explicit) {
   if (explicit) return explicit;
-  if (isWin) return null;
   const cat = await voiceCatalog();
   const entry = cat[langId];
   if (!entry || !entry.list.length) return null;
+  if (isWin) {
+    const rows = await listSapiVoices();
+    const lang = langById(langId);
+    const picked = rows.length ? sapi.chooseVoice(rows, lang ? lang.win : langId, '', gender) : null;
+    return picked || entry.default || null;
+  }
   if (gender) {
     const hit = entry.list.find((v) => v.gender === gender);
     if (hit) return hit.name;
@@ -1076,27 +1109,32 @@ function psQuote(s) {
   return `'${String(s).replace(/'/g, "''")}'`;
 }
 
-async function synthWin(text, outFile, langId) {
+async function synthWin(text, outFile, langId, voiceOverride) {
   const txt = outFile.replace(/\.wav$/i, '.txt');
   fs.writeFileSync(txt, text, 'utf8');
   const culture = langById(langId).win;
+  // undefined = 自动挑（与 macOS 侧一致）；空串/指定名 = 按用户选择
+  const voice = voiceOverride === undefined ? await pickVoice(langId) : voiceOverride;
   const script = [
     'Add-Type -AssemblyName System.Speech;',
     '$s = New-Object System.Speech.Synthesis.SpeechSynthesizer;',
-    `$v = $s.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like '${culture}*' } | Select-Object -First 1;`,
-    'if ($v) { $s.SelectVoice($v.VoiceInfo.Name) };',
+    `$name = ${psQuote(voice || '')};`,
+    `if (-not $name) { $x = $s.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like '${culture}*' } | Select-Object -First 1; if ($x) { $name = $x.VoiceInfo.Name } }`,
+    // 选不上的音色（语言包被卸载等）不要整句失败，退回系统默认继续读
+    'if ($name) { try { $s.SelectVoice($name) } catch { } }',
+    '$s.Rate = 0;',
     `$s.SetOutputToWaveFile(${psQuote(outFile)});`,
     `$s.Speak([System.IO.File]::ReadAllText(${psQuote(txt)}, [System.Text.Encoding]::UTF8));`,
     '$s.Dispose();'
   ].join(' ');
   await run('powershell', ['-NoProfile', '-NonInteractive', '-Command', script]);
-  return '';
+  return voice || '';
 }
 
 async function synth(text, outFile, langId, voiceOverride) {
   const clean = String(text).replace(/\s+/g, ' ').trim();
   if (!clean) throw new Error('空文本');
-  if (isWin) return synthWin(clean, outFile, langId);
+  if (isWin) return synthWin(clean, outFile, langId, voiceOverride);
   const voice = voiceOverride === undefined ? await pickVoice(langId) : voiceOverride;
   const txt = outFile.replace(/\.wav$/i, '.txt');
   fs.writeFileSync(txt, clean, 'utf8');
@@ -2667,13 +2705,25 @@ async function oralStatus(opts) {
 
 /** 首次运行：确认 OpenCV 依赖与口型权重就位（依赖复用克隆引擎的 venv，不另装 torch） */
 async function ensureOralReady(proxy, emit, from, to) {
+  const span = Math.max(1, to - from);
   if (!voicelocal.status().installed) {
-    throw new Error('「AI多语口播」需要先安装「本地声音克隆」引擎（原声克隆与口型都跑在它的 Python 环境里）');
+    // 3.9.27：Windows 与 macOS 一样，缺引擎时由应用自己装（venv + torch + chatterbox）
+    emit({ stage: '安装本地声音克隆引擎（首次，约 2GB）', percent: from });
+    await voicelocal.install({
+      proxy,
+      onProgress: (p) => {
+        emit({ stage: p.stage || '安装本地声音克隆引擎', percent: from + span * 0.35 * (Math.min(100, Number(p.percent) || 0) / 100) });
+      },
+      onChild: (ctrl) => { if (activeJob && activeJob.aborts) activeJob.aborts.add(ctrl); }
+    });
+    checkCanceled();
+    if (!voicelocal.status().installed) {
+      throw new Error('本地声音克隆引擎安装未完成，请到「桌面引擎」重试，或检查 Python 3.9+ 是否可用');
+    }
   }
   if (!fs.existsSync(lipsync.weightsPath()) || !fs.statSync(lipsync.weightsPath()).size) {
     emit({ stage: '准备口型引擎（首次约 480MB，仅一次）', percent: from });
   }
-  const span = Math.max(1, to - from);
   await lipsync.ensureReady({
     proxy,
     onProgress: (p) => {
@@ -3086,6 +3136,8 @@ module.exports = {
   openFile,
   voices: voiceCatalog,
   preview: previewVoice,
+  // 自动化测试用：直接合成一句话到指定 wav，验证 TTS 链路（不经过播放）
+  synthForTest: synth,
   testClone,
   oralStatus,
   startOral,

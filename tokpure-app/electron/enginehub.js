@@ -61,10 +61,18 @@ const ENGINES = [
     feature: 'subtitle',
     summary: '本地语音转文字，驱动「AI 字幕」。多语言、离线运行。',
     bin: () => exe('whisper-cli'),
+    // 官方 Windows 包在不同构建里叫过 whisper-cli / main，装的时候都认
+    binFallbacks: () => [exe('main'), exe('whisper')],
     assets: {
       'darwin-arm64': {
         url: 'https://github.com/Aiven66/TokPure/releases/download/sidecars-v1/whisper-cpp-1.9.5-macos-arm64.zip',
         size: 0
+      },
+      // 3.9.27：Windows 用 whisper.cpp 官方 x64 构建包。包内结构是 Release/whisper-cli.exe
+      // + 一组 ggml-*.dll，整包解压后 exe 与 dll 同级即可运行（walkFind 会自己找到那一层）。
+      'win32-x64': {
+        url: 'https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-x64.zip',
+        size: 9 * 1024 * 1024
       }
     }
   },
@@ -437,7 +445,8 @@ async function installEngine(id, proxy, emit) {
     await execTar(['-xf', archive, '-C', stage]);
 
     const wantBin = spec.bin();
-    const binFull = walkFind(stage, (name) => name === wantBin);
+    const wants = [wantBin, ...(spec.binFallbacks ? spec.binFallbacks() : [])];
+    const binFull = walkFind(stage, (name) => wants.includes(name));
     if (!binFull) throw new Error(`压缩包内未找到可执行文件 ${wantBin}`);
     chmodTree(stage);
     if (spec.pruneModels && spec.modelsRel) {
@@ -450,7 +459,7 @@ async function installEngine(id, proxy, emit) {
     fs.renameSync(stage, target);
     try { fs.unlinkSync(archive); } catch (_) {}
 
-    const finalBin = walkFind(target, (name) => name === wantBin);
+    const finalBin = walkFind(target, (name) => wants.includes(name));
     const binRel = path.relative(target, finalBin);
     fs.writeFileSync(path.join(target, 'tokpure-install.json'), JSON.stringify({
       id, version: spec.version, binRel, installedAt: Date.now(), platform: pk

@@ -35,6 +35,10 @@ jobs:
         working-directory: tokpure-app
         run: npm ci
 
+      - name: Unit tests
+        working-directory: tokpure-app
+        run: npm test
+
       - name: Fetch arch-matched ffmpeg
         working-directory: tokpure-app
         env:
@@ -49,6 +53,10 @@ jobs:
           chmod +x "$GITHUB_WORKSPACE/tokpure-app/resources/bin/ffmpeg"
           file "$GITHUB_WORKSPACE/tokpure-app/resources/bin/ffmpeg"
           "$GITHUB_WORKSPACE/tokpure-app/resources/bin/ffmpeg" -version | head -1
+
+      - name: Smoke test (macOS)
+        working-directory: tokpure-app
+        run: npx electron test/smoke.js
 
       - name: Build macOS ${{ matrix.arch }}
         working-directory: tokpure-app
@@ -78,11 +86,23 @@ jobs:
         working-directory: tokpure-app
         run: npm ci
 
+      - name: Unit tests
+        working-directory: tokpure-app
+        run: npm test
+
       - name: Stage ffmpeg.exe
         working-directory: tokpure-app
         run: |
           Copy-Item "node_modules\ffmpeg-static\ffmpeg.exe" "resources\bin\ffmpeg.exe" -Force
           & "resources\bin\ffmpeg.exe" -version | Select-Object -First 1
+
+      - name: Smoke test (Windows)
+        working-directory: tokpure-app
+        timeout-minutes: 12
+        env:
+          # 真装一次 Whisper 引擎并执行，验证 Windows 资产、解压与 DLL 依赖齐全
+          TOKPURE_SMOKE_INSTALL: '1'
+        run: npx electron test/smoke.js
 
       - name: Build Windows x64
         working-directory: tokpure-app
