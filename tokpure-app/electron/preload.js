@@ -142,5 +142,21 @@ contextBridge.exposeInMainWorld('tokpure', {
     start: (payload) => invoke('oral:start', payload),
     cancel: () => invoke('oral:cancel'),
     onProgress: (cb) => ipcRenderer.on('oral:progress', (_e, p) => cb(p))
+  },
+  vt: {
+    status: () => invoke('vt:status'),
+    library: () => invoke('vt:library'),
+    pickVideo: () => invoke('vt:pickVideo'),
+    openPath: (p) => invoke('vt:openPath', p),
+    pickSample: () => invoke('vt:pickSample'),
+    importVoice: (payload) => invoke('vt:importVoice', payload),
+    renameVoice: (id, name) => invoke('vt:renameVoice', id, name),
+    removeVoice: (id) => invoke('vt:removeVoice', id),
+    previewVoice: (payload) => invoke('vt:previewVoice', payload),
+    open: (p) => invoke('vt:open', p),
+    reveal: (p) => invoke('vt:reveal', p),
+    start: (payload) => invoke('vt:start', payload),
+    cancel: () => invoke('vt:cancel'),
+    onProgress: (cb) => ipcRenderer.on('vt:progress', (_e, p) => cb(p))
   }
 });

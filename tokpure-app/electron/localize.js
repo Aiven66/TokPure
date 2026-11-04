@@ -24,6 +24,8 @@ const denoise = require('./denoise');
 const audiosep = require('./audiosep');
 const lipsync = require('./lipsync');
 const sapi = require('./sapi');
+const voices = require('./voices');
+const voiceSample = require('./voicesample');
 
 const isWin = process.platform === 'win32';
 const OUT_ROOT = 'TokPure-AI多语切片';
@@ -2558,6 +2560,13 @@ function describe(p) {
   return { path: p, name: path.basename(p), size: st.size };
 }
 
+/** 视频翻译选片后立刻要知道时长/有没有音轨，避免用户选了 10 分钟的片子才被拒 */
+async function probeVideo(p) {
+  describe(p);
+  const info = await probe(p);
+  return { duration: info.duration, hasAudio: info.hasAudio, fps: info.fps };
+}
+
 function reveal(p) {
   if (p && fs.existsSync(p)) {
     const st = fs.statSync(p);
@@ -2613,14 +2622,11 @@ async function prepareOralVideo(source, duration, fps, dir, emit, from, to) {
   return out;
 }
 
-/** 口播成片：原构图 + 烧录字幕 + 配音与伴奏闪避混音
-    （混音链与竖版渲染完全一致，避免再出现「原语言人声叠在译文上」）。 */
-async function renderOral({ input, dir, duration, narration, bgm, srtText, srtName, out, color, emit, from, to }) {
-  const srtFile = path.join(dir, srtName || 'oral.srt');
-  fs.writeFileSync(srtFile, '\ufeff' + srtText, 'utf8');
-  // libass 的 Fontsize/MarginV 以 288 高的脚本画布为基准，会按成片高度等比放大，
-  // 所以同一组数字在 720p / 1080p / 4K 上都保持「约 3% 屏高的字、约 7% 屏高的下边距」。
-  const force = [
+/* libass 的 Fontsize/MarginV 以 288 高的脚本画布为基准，会按成片高度等比放大，
+   所以同一组数字在 720p / 1080p / 4K 上都保持「约 3% 屏高的字、约 7% 屏高的下边距」。
+   切片 / 口播 / 视频翻译三条流程共用这一套样式。 */
+function srtForceStyle(color) {
+  return [
     'Fontsize=9',
     `PrimaryColour=${assColor(color)}`,
     'OutlineColour=&H00101010',
@@ -2631,24 +2637,41 @@ async function renderOral({ input, dir, duration, narration, bgm, srtText, srtNa
     'Alignment=2',
     'MarginV=20'
   ].join(',');
-  const sub = `subtitles=${path.basename(srtFile)}:force_style='${force}'`;
+}
+
+function srtFilter(srtFile, color) {
+  return `subtitles=${path.basename(srtFile)}:force_style='${srtForceStyle(color)}'`;
+}
+
+/** 配音 + 伴奏闪避的混音图（口播与视频翻译共用）：
+    [1:a] 配音，[2:a] 伴奏，输出 [a]；narration 为空时保留 [0:a] 原声。
+    成片永远只有这一条音轨——原语言人声已经被完全替换，不会再出现双语混叠。 */
+function dubAudioChain({ duration, narration, bgm }) {
   const D = duration.toFixed(3);
-  const vChain = `[0:v]trim=0:${D},setpts=PTS-STARTPTS,${sub}[v]`;
-  let aChain;
   if (!narration) {
-    // 与源语言相同：直接保留原声（原片本来就是对的口型，不需要再克隆与重绘）
-    aChain = `[0:a]aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=0:${D},asetpts=PTS-STARTPTS[a]`;
-  } else if (bgm) {
-    aChain = [
+    return `[0:a]aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=0:${D},asetpts=PTS-STARTPTS[a]`;
+  }
+  if (bgm) {
+    return [
       `[1:a]aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=0:${D},asetpts=PTS-STARTPTS[vo]`,
       `[2:a]aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=0:${D},asetpts=PTS-STARTPTS,${BGM_CLEAN},volume=${bgm.gain.toFixed(2)}dB[bg]`,
       '[vo]asplit=2[vm][vk]',
       `[bg][vk]${BGM_DUCK}[bd]`,
       `[bd][vm]amix=inputs=2:normalize=0:duration=longest,atrim=0:${D},alimiter=limit=0.95:attack=2:level=false[a]`
     ].join(';');
-  } else {
-    aChain = `[1:a]aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=0:${D},asetpts=PTS-STARTPTS,alimiter=limit=0.95:attack=2:level=false[a]`;
   }
+  return `[1:a]aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=0:${D},asetpts=PTS-STARTPTS,alimiter=limit=0.95:attack=2:level=false[a]`;
+}
+
+/** 口播成片：原构图 + 烧录字幕 + 配音与伴奏闪避混音
+    （混音链与竖版渲染完全一致，避免再出现「原语言人声叠在译文上」）。 */
+async function renderOral({ input, dir, duration, narration, bgm, srtText, srtName, out, color, emit, from, to }) {
+  const srtFile = path.join(dir, srtName || 'oral.srt');
+  fs.writeFileSync(srtFile, '\ufeff' + srtText, 'utf8');
+  const sub = srtFilter(srtFile, color);
+  const D = duration.toFixed(3);
+  const vChain = `[0:v]trim=0:${D},setpts=PTS-STARTPTS,${sub}[v]`;
+  const aChain = dubAudioChain({ duration, narration, bgm });
   const hw = await ffmpegMod.hasEncoder('h264_videotoolbox');
   // 口播成片是「人像特写」，嘴部的高频一旦被压缩磨平就回到那个糊斑问题，
   // 所以这里比竖版切片给更高的码率；回退的 libx264 也从 crf20 提到 18
@@ -3126,6 +3149,578 @@ async function startOral(payload, proxy, emit) {
   }
 }
 
+/* ============================================================
+   AI 视频翻译（Voice Translation Lab）
+
+   与原声克隆口播的区别只有一处：参考音不是从原片里抠的，而是用户
+   自己上传并克隆好的「我的声音」。因此识别 / 翻译 / 配音 / 混音 / 自检
+   全部复用同一套函数，只在最后一步换成「画面直拷 + 单条配音音轨」的封装，
+   画面不重编码，成片画质与原片完全一致。
+   ============================================================ */
+
+const VT_MAX_SEC = 180;
+const VT_OUT_ROOT = 'TokPure-AI视频翻译';
+
+function translateStatus() {
+  const base = status();
+  const clone = voicelocal.status();
+  return {
+    whisper: base.whisper,
+    translate: base.translate,
+    clone: { installed: clone.installed, weights: clone.weights, bytes: clone.bytes },
+    ready: !!(base.whisper.engine && base.whisper.model && clone.installed)
+  };
+}
+
+/** 克隆引擎缺失时自动安装（与口播同一套流程，只是不需要口型权重） */
+async function ensureCloneReady(proxy, emit, from, to) {
+  if (voicelocal.status().installed) {
+    emit({ stage: '本地声音克隆引擎已就绪', percent: to });
+    return voicelocal.status();
+  }
+  const span = Math.max(1, to - from);
+  emit({ stage: '安装本地声音克隆引擎（首次，约 2GB）', percent: from });
+  await voicelocal.install({
+    proxy,
+    onProgress: (p) => {
+      emit({
+        stage: p.stage || '安装本地声音克隆引擎',
+        percent: from + span * 0.95 * (Math.min(100, Number(p.percent) || 0) / 100)
+      });
+    },
+    onChild: (ctrl) => { if (activeJob && activeJob.aborts) activeJob.aborts.add(ctrl); }
+  });
+  checkCanceled();
+  if (!voicelocal.status().installed) {
+    throw new Error('本地声音克隆引擎安装未完成，请到「桌面引擎」重试，或检查本机 Python 3.9–3.13 是否可用');
+  }
+  emit({ stage: '本地声音克隆引擎已就绪', percent: to });
+  return voicelocal.status();
+}
+
+function voiceLibrary() {
+  let items = [];
+  let error = '';
+  try {
+    items = voices.list();
+  } catch (e) {
+    error = String((e && e.message) || e);
+  }
+  const clone = voicelocal.status();
+  return {
+    items,
+    error,
+    engine: { installed: clone.installed, weights: clone.weights, bytes: clone.bytes },
+    limits: {
+      maxSec: VT_MAX_SEC,
+      sampleMin: voiceSample.SAMPLE_MIN_SEC,
+      sampleGood: voiceSample.SAMPLE_GOOD_SEC,
+      maxProfiles: voiceSample.MAX_PROFILES
+    }
+  };
+}
+
+async function pickVoiceSample(win) {
+  const res = await dialog.showOpenDialog(win, {
+    title: '选择我的声音样本',
+    buttonLabel: '用这段声音',
+    properties: ['openFile'],
+    filters: [{
+      name: '音频 / 视频',
+      extensions: ['wav', 'mp3', 'm4a', 'aac', 'flac', 'ogg', 'opus', 'mp4', 'mov', 'mkv', 'webm']
+    }]
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  const p = res.filePaths[0];
+  let size = 0;
+  try { size = fs.statSync(p).size; } catch (_) {}
+  return { path: p, name: path.basename(p), size };
+}
+
+function importVoice(payload = {}) {
+  return voices.ingest(payload);
+}
+
+function renameVoice(id, name) {
+  return voices.rename(id, name);
+}
+
+function removeVoice(id) {
+  return voices.remove(id);
+}
+
+/* 试听缓存：每段样本 + 语言只合成一次。首次要加载 0.5B 模型（约 20~40 秒），
+   之后同一段试听是毫秒级返回，避免用户反复点试听把内存堆满。 */
+const PROFILE_PREVIEW = new Map();
+
+async function previewProfile(payload = {}) {
+  if (activeJob) throw new Error('任务进行中，请稍后再试听');
+  const profile = voices.get(payload.voiceId);
+  const langId = langById(payload.lang) ? payload.lang : 'en';
+  const key = `${profile.id}:${langId}`;
+  if (PROFILE_PREVIEW.has(key)) return PROFILE_PREVIEW.get(key);
+  if (!voicelocal.status().installed) {
+    throw new Error('本地声音克隆引擎尚未安装：开始翻译任务时会自动安装，也可以到「桌面引擎」里安装');
+  }
+  const dir = path.join(app.getPath('temp'), 'tokpure-voice-profile');
+  fs.mkdirSync(dir, { recursive: true });
+  const tag = `${profile.id}-${langId}`;
+  const raw = path.join(dir, `p-${tag}.wav`);
+  const clean = path.join(dir, `p-${tag}-clean.wav`);
+  const out = path.join(dir, `p-${tag}-out.wav`);
+  const session = await voicelocal.openSession({
+    refAudio: profile.absRef,
+    lang: langId,
+    threads: Math.max(2, Math.floor((os.cpus() || []).length / 2)),
+    conc: 1,
+    steps: 8
+  });
+  try {
+    await session.prepare(profile.absRef);
+    await session.speak(VOICE_SAMPLE[langId] || VOICE_SAMPLE.en, raw, langId,
+      { maxTokens: 260, maxSeconds: 180, tag: 0 });
+    // 与成片同一条清洁链，试听听到的就是最终嗓子
+    let src = raw;
+    try {
+      const dn = await cleanCloneVoice(raw, clean);
+      if (dn && dn.file && fs.existsSync(dn.file)) src = dn.file;
+    } catch (_) {}
+    await runFf(['-y', '-i', src, '-filter_complex', `${polishGraph('[0:a]')}[out]`,
+      '-map', '[out]', '-ar', '44100', '-ac', '1', '-c:a', 'pcm_s16le', out]);
+    const buf = fs.readFileSync(out);
+    const result = {
+      dataUrl: `data:audio/wav;base64,${buf.toString('base64')}`,
+      voiceId: profile.id,
+      name: profile.name,
+      lang: langId
+    };
+    if (PROFILE_PREVIEW.size >= 8) PROFILE_PREVIEW.clear();
+    PROFILE_PREVIEW.set(key, result);
+    return result;
+  } finally {
+    try { session.close(); } catch (_) {}
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+}
+
+/**
+ * 视频翻译出片：画面原封不动，只把音轨换成一条「我的声音」。
+ * - 不烧字幕 → `-c:v copy`，不重编码、不掉画质，3 分钟片子几秒封装完；
+ * - 烧字幕 / 非 mp4 容器的编码（VP9、AV1）→ 重编码，硬件编码优先。
+ */
+async function renderVoiceSwap({ input, dir, duration, narration, bgm, srtText, srtName, out, color, subtitles, emit, from, to }) {
+  const D = duration.toFixed(3);
+  let sub = '';
+  if (subtitles && srtText) {
+    const srtFile = path.join(dir, srtName || 'translate.srt');
+    fs.writeFileSync(srtFile, '\ufeff' + srtText, 'utf8');
+    sub = srtFilter(srtFile, color);
+  }
+  const aChain = dubAudioChain({ duration, narration, bgm });
+  const hw = await ffmpegMod.hasEncoder('h264_videotoolbox');
+  const videoArgs = (useHw) => (useHw
+    ? ['-c:v', 'h264_videotoolbox', '-b:v', '14M', '-maxrate', '18M', '-bufsize', '36M', '-profile:v', 'high']
+    : ['-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast']);
+  const build = (plan) => {
+    const vChain = plan.copyVideo
+      ? ''
+      : `[0:v]trim=0:${D},setpts=PTS-STARTPTS${sub ? ',' + sub : ''}[v]`;
+    return [
+      '-y', '-i', input,
+      ...(narration ? ['-i', narration] : []),
+      ...(bgm ? ['-i', bgm.file] : []),
+      '-filter_complex', (vChain ? vChain + ';' : '') + aChain,
+      ...(plan.copyVideo ? ['-map', '0:v:0', '-c:v', 'copy'] : ['-map', '[v]', ...videoArgs(plan.useHw)]),
+      '-map', '[a]',
+      '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2',
+      '-t', D,
+      '-movflags', '+faststart',
+      out
+    ];
+  };
+  const onLine = (line) => {
+    const m = line.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    if (!m) return;
+    const t = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+    emit({ percent: from + (to - from) * Math.min(1, t / Math.max(0.1, duration)) });
+  };
+  const plans = [];
+  if (!sub) plans.push({ copyVideo: true, useHw: false });
+  plans.push({ copyVideo: false, useHw: hw });
+  plans.push({ copyVideo: false, useHw: false });
+  let lastErr = null;
+  for (let i = 0; i < plans.length; i += 1) {
+    try {
+      try { fs.unlinkSync(out); } catch (_) {}
+      await runFf(build(plans[i]), onLine, dir);
+      lastErr = null;
+      break;
+    } catch (e) {
+      checkCanceled();
+      lastErr = e;
+    }
+  }
+  if (lastErr) throw lastErr;
+  if (!fs.existsSync(out) || fs.statSync(out).size < 4096) throw new Error('成片封装失败');
+  return out;
+}
+
+/** 自动化测试入口：只跑「画面 + 配音」封装这一段，不依赖克隆引擎 */
+async function renderSwapForTest(payload = {}) {
+  const dir = makeJobDir();
+  try {
+    await renderVoiceSwap({
+      input: payload.input,
+      dir,
+      duration: Number(payload.duration) || 3,
+      narration: payload.narration,
+      bgm: payload.bgm || null,
+      srtText: payload.srtText || '',
+      srtName: 'smoke.srt',
+      out: payload.out,
+      color: payload.color || '#FFFFFF',
+      subtitles: payload.subtitles !== false,
+      emit: () => {},
+      from: 0,
+      to: 100
+    });
+    return payload.out;
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+}
+
+async function startTranslate(payload, proxy, emit) {
+  if (activeJob) throw new Error('已有任务进行中，请稍候');
+  if (aijobs.isBusy()) throw new Error('已有本地 AI 任务进行中，请稍候');
+
+  const targets = Array.from(new Set((payload.targets || []).filter((id) => langById(id))));
+  if (!targets.length) throw new Error('请至少选择一种目标语言');
+  if (!payload.input || !fs.existsSync(payload.input)) throw new Error('请先选择原片视频');
+  const profile = voices.get(payload.voiceId);
+  const sourceLang = payload.sourceLang || 'auto';
+  const translateModel = normalizeTranslateModel(payload.translateModel);
+  const color = /^#[0-9a-f]{6}$/i.test(payload.subtitleColor || '') ? payload.subtitleColor : '#FFFFFF';
+  const keepBgm = payload.keepBgm !== false;
+  const burnSubs = payload.subtitles !== false;
+
+  activeJob = {
+    canceled: false,
+    child: null,
+    children: new Set(),
+    aborts: new Set(),
+    killSessions: null
+  };
+  const dir = makeJobDir();
+  const pool = [];
+  const MEM_GB = Math.max(1, Math.floor(os.totalmem() / (1024 ** 3)));
+  const CPU_N = Math.max(2, (os.cpus() || []).length || 4);
+  const LOCAL_CONC = MEM_GB >= 32 ? 8 : 5;
+  const LOCAL_THREADS = Math.max(2, Math.floor(CPU_N / 3));
+  const LOCAL_STEPS = 8;
+  const beatBus = { sink: null };
+  const concOf = (sess) => {
+    const dev = (sess && sess.device) || 'cpu';
+    return dev === 'mps' ? LOCAL_CONC : Math.min(3, LOCAL_CONC);
+  };
+
+  /* 进度闸门：配音阶段的克隆进程日志、后台 BGM 任务会穿插发早阶段的读数，
+     统一在这里夹成「只增不减」，进度条永远不会回退 */
+  let lastPct = 0;
+  const rawEmit = emit;
+  emit = (p) => {
+    if (!p) return;
+    const out = Object.assign({}, p);
+    const v = Number(out.percent);
+    if (Number.isFinite(v)) {
+      out.percent = Math.max(lastPct, Math.min(100, v));
+      lastPct = out.percent;
+    }
+    rawEmit(out);
+  };
+
+  try {
+    emit({ stage: '检查本地组件', percent: 1 });
+    const ffReady = await ffmpegMod.ensure();
+    if (!ffReady.ok) {
+      throw new Error('未找到可执行的 FFmpeg（应用内 resources/bin/ffmpeg 缺失或已损坏），请重新安装 TokPure 后再试');
+    }
+    checkCanceled();
+
+    emit({ stage: '准备本地识别与翻译引擎', percent: 2 });
+    const whisperModel = await ensureWhisper(proxy, emit, 2, 6);
+    const needTranslate = sourceLang === 'auto' || targets.some((t) => t !== sourceLang);
+    if (needTranslate) await ensureTranslateEngine(proxy, emit, 6, 9, translateModel);
+    checkCanceled();
+
+    /* 1) 原片 */
+    emit({ stage: '读取原片', percent: 10 });
+    const info = await probe(payload.input);
+    if (!info.duration) throw new Error('无法读取视频时长，请确认文件可正常播放');
+    if (!info.hasAudio) throw new Error('该视频没有音轨，无从识别原语言人声');
+    if (info.duration > VT_MAX_SEC + 0.5) {
+      throw new Error(`视频翻译请控制在 ${VT_MAX_SEC} 秒以内（当前 ${Math.round(info.duration)} 秒）。本地克隆配音约为实时的 6~8 倍，片越长等待越久，建议先剪成 3 分钟以内。`);
+    }
+    const dur = Math.max(0.5, Math.min(info.duration, VT_MAX_SEC));
+    const baseName = path.basename(payload.input).replace(/\.\w+$/, '');
+
+    emit({ stage: '提取原片音轨', percent: 11 });
+    const wav = path.join(dir, 'asr.wav');
+    await runFf(['-y', '-i', payload.input, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav], (line) => {
+      const m = line.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      if (!m) return;
+      const t = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+      emit({ stage: '提取原片音轨', percent: 11 + 2 * Math.min(1, t / Math.max(0.1, dur)) });
+    });
+    checkCanceled();
+
+    emit({ stage: '识别原片语言', percent: 13 });
+    const asr = await transcribe(wav, whisperModel.id, sourceLang, emit, 13, 26);
+    const detected = asr.detected || 'en';
+    const segs = normalizeSegs(splitLongSegments(asr.segments));
+    if (!segs.length) throw new Error('未识别到人声，请换一段有人说话的短视频');
+    const win = { start: 0, end: dur };
+
+    /* 2) 我的声音：用户上传的参考音，全片只加载一次 */
+    emit({ stage: `加载我的声音 · ${profile.name}`, percent: 27 });
+    await ensureCloneReady(proxy, emit, 27, 31);
+    /* 克隆进程的日志会在配音阶段继续冒出来（含 stage 行），加载完之后只喂心跳不喂 stage，
+       否则全局阶段文案会在配音中途跳回「加载模型」 */
+    let cloneLoaded = false;
+    const session = await voicelocal.openSession({
+      refAudio: profile.absRef,
+      lang: detected,
+      threads: LOCAL_THREADS,
+      conc: LOCAL_CONC,
+      steps: LOCAL_STEPS,
+      onLog: (l) => {
+        if (!l) return;
+        if (l.progress && beatBus.sink) { beatBus.sink({ tag: l.tag, tokens: l.tokens, cap: l.cap }); return; }
+        if (l.elapsed != null && beatBus.sink) { beatBus.sink({ tag: l.tag, elapsed: l.elapsed }); return; }
+        if (l.stage && !cloneLoaded) emit({ stage: l.stage, percent: 29 });
+      }
+    });
+    await session.prepare(profile.absRef);
+    cloneLoaded = true;
+    pool.push(session);
+    activeJob.killSessions = () => pool.forEach((s) => { try { s.close(); } catch (_) {} });
+    checkCanceled();
+    emit({ stage: '我的声音已就绪', percent: 32 });
+
+    /* 3) 伴奏分离：与配音并行，成片保留 BGM、只替换人声 */
+    let bgmNote = '';
+    let bgmTask = Promise.resolve(null);
+    if (keepBgm) {
+      emit({ stage: '准备背景音乐分离', percent: 33 });
+      bgmTask = (async () => {
+        try {
+          if (!audiosep.pythonReady()) {
+            bgmNote = '背景音乐未保留：分离需要「本地声音克隆」引擎的 Python 环境';
+            return null;
+          }
+          if (!audiosep.modelReady()) {
+            emit({ stage: '下载背景音乐分离模型（约 319MB，仅一次）', percent: 33 });
+            await audiosep.ensureModel({
+              onChild: (c) => { if (activeJob && activeJob.children) activeJob.children.add(c); },
+              onProgress: (p) => emit({ stage: `下载背景音乐分离模型 ${p.percent}%`, percent: 33 })
+            });
+          }
+          checkCanceled();
+          emit({ stage: '分离背景音乐（去掉原片人声）', percent: 33 });
+          const got = await separateBgm({
+            source: payload.input,
+            win,
+            dur,
+            dir,
+            onChild: (c) => { if (activeJob && activeJob.children) activeJob.children.add(c); },
+            onProgress: (p) => emit({
+              stage: `${p.stage || '分离背景音乐'} ${Math.round(Number(p.percent) || 0)}%`,
+              percent: 33
+            })
+          });
+          if (!got) {
+            bgmNote = '原片未检测到可用背景音乐，成片只保留配音';
+            return null;
+          }
+          return got;
+        } catch (e) {
+          if (activeJob && activeJob.canceled) return null;
+          bgmNote = `背景音乐未保留：${String((e && e.message) || e).replace(/\s+/g, ' ').slice(0, 80)}`;
+          return null;
+        }
+      })();
+    }
+
+    const settings = store.get();
+    const outDir = path.join(settings.downloadDir || app.getPath('downloads'), VT_OUT_ROOT, safeBase(baseName));
+    fs.mkdirSync(outDir, { recursive: true });
+
+    /* 4) 逐语言：翻译 → 用我的声音配音 → 封装成片 */
+    const total = targets.length;
+    const slice = (97 - 34) / total;
+    const W_TR = 0.12;
+    const W_TTS = 0.64;
+    const W_RENDER = 0.24;
+    let lastGlobal = 34;
+    const files = new Array(total);
+
+    for (let i = 0; i < total; i += 1) {
+      checkCanceled();
+      const langId = targets[i];
+      const lang = langById(langId);
+      const sameLanguage = langId === detected;
+      const base = 34 + slice * i;
+      const langEmit = (stage, langStage, frac, detail) => {
+        const f = Math.max(0, Math.min(1, Number(frac) || 0));
+        lastGlobal = Math.max(lastGlobal, Math.min(97, base + slice * f));
+        emit({
+          stage,
+          langStage,
+          percent: lastGlobal,
+          langPercent: Math.round(f * 100),
+          lang: langId,
+          langIndex: i,
+          langTotal: total,
+          detail: detail || ''
+        });
+      };
+
+      let texts;
+      let trNote = '';
+      if (sameLanguage) {
+        texts = segs.map((s) => s.text);
+        trNote = '目标语言与原片一致，本次只换声、不翻译';
+        langEmit('准备台词', 'translate', W_TR);
+      } else {
+        langEmit('翻译字幕', 'translate', 0);
+        const tr = await translateSegments(segs, langId,
+          (p) => langEmit('翻译字幕', 'translate', W_TR * Math.min(1, (Number(p.percent) || 0) / 100)),
+          0, 100, translateModel);
+        texts = tr.texts;
+        if (tr.dropped.length) {
+          trNote = `${tr.dropped.length} 句未能翻译成${lang.zhName || lang.name}，已跳过（可在「翻译模型档位」切换高质量 1.5B 重试）`;
+        }
+      }
+      const outSegs = segs.map((s, k) => ({ start: s.start, end: s.end, text: texts[k] || '' }))
+        .filter((s) => s.text.trim());
+      const srt = buildSrt(outSegs);
+      const srtPath = uniqueOut(outDir, langId, 'srt');
+      fs.writeFileSync(srtPath, '\ufeff' + srt, 'utf8');
+      checkCanceled();
+
+      /* 我的声音配音（所有语言都合成，原语言同语种也一样换掉原人声） */
+      let narration = null;
+      let ttsNote = '';
+      let ttsError = '';
+      try {
+        const sess0 = pool[0];
+        const synthFn = makeLocalSynth({
+          ctx: {
+            sessions: pool,
+            refAudio: profile.absRef,
+            threads: LOCAL_THREADS,
+            conc: LOCAL_CONC,
+            steps: LOCAL_STEPS
+          },
+          langId
+        });
+        const synthConcurrency = Math.max(1, pool.length * concOf(sess0));
+        const ttsProg = makeTtsProgress({
+          weights: outSegs.map((s) => Math.max(3, String(s.text || '').length)),
+          ttsFrom: W_TR,
+          ttsWidth: W_TTS,
+          langEmit,
+          totalSegs: Math.max(1, outSegs.length)
+        });
+        beatBus.sink = (info) => ttsProg.sink(info);
+        const built = await buildNarration(outSegs, dur, langId, dir, ttsProg.onDone, 0, 100,
+          { synthFn, voice: 'clone', allowFallback: false, synthConcurrency, refAudio: profile.absRef });
+        narration = built.file;
+        if (built.squeezed) ttsNote = `${built.squeezed} 句偏长，已收紧时长以贴合画面`;
+      } catch (e) {
+        checkCanceled();
+        ttsError = String((e && e.message) || e || '配音失败').replace(/\s+/g, ' ').slice(0, 120);
+      } finally {
+        beatBus.sink = null;
+      }
+      if (ttsError) {
+        files[i] = {
+          lang: langId,
+          name: lang.name,
+          video: '',
+          srt: srtPath,
+          voice: '配音失败',
+          warning: `配音失败：${ttsError}`
+        };
+        langEmit('配音失败', 'error', 1, ttsError);
+        continue;
+      }
+
+      /* 出片：画面直拷 + 我的声音单音轨（可选烧录字幕） */
+      const outVideo = uniqueOut(outDir, langId, 'mp4');
+      const entry = {
+        lang: langId,
+        name: lang.name,
+        video: outVideo,
+        srt: srtPath,
+        voice: `我的声音 · ${profile.name}`,
+        mode: sameLanguage ? '换声' : '翻译',
+        lip: 'n/a',
+        warning: [trNote, ttsNote].filter(Boolean).join(' · ')
+      };
+      files[i] = entry;
+      const renderFrom = 1 - W_RENDER;
+      langEmit('封装成片', 'render', renderFrom);
+      try {
+        const bgm = await bgmTask;
+        if (bgmNote) entry.warning = [entry.warning, bgmNote].filter(Boolean).join(' · ');
+        await renderVoiceSwap({
+          input: payload.input,
+          dir,
+          duration: dur,
+          narration,
+          bgm,
+          srtText: srt,
+          srtName: `sub-${langId}.srt`,
+          out: outVideo,
+          color,
+          subtitles: burnSubs,
+          emit: (p) => langEmit('封装成片', 'render', renderFrom + (1 - renderFrom) * Math.min(1, (Number(p.percent) || 0) / 100)),
+          from: 0,
+          to: 100
+        });
+        const avNotes = await verifyOutput(outVideo, dur);
+        if (avNotes.length) entry.warning = [entry.warning, ...avNotes].filter(Boolean).join(' · ');
+        langEmit('已完成', 'done', 1);
+        emit({
+          stage: '已完成',
+          langStage: 'done',
+          lang: langId,
+          langIndex: i,
+          langTotal: total,
+          langPercent: 100,
+          percent: lastGlobal,
+          file: entry
+        });
+      } catch (e) {
+        checkCanceled();
+        entry.video = '';
+        entry.warning = [entry.warning, `封装成片失败：${String(e.message || e).replace(/\s+/g, ' ').slice(0, 80)}`]
+          .filter(Boolean).join(' · ');
+        langEmit('封装失败', 'done', 1, entry.warning);
+      }
+    }
+
+    checkCanceled();
+    emit({ stage: '已完成', percent: 100 });
+    return { outputDir: outDir, files: files.filter((f) => f && f.video), detected, voice: profile.name };
+  } finally {
+    activeJob = null;
+    pool.forEach((s) => { try { s.close(); } catch (_) {} });
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+}
+
 module.exports = {
   status,
   start,
@@ -3141,5 +3736,16 @@ module.exports = {
   testClone,
   oralStatus,
   startOral,
-  ensureOralReady
+  ensureOralReady,
+  // AI 视频翻译（我的声音）
+  translateStatus,
+  startTranslate,
+  voiceLibrary,
+  pickVoiceSample,
+  importVoice,
+  renameVoice,
+  removeVoice,
+  previewProfile,
+  renderSwapForTest,
+  probeVideo
 };

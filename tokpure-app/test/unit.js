@@ -137,7 +137,177 @@ test('voiceEntry 与 macOS 侧字段结构一致', () => {
   assert.strictEqual(e.locale, 'en_US');
 });
 
-/* ---------------- 4. 硬约束 ---------------- */
+/* ---------------- 4. AI 视频翻译：声音样本纯逻辑 ---------------- */
+const vs = require(path.join(ROOT, 'electron', 'voicesample.js'));
+
+function pcmSine({ sec = 1, sr = 24000, freq = 440, amp = 0.6, silenceFrom = 1 } = {}) {
+  const n = Math.round(sec * sr);
+  const pcm = new Float32Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const t = i / sr;
+    pcm[i] = t < silenceFrom ? amp * Math.sin(2 * Math.PI * freq * t) : 0;
+  }
+  return pcm;
+}
+
+test('语音占比能区分「有说话」与「几乎静音」', () => {
+  const spoken = vs.speechStats(pcmSine({ sec: 2, silenceFrom: 2 }), 24000);
+  assert.ok(spoken.ratio > 0.95, `全程正弦应接近 100%，实际 ${spoken.ratio}`);
+  assert.ok(spoken.rmsDb > -12, `电平应正常，实际 ${spoken.rmsDb}`);
+
+  const quiet = vs.speechStats(pcmSine({ sec: 2, amp: 0.0005, silenceFrom: 2 }), 24000);
+  assert.ok(quiet.rmsDb < -52, `接近静音的电平应很低，实际 ${quiet.rmsDb}`);
+
+  const empty = vs.speechStats(new Float32Array(0), 24000);
+  assert.strictEqual(empty.ratio, 0);
+  assert.strictEqual(empty.rmsDb, -100);
+});
+
+test('短样本 / 静音样本被拒，6 秒以下给出建议但可用', () => {
+  assert.strictEqual(vs.judgeSample({ duration: 0, ratio: 0, rmsDb: -100 }).ok, false);
+  assert.strictEqual(vs.judgeSample({ duration: 2.5, ratio: 0.9, rmsDb: -10 }).ok, false);
+  assert.ok(/至少需要/.test(vs.judgeSample({ duration: 2.5, ratio: 0.9, rmsDb: -10 }).message));
+  assert.strictEqual(vs.judgeSample({ duration: 8, ratio: 0.05, rmsDb: -10 }).ok, false);
+  assert.strictEqual(vs.judgeSample({ duration: 8, ratio: 0.9, rmsDb: -70 }).ok, false);
+
+  const warn = vs.judgeSample({ duration: 5, ratio: 0.8, rmsDb: -20 });
+  assert.strictEqual(warn.ok, true);
+  assert.strictEqual(warn.level, 'warn');
+
+  const good = vs.judgeSample({ duration: 9, ratio: 0.8, rmsDb: -20 });
+  assert.strictEqual(good.ok, true);
+  assert.strictEqual(good.level, 'ok');
+});
+
+test('波形峰值归一化到 0~1 且长度固定', () => {
+  const peaks = vs.peakBuckets(pcmSine({ sec: 1, silenceFrom: 0.5 }), 64);
+  assert.strictEqual(peaks.length, 64);
+  assert.ok(Math.max(...peaks) === 1, '最大峰值应归一为 1');
+  assert.ok(peaks.slice(40).every((v) => v === 0), '后半段静音应为 0');
+  assert.ok(peaks.every((v) => v >= 0 && v <= 1), '峰值超出 0~1');
+  assert.deepStrictEqual(vs.peakBuckets(new Float32Array(0), 64), new Array(64).fill(0));
+});
+
+test('WAV 头解析能得到正确的采样率与时长', () => {
+  const sr = 24000;
+  const frames = sr * 3;
+  const fmt = Buffer.alloc(16);
+  fmt.writeUInt16LE(1, 0);
+  fmt.writeUInt16LE(1, 2);
+  fmt.writeUInt32LE(sr, 4);
+  fmt.writeUInt32LE(sr * 2, 8);
+  fmt.writeUInt16LE(2, 12);
+  fmt.writeUInt16LE(16, 14);
+  const head = Buffer.concat([Buffer.from('RIFF', 'ascii'), Buffer.alloc(4), Buffer.from('WAVE', 'ascii')]);
+  head.writeUInt32LE(36 + frames * 2, 4);
+  const fmtChunk = Buffer.concat([Buffer.from('fmt ', 'ascii'), Buffer.alloc(4), fmt]);
+  fmtChunk.writeUInt32LE(16, 4);
+  const dataChunk = Buffer.concat([Buffer.from('data', 'ascii'), Buffer.alloc(4), Buffer.alloc(frames * 2)]);
+  dataChunk.writeUInt32LE(frames * 2, 4);
+  const buf = Buffer.concat([head, fmtChunk, dataChunk]);
+
+  const info = vs.readWavInfo(buf);
+  assert.ok(info, 'WAV 头应解析成功');
+  assert.strictEqual(info.sampleRate, sr);
+  assert.strictEqual(info.channels, 1);
+  assert.strictEqual(info.bits, 16);
+  assert.ok(Math.abs(info.duration - 3) < 0.01, `时长应约 3 秒，实际 ${info.duration}`);
+  assert.strictEqual(vs.readWavInfo(Buffer.from('not a wav')), null);
+});
+
+test('档案索引会清洗坏条目与字段', () => {
+  const out = vs.profilesFromIndex({
+    profiles: [
+      { id: 'vabc123', name: ' 我的<声音> ', duration: '9.5', peaks: [0.2, 2, -1], createdAt: '123', bytes: -5 },
+      { id: 'bad id', name: 'x' },
+      { id: 'vxyz987', name: '', duration: -3, peaks: 'oops' }
+    ]
+  });
+  assert.strictEqual(out.length, 2);
+  assert.strictEqual(out[0].name, '我的 声音');
+  assert.strictEqual(out[0].duration, 9.5);
+  assert.deepStrictEqual(out[0].peaks, [0.2, 1, 0]);
+  assert.strictEqual(out[0].bytes, 0);
+  assert.strictEqual(out[1].name, '我的声音');
+  assert.ok(vs.profilesFromIndex(null).length === 0);
+});
+
+/* ---------------- 5. AI 视频翻译：接线与硬约束 ---------------- */
+const preloadSrc = read('electron/preload.js');
+const mainSrc = read('electron/main.js');
+const locSrc = read('electron/localize.js');
+const uiSrc = read('src/translate.js');
+const htmlSrc = read('src/index.html');
+const appSrc = read('src/app.js');
+const cssSrc = read('src/styles.css');
+
+test('preload 暴露 vt 全套 API', () => {
+  assert.ok(/vt:\s*\{/.test(preloadSrc), 'preload 没有 vt 命名空间');
+  for (const k of ['status', 'library', 'pickVideo', 'openPath', 'pickSample', 'importVoice', 'previewVoice', 'start', 'cancel', 'reveal', 'open']) {
+    assert.ok(new RegExp(`${k}:`).test(preloadSrc), `preload 缺少 vt.${k}`);
+  }
+});
+
+test('主进程注册 vt:* IPC，进度走独立通道', () => {
+  for (const k of ['vt:status', 'vt:library', 'vt:pickVideo', 'vt:openPath', 'vt:pickSample', 'vt:importVoice', 'vt:previewVoice', 'vt:start', 'vt:cancel', 'vt:reveal', 'vt:open']) {
+    assert.ok(mainSrc.includes(`'${k}'`), `main.js 缺少 ${k}`);
+  }
+  assert.ok(/sendToRenderer\('vt:progress'/.test(mainSrc), '进度没有走 vt:progress');
+});
+
+test('视频翻译复用识别/翻译/配音/混音链，不复制一份', () => {
+  assert.ok(/async function startTranslate/.test(locSrc), '缺少 startTranslate');
+  const start = locSrc.slice(locSrc.indexOf('async function startTranslate'));
+  for (const fn of ['ensureWhisper(', 'transcribe(', 'translateSegments(', 'buildNarration(', 'makeLocalSynth(', 'separateBgm(', 'verifyOutput(', 'buildSrt(', 'ensureCloneReady(']) {
+    assert.ok(start.includes(fn), `视频翻译没有复用 ${fn}`);
+  }
+  const render = locSrc.slice(locSrc.indexOf('async function renderVoiceSwap'), locSrc.indexOf('async function renderSwapForTest'));
+  assert.ok(render.includes('dubAudioChain({'), '视频翻译没有复用的混音链');
+  assert.ok(/function dubAudioChain/.test(locSrc), 'dubAudioChain 应抽成两套流程共用');
+  assert.ok(!/function makeLocalSynth/.test(start), '不要在视频翻译里重新实现克隆合成');
+});
+
+test('成片画面直拷、音轨只有一条（我的声音）', () => {
+  const render = locSrc.slice(locSrc.indexOf('async function renderVoiceSwap'));
+  assert.ok(render.includes("'-c:v', 'copy'"), '缺少视频直拷路径');
+  assert.ok(render.includes("'-c:v', 'libx264'"), '缺少重编码回退');
+  assert.ok(render.includes("'-map', '[a]'"), '没有映射配音音轨');
+  assert.ok(!/'-map',\s*'0:a'/.test(render), '不应保留原片音轨');
+  assert.ok(render.includes("'-c:a', 'aac'"), '配音音轨未编码为 AAC');
+});
+
+test('新页面已接线：菜单 / 视图 / 路由 / 控制器 / 样式', () => {
+  assert.ok(/data-view="translate"/.test(htmlSrc), '左侧菜单没有 AI 视频翻译');
+  assert.ok(/id="view-translate"/.test(htmlSrc), '缺少 view-translate 页面');
+  assert.ok(/<script src="translate.js"><\/script>/.test(htmlSrc), '页面没有加载 translate.js');
+  assert.ok(/name === 'translate' && window\.VideoTranslate/.test(appSrc), 'app.js 没有路由到 VideoTranslate');
+  assert.ok(/window\.VideoTranslate = \{/.test(uiSrc), 'translate.js 没有导出 VideoTranslate');
+  assert.ok(/\.start\(\{/.test(uiSrc), '控制器没有调用 vt:start');
+  assert.ok(/onProgress/.test(uiSrc), '控制器没有接收进度');
+  assert.ok(/#view-translate/.test(cssSrc), 'styles.css 缺少新页面样式');
+  for (const id of ['vt-drop', 'vt-voices', 'vt-langs', 'vt-run', 'vt-progress', 'vt-results']) {
+    assert.ok(htmlSrc.includes(`id="${id}"`), `页面缺少 ${id}`);
+  }
+});
+
+test('声音库导入链保持频域降噪，且不使用 anlmdn', () => {
+  const src = read('electron/voices.js');
+  const chain = src.slice(src.indexOf('const REF_CHAIN'), src.indexOf('];', src.indexOf('const REF_CHAIN')));
+  assert.ok(chain.includes('highpass'), '缺少高通');
+  assert.ok(chain.includes('lowpass'), '缺少低通（高频底噪会进克隆条件）');
+  assert.strictEqual((chain.match(/afftdn=nr=/g) || []).length, 2, '应有两级 afftdn 频域降噪');
+  assert.ok(!/anlmdn=s=/i.test(src), 'voices.js 出现了 anlmdn 参数');
+});
+
+test('进度只增不减：全局百分比有单调整闸，配音阶段不再跳回加载阶段', () => {
+  const start = locSrc.slice(locSrc.indexOf('async function startTranslate'));
+  assert.ok(/emit = \(p\) => \{/.test(start), '缺少 emit 单调整包装');
+  assert.ok(/out\.percent = Math\.max\(lastPct/.test(start), '进度没有夹成只增不减');
+  assert.ok(/let cloneLoaded = false/.test(start), '缺少克隆加载完成标记');
+  assert.ok(/if \(l\.stage && !cloneLoaded\)/.test(start), '配音阶段仍会回退阶段文案');
+});
+
+/* ---------------- 6. 硬约束 ---------------- */
 test('源码里不存在生效的 anlmdn 噪声参数（成片噪音回归）', () => {
   const files = fs.readdirSync(path.join(ROOT, 'electron')).filter((f) => f.endsWith('.js'));
   for (const f of files) {

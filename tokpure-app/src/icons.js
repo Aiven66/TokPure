@@ -74,7 +74,9 @@
     keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M8 14h8"/>',
     sticker: '<path d="M13 3H6a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h7l8-8V9"/><path d="M13 21v-5a3 3 0 0 1 3-3h5"/><path d="M8.5 9.5h.01"/><path d="M12 12h.01"/>',
     palette: '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="9" r="1.1"/><circle cx="15" cy="9" r="1.1"/><circle cx="9.5" cy="15" r="1.1"/>',
-    share: '<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M12 15V3"/><path d="M8 7.5 12 3.5l4 4"/>'
+    share: '<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M12 15V3"/><path d="M8 7.5 12 3.5l4 4"/>',
+    mic: '<rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 17v4"/><path d="M8 21h8"/>',
+    wave: '<path d="M2 11v2"/><path d="M6 8v8"/><path d="M10 5v14"/><path d="M14 9v6"/><path d="M18 7v10"/><path d="M22 10v4"/>'
   };
 
   const FILL = {

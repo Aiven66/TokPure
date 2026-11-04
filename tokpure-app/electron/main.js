@@ -491,6 +491,33 @@ function registerIpc() {
     const proxy = networkSettings().proxy;
     return localize.startOral(payload || {}, proxy, (p) => sendToRenderer('oral:progress', p));
   });
+
+  // ===================== AI 视频翻译（用我上传的声音换掉原片人声） =====================
+  ipcMain.handle('vt:status', () => localize.translateStatus());
+  ipcMain.handle('vt:library', () => localize.voiceLibrary());
+  ipcMain.handle('vt:pickVideo', async () => {
+    const f = await localize.pickFile(mainWindow, { title: '选择原片视频' });
+    if (!f) return null;
+    const info = await localize.probeVideo(f.path);
+    return { ...f, ...info };
+  });
+  ipcMain.handle('vt:openPath', async (_e, p) => {
+    const f = localize.describe(p);
+    const info = await localize.probeVideo(p);
+    return { ...f, ...info };
+  });
+  ipcMain.handle('vt:pickSample', () => localize.pickVoiceSample(mainWindow));
+  ipcMain.handle('vt:importVoice', (_e, payload) => localize.importVoice(payload || {}));
+  ipcMain.handle('vt:renameVoice', (_e, id, name) => localize.renameVoice(id, name));
+  ipcMain.handle('vt:removeVoice', (_e, id) => localize.removeVoice(id));
+  ipcMain.handle('vt:previewVoice', (_e, payload) => localize.previewProfile(payload || {}));
+  ipcMain.handle('vt:open', (_e, p) => localize.openFile(p));
+  ipcMain.handle('vt:reveal', (_e, p) => localize.reveal(p));
+  ipcMain.handle('vt:cancel', () => localize.cancel());
+  ipcMain.handle('vt:start', (_e, payload) => {
+    const proxy = networkSettings().proxy;
+    return localize.startTranslate(payload || {}, proxy, (p) => sendToRenderer('vt:progress', p));
+  });
 }
 
 app.whenReady().then(async () => {

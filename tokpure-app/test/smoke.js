@@ -9,6 +9,9 @@
    - 当前平台有 Whisper 引擎资产（Windows 3.9.27 新补）
    - 8 种目标语言都有音色目录（Windows 走 SAPI 枚举）
    - 真的合成一句 wav（macOS: say；Windows: System.Speech）
+   - AI 视频翻译：合成测试片 → 画面直拷 / 烧录字幕两条路径出片
+     → 校验「视频流保留 + 只有 1 条音轨 + 时长一致」
+   - 声音样本导入 → 声音库列表 → 删除（验证去静音/两级降噪/索引全链）
    - 报告 Python 可用性（克隆/口型引擎的安装前提）
    ============================================================ */
 
@@ -109,6 +112,69 @@ async function main() {
   // 开发态 app.getName() 是 Electron，userData 与正式安装不同，不能当成「引擎缺失」
   const devNote = app.isPackaged ? '' : '（开发态 userData 不同，仅供参考）';
   console.log(`  ${vs.installed ? '✓' : '!'} 本地克隆引擎：${vs.installed ? '已安装' : '未安装，首次运行「AI多语口播」会自动安装'}${devNote}`);
+
+  /* 6) AI 视频翻译：画面直拷 + 单条配音音轨；声音样本导入 → 列表 → 删除 */
+  const tmpFiles = [];
+  try {
+    const ffmpegPath = ffmpeg.getFfmpegPath();
+    const dir = path.join(app.getPath('temp'), 'tokpure-smoke-vt');
+    fs.mkdirSync(dir, { recursive: true });
+    const video = path.join(dir, 'src.mp4');
+    tmpFiles.push(video);
+    const re = await runCapture(ffmpegPath, [
+      '-y', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=25:duration=3',
+      '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', video
+    ]);
+    const videoOk = fs.existsSync(video) && fs.statSync(video).size > 20000;
+    assertTrue(videoOk, `测试原片生成：${videoOk ? fs.statSync(video).size + ' 字节' : '失败 ' + re.slice(-200)}`);
+
+    // 配音用真实 TTS 结果，保证封装链吃到的是正常语音而不是正弦
+    const narration = path.join(dir, 'narration.wav');
+    tmpFiles.push(narration);
+    await localize.synthForTest('This is a TokPure video translation smoke test.', narration, 'en');
+    const srtText = '1\n00:00:00,000 --> 00:00:01,400\nVoice translation smoke test\n\n'
+      + '2\n00:00:01,400 --> 00:00:03,000\nOnly one audio track\n';
+    const noSub = path.join(dir, 'swap-copy.mp4');
+    const withSub = path.join(dir, 'swap-subs.mp4');
+    tmpFiles.push(noSub, withSub);
+    await localize.renderSwapForTest({ input: video, narration, duration: 3, srtText, out: noSub, subtitles: false });
+    await localize.renderSwapForTest({ input: video, narration, duration: 3, srtText, out: withSub, subtitles: true });
+
+    for (const [label, file] of [['画面直拷', noSub], ['烧录字幕', withSub]]) {
+      const exists = fs.existsSync(file) && fs.statSync(file).size > 20000;
+      assertTrue(exists, `${label} 出片：${exists ? fs.statSync(file).size + ' 字节' : '文件缺失'}`);
+      if (!exists) continue;
+      const info = await runCapture(ffmpegPath, ['-hide_banner', '-i', file]);
+      const audioStreams = (info.match(/Stream #\d+:\d+[^\n]*: Audio:/g) || []).length;
+      const videoStreams = (info.match(/Stream #\d+:\d+[^\n]*: Video:/g) || []).length;
+      assertTrue(videoStreams === 1 && audioStreams === 1,
+        `${label} 流结构：视频 ${videoStreams} 条 / 音轨 ${audioStreams} 条（必须 1 / 1）`);
+      const dm = info.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      const dur = dm ? Number(dm[1]) * 3600 + Number(dm[2]) * 60 + Number(dm[3]) : 0;
+      assertTrue(Math.abs(dur - 3) < 0.6, `${label} 时长 ${dur.toFixed(2)}s（原片 3.00s）`);
+    }
+
+    // 声音样本导入：8 秒「连续说话」（用真实 TTS 循环拼接），验证去静音/降噪/索引
+    const sampleWav = path.join(dir, 'voice-sample.wav');
+    tmpFiles.push(sampleWav);
+    await runCapture(ffmpegPath, ['-y', '-stream_loop', '2', '-i', narration, '-t', '8',
+      '-ac', '1', '-ar', '24000', sampleWav]);
+    const imported = await localize.importVoice({ input: sampleWav, name: 'smoke-voice' });
+    assertTrue(!!(imported && imported.id), `声音样本导入成功：${imported ? imported.duration.toFixed(2) + 's，波形 ' + imported.peaks.length + ' 段' : '失败'}`);
+    const lib = localize.voiceLibrary();
+    assertTrue(lib.items.some((v) => v.id === imported.id), `声音库列出 ${lib.items.length} 个声音（含新导入）`);
+    if (imported) {
+      localize.removeVoice(imported.id);
+      const after = localize.voiceLibrary();
+      assertTrue(!after.items.some((v) => v.id === imported.id), '声音库删除后不再列出');
+    }
+  } catch (e) {
+    bad('AI 视频翻译链路失败：' + (e && e.message));
+  } finally {
+    tmpFiles.forEach((f) => { try { fs.unlinkSync(f); } catch (_) {} });
+    try { fs.rmSync(path.join(app.getPath('temp'), 'tokpure-smoke-vt'), { recursive: true, force: true }); } catch (_) {}
+  }
 
   console.log(`[smoke] ${failures.length ? 'FAILED' : 'PASSED'} (${failures.length} 项失败)`);
   process.exitCode = failures.length ? 1 : 0;
