@@ -62,6 +62,16 @@ jobs:
         working-directory: tokpure-app
         run: npx electron-builder --mac --${{ matrix.arch }} --publish never
 
+      - name: Verify packaged resources (macOS)
+        working-directory: tokpure-app
+        run: |
+          app=$(ls -d dist/mac*/TokPure.app | head -1)
+          root="$app/Contents/Resources/resources"
+          for p in voiceclone/worker.py audiosep/separate.py lipsync/worker.py bin/ffmpeg audio; do
+            test -e "$root/$p" || { echo "安装包缺少 $p"; exit 1; }
+          done
+          echo "macOS 打包资源校验通过：$app"
+
       - uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.arch }}
@@ -107,6 +117,17 @@ jobs:
       - name: Build Windows x64
         working-directory: tokpure-app
         run: npx electron-builder --win --x64 --publish never
+
+      - name: Verify packaged resources (Windows)
+        working-directory: tokpure-app
+        shell: pwsh
+        run: |
+          $root = "dist\win-unpacked\resources\resources"
+          $need = @("voiceclone\worker.py", "audiosep\separate.py", "lipsync\worker.py", "bin\ffmpeg.exe", "audio")
+          foreach ($p in $need) {
+            if (-not (Test-Path (Join-Path $root $p))) { throw "安装包缺少 $p —— 该功能在 Windows 上会直接不可用" }
+          }
+          Write-Host "Windows 打包资源校验通过：$($need -join ', ')"
 
       - uses: actions/upload-artifact@v4
         with:
