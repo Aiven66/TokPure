@@ -3051,7 +3051,6 @@ function openFile(p) {
    3) 单人正面口播才可靠，检测不到人脸时降级为「配音版」并在结果卡片写明原因。
    ============================================================ */
 
-const ORAL_MAX_SEC = 120;
 const ORAL_OUT_ROOT = 'TokPure-AI多语口播';
 
 /** 口型输入的基准画面：偶数尺寸（rawvideo 管道要求）、固定帧率、不带音轨。
@@ -3276,10 +3275,9 @@ async function startOral(payload, proxy, emit) {
     const info = await probe(payload.input);
     if (!info.duration) throw new Error('无法读取视频时长，请确认文件可正常播放');
     if (!info.hasAudio) throw new Error('该视频没有音轨，无法克隆原声');
-    if (info.duration > ORAL_MAX_SEC + 0.5) {
-      throw new Error(`口播视频请控制在 ${ORAL_MAX_SEC} 秒以内（当前 ${Math.round(info.duration)} 秒）。口型同步按帧重绘，片越长越慢，建议先剪成 1 分钟以内。`);
-    }
-    const dur = Math.max(0.5, Math.min(info.duration, ORAL_MAX_SEC));
+    /* 口播不再限制片长：按整片时长处理。口型按帧重绘，长片耗时线性增长，
+       进度条与「按 1 分钟片长估算」的提示仍然生效，由用户自己权衡。 */
+    const dur = Math.max(0.5, info.duration);
     const fps = Number(info.fps) > 0 ? Math.max(12, Math.min(30, Number(info.fps))) : 25;
     const baseName = path.basename(payload.input);
 

@@ -518,6 +518,17 @@ test('视频翻译的配音调用点已切到连续语流，字幕在配音后�
   assert.ok(!/句偏长，已收紧时长以贴合画面/.test(start), '仍在用旧的「句偏长」提示');
 });
 
+test('AI 多语口播不再限制片长（120 秒硬限已移除）', () => {
+  const loc = read('electron/localize.js');
+  assert.ok(!/ORAL_MAX_SEC/.test(loc), '仍存在 ORAL_MAX_SEC 常量');
+  assert.ok(!/口播视频请控制在/.test(loc), '仍有 120 秒拒绝文案');
+  const oral = loc.slice(loc.indexOf('async function startOral'));
+  assert.ok(oral.length > 1000, '定位不到 startOral');
+  assert.ok(/const dur = Math\.max\(0\.5, info\.duration\)/.test(oral), '口播时长仍被截断');
+  const html = read('src/index.html');
+  assert.ok(!/最长 2 分钟/.test(html), '上传提示仍在写「最长 2 分钟」');
+});
+
 /* ---------------- 6. 硬约束 ---------------- */
 test('源码里不存在生效的 anlmdn 噪声参数（成片噪音回归）', () => {
   const files = fs.readdirSync(path.join(ROOT, 'electron')).filter((f) => f.endsWith('.js'));
