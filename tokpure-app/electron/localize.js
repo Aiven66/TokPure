@@ -34,14 +34,14 @@ const CANVAS_W = 1080;
 const CANVAS_H = 1920;
 
 const LANGS = [
-  { id: 'zh', name: '简体中文', say: 'zh_CN', win: 'zh', zhName: '简体中文', sample: '谢谢大家。' },
-  { id: 'en', name: 'English', say: 'en_US', win: 'en', zhName: '英语', sample: 'Thank you all.' },
-  { id: 'ja', name: '日本語', say: 'ja_JP', win: 'ja', zhName: '日语', sample: 'みなさん、ありがとうございます。' },
-  { id: 'ko', name: '한국어', say: 'ko_KR', win: 'ko', zhName: '韩语', sample: '여러분, 감사합니다.' },
-  { id: 'es', name: 'Español', say: 'es_ES', win: 'es', zhName: '西班牙语', sample: 'Gracias a todos.' },
-  { id: 'pt', name: 'Português', say: 'pt_BR', win: 'pt', zhName: '葡萄牙语', sample: 'Obrigado a todos.' },
-  { id: 'fr', name: 'Français', say: 'fr_FR', win: 'fr', zhName: '法语', sample: 'Merci à tous.' },
-  { id: 'de', name: 'Deutsch', say: 'de_DE', win: 'de', zhName: '德语', sample: 'Danke an alle.' }
+  { id: 'zh', name: '简体中文', say: 'zh_CN', win: 'zh', zhName: '简体中文', sample: '谢谢大家。', style: '用标准普通话口语，不要方言词和书面腔。' },
+  { id: 'en', name: 'English', say: 'en_US', win: 'en', zhName: '英语', sample: 'Thank you all.', style: '必须写成地道、口语化的美式英语（General American）：用常见缩略形式（I\'m / don\'t / that\'s），不要书面腔、不要逐字直译，数字与单位按美式习惯。' },
+  { id: 'ja', name: '日本語', say: 'ja_JP', win: 'ja', zhName: '日语', sample: 'みなさん、ありがとうございます。', style: '用标准日语（东京腔）口语，不要方言和生硬直译。' },
+  { id: 'ko', name: '한국어', say: 'ko_KR', win: 'ko', zhName: '韩语', sample: '여러분, 감사합니다.', style: '用标准韩语（首尔腔）口语，不要方言和生硬直译。' },
+  { id: 'es', name: 'Español', say: 'es_ES', win: 'es', zhName: '西班牙语', sample: 'Gracias a todos.', style: '用中性、通用的西班牙语口语，避免地区俚语和生硬直译。' },
+  { id: 'pt', name: 'Português', say: 'pt_BR', win: 'pt', zhName: '葡萄牙语', sample: 'Obrigado a todos.', style: '用通用的巴西葡萄牙语口语，避免地区俚语和生硬直译。' },
+  { id: 'fr', name: 'Français', say: 'fr_FR', win: 'fr', zhName: '法语', sample: 'Merci à tous.', style: '用标准法语口语，避免方言和生硬直译。' },
+  { id: 'de', name: 'Deutsch', say: 'de_DE', win: 'de', zhName: '德语', sample: 'Danke an alle.', style: '用标准德语口语，避免方言和生硬直译。' }
 ];
 
 /* ---------------- 音色目录 ----------------
@@ -626,8 +626,8 @@ async function llamaTranslate(lines, langId, modelId, opts = {}) {
   // 0.5B/1.5B 这类小模型对「英文长指令」会直接照抄原文；
   // 中文系统提示 + 一条目标语言示例（few-shot）能显著提升翻译成功率。
   const sys = opts.strict
-    ? `你是专业视频字幕翻译。只输出${lang.zhName}译文，禁止输出原文、拼音、注释或解释。`
-    : `你是专业视频字幕翻译。把每条字幕翻译成自然、口语化的${lang.zhName}。`;
+    ? `你是专业视频字幕翻译。只输出${lang.zhName}译文，禁止输出原文、拼音、注释或解释。${lang.style || ''}`
+    : `你是专业视频字幕翻译。把每条字幕翻译成自然、口语化的${lang.zhName}。${lang.style || ''}`;
   const prompt = opts.simple
     ? `逐条翻译为${lang.zhName}，只输出「编号. 译文」：\n${numbered}`
     : opts.strict
@@ -2387,7 +2387,13 @@ async function concatWav(files, out) {
     单路挂掉只重建那一路。
     关键约束：克隆模式下「保不住原声」就等于失败，所以这里绝不用系统音色顶替，
     只做整句重试 → 拆句重试 → 如实报错。 */
-function makeLocalSynth({ ctx, langId }) {
+function makeLocalSynth({ ctx, langId, crossLang = false }) {
+  // 跨语言（目标语言 ≠ 原片语言）时压低 CFG 引导：Chatterbox 官方说明里，
+  // 参考音与目标语言不一致时 CFG 会把参考句的口音一起放大，表现为「英语带口音」。
+  // 官方建议直接给 0，但实测 0 / 0.2 会让语速掉 30%、把 token 打到上限（102 字要 8s，
+  // 0.5 只要 6s），整片会被 atempo 追着加速；0.3 既把引导压到原来的 60%，
+  // 语速又和 0.5 基本一致（155 token / 6.16s）。同语言仍保留 0.5 贴合原声。
+  const cfgWeight = crossLang ? 0.3 : 0.5;
   // 引擎重建状态（按这一段配音计）：上次重建时刻 + 已重建次数
   const restart = { at: 0, n: 0 };
   const speakOnce = async (slot, text, out, opts = {}) => {
@@ -2395,7 +2401,8 @@ function makeLocalSynth({ ctx, langId }) {
     return session.speak(text, out, langId, {
       maxTokens: opts.maxTokens,
       maxSeconds: opts.maxSeconds,
-      tag: opts.tag
+      tag: opts.tag,
+      cfgWeight
     });
   };
   return async (text, outWav, index, opts = {}) => {
@@ -2833,7 +2840,8 @@ async function start(payload, proxy, emit) {
                 conc: LOCAL_CONC,
                 steps: LOCAL_STEPS
               },
-              langId
+              langId,
+              crossLang: !sameLanguage
             })
             : makeCloudSynth({
               provider: cloneVoice.provider,
@@ -3458,7 +3466,8 @@ async function startOral(payload, proxy, emit) {
               conc: LOCAL_CONC,
               steps: LOCAL_STEPS
             },
-            langId
+            langId,
+            crossLang: !sameLanguage
           });
           const synthConcurrency = Math.max(1, pool.length * concOf(sess0));
           const totalSegs = Math.max(1, outSegs.length);
@@ -4076,7 +4085,8 @@ async function startTranslate(payload, proxy, emit) {
             conc: LOCAL_CONC,
             steps: LOCAL_STEPS
           },
-          langId
+          langId,
+          crossLang: !sameLanguage
         });
         const synthConcurrency = Math.max(1, pool.length * concOf(sess0));
         // 连续语流：短句先并成完整语段再合成，避免逐句起调与窗口截断（3.9.29）

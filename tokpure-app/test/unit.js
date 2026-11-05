@@ -529,6 +529,25 @@ test('AI 多语口播不再限制片长（120 秒硬限已移除）', () => {
   assert.ok(!/最长 2 分钟/.test(html), '上传提示仍在写「最长 2 分钟」');
 });
 
+test('跨语言配音关闭 CFG 引导（同语言保留 0.5），口音不跟着参考音走', () => {
+  assert.ok(/const cfgWeight = crossLang \? 0\.3 : 0\.5/.test(locSrc), 'makeLocalSynth 未按跨语言切换 cfg');
+  const marks = (locSrc.match(/crossLang: !sameLanguage/g) || []).length;
+  assert.ok(marks >= 3, `跨语言标记只出现 ${marks} 处，配音入口没接上`);
+  assert.ok(/cfgWeight/.test(read('electron/voicelocal.js')), 'voicelocal 未透传 cfgWeight');
+  assert.ok(/payload\.cfg_weight = cfgW/.test(read('electron/voicelocal.js')), 'cfg_weight 未写进消息');
+  const worker = read('resources/voiceclone/worker.py');
+  assert.ok(/msg\.get\("cfg_weight"\)/.test(worker), 'worker 未按句读取 cfg_weight');
+  assert.ok(/abs\(cfg - 0\.5\) > 1e-6/.test(worker), 'worker 未真正把 cfg 传给 generate');
+});
+
+test('翻译提示按目标语言给出标准口音与口语风格', () => {
+  assert.ok(/General American/.test(locSrc), '英语缺少美式英语风格提示');
+  assert.ok(/常见缩略形式/.test(locSrc), '英语缺少口语缩略提示');
+  for (const s of ['标准普通话', '标准日语', '标准韩语', '通用的西班牙语', '巴西葡萄牙语', '标准法语', '标准德语']) {
+    assert.ok(locSrc.includes(s), `缺少风格提示：${s}`);
+  }
+});
+
 /* ---------------- 6. 硬约束 ---------------- */
 test('源码里不存在生效的 anlmdn 噪声参数（成片噪音回归）', () => {
   const files = fs.readdirSync(path.join(ROOT, 'electron')).filter((f) => f.endsWith('.js'));

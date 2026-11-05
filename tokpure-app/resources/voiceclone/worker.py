@@ -376,8 +376,17 @@ def main():
                     kwargs = {"language_id": lang}
                     if ref_path and ready_ref is None:
                         kwargs["audio_prompt_path"] = ref_path
-                    if VC_CFG != 0.5:
-                        kwargs["cfg_weight"] = VC_CFG
+                    # 跨语言配音时上游会传 cfg_weight=0：官方给的降口音做法——
+                    # 参考音是源语言（如中文）时，CFG 会把参考句的口音一起放大，
+                    # 关掉引导后模型按目标语言的通用发音生成，口音明显收敛。
+                    cfg = msg.get("cfg_weight")
+                    try:
+                        cfg = float(cfg) if cfg is not None else VC_CFG
+                    except Exception:
+                        cfg = VC_CFG
+                    cfg = max(0.0, min(1.0, cfg))
+                    if abs(cfg - 0.5) > 1e-6:
+                        kwargs["cfg_weight"] = cfg
                     # 上游 generate() 不接受 max_new_tokens，只能经线程本地变量传进推理循环
                     _CAP.n = cap
                     # 超时从「真正开始算」这一刻起算：排队等待不算这一句的账

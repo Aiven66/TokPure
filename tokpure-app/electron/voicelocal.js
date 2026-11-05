@@ -389,6 +389,10 @@ async function openSession({ refAudio, lang, onLog, threads, conc, steps } = {})
       // 句子序号：worker 的进度事件会原样回传，上层才能把「这一句已生成多少」
       // 折算到整条进度条的正确位置（并发合成时多句同时在跑）
       if (opts && opts.tag != null) payload.tag = opts.tag;
+      // 口音控制：跨语言时上游传 0（关掉 CFG 引导，避免把参考句的源语言口音
+      // 一起搬进目标语言）；同语言仍用 0.5 保持原有音色贴合度
+      const cfgW = Number(opts && opts.cfgWeight);
+      if (Number.isFinite(cfgW)) payload.cfg_weight = cfgW;
       const r = await request(payload, IDLE_TIMEOUT, '本地引擎长时间无响应（合成中断）');
       return r;
     },
