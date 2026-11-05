@@ -488,6 +488,24 @@ test('Windows 与 macOS 的 TTS 链路都在（say / PowerShell System.Speech）
   assert.ok(/SelectVoice/.test(src), 'Windows 合成没有选择音色');
 });
 
+test('Windows 与 macOS 共用同一套配音修复（降噪 / 电平 / 连读 / 字母名）', () => {
+  // 这四件事全部落在跨平台纯 JS 里，两个平台走同一份实现。
+  // 断言「不含平台分支」是为了防止以后有人给 Windows 单开一条路径却漏带修复：
+  // 一旦分叉，这个测试会先失败，而不是等用户在 Windows 上听出问题。
+  const denoise = read('electron/denoise.js');
+  assert.ok(!/process\.platform|isWin|win32/.test(denoise), '降噪出现了平台分支，Windows 可能拿不到句尾高通判据');
+  const loc = read('electron/localize.js');
+  const flow = loc.slice(loc.indexOf('async function buildFlowNarration'), loc.indexOf('async function buildNarration'));
+  assert.ok(flow.length > 1000, '定位不到 buildFlowNarration');
+  assert.ok(!/isWin|process\.platform/.test(flow), '连续语流出现了平台分支');
+  assert.ok(/speakableText\(unit\.text, langId\)/.test(flow), '视频翻译配音没有做字母名展开（AI 会被念成拼音）');
+  assert.ok(/normalizeTrack\(voiceFile\)/.test(flow), '视频翻译配音没有整轨响度收口');
+  assert.ok(/tightenPauses\(r\.pcm, DENOISE_RATE\)/.test(loc), '句内死气口折叠缺失');
+  const nar = loc.slice(loc.indexOf('async function buildNarration'), loc.indexOf('async function renderVertical'));
+  assert.ok(!/isWin|process\.platform/.test(nar), '逐句配音出现了平台分支');
+  assert.ok(/speakableText\(seg\.text, langId\)/.test(nar), 'Windows 系统音色（System.Speech）配音没有做字母名展开');
+});
+
 test('安装克隆引擎的流程存在（venv + pip + 校验 import）', () => {
   const src = read('electron/voicelocal.js');
   assert.ok(/async function install/.test(src), 'voicelocal 没有 install');
