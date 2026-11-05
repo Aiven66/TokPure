@@ -476,4 +476,89 @@ function writeWavS16(file, pcm, rate) {
   return file;
 }
 
-module.exports = { analyzeFrames, suppressNoise, writeWavS16, FRAME, HOP, NFFT };
+/* ---------------- 句内响度拉平（3.9.31） ----------------
+   克隆引擎同一句里会「前几个字很响、后半句突然轻」，或者整句慢慢往下掉。
+   逐句做一次固定增益只能把「整句的平均水位」对齐，句内的慢漂移原样留在成片里，
+   听感就是「一个字一个字音量不一样」。这里按 20ms 帧量电平，用 **450ms 长窗**
+   求慢包络：窗长比一个音节（150~250ms）长得多，所以音节重音、句尾降调都保留，
+   只把「几百毫秒级的整段偏轻/偏响」拉回去。
+   - 只在有语音的帧上动手（低于语音分位 -34dB 的帧一律不动，气口/噪声不会被抬起来）
+   - 增益夹在 ±9dB，且做了 100ms 平滑，不会有抽吸感
+   ============================================================ */
+
+function medianFilter(src, win) {
+  const n = src.length;
+  const half = Math.floor(win / 2);
+  const out = new Float64Array(n);
+  const buf = [];
+  for (let i = 0; i < n; i += 1) {
+    buf.length = 0;
+    for (let j = Math.max(0, i - half); j <= Math.min(n - 1, i + half); j += 1) buf.push(src[j]);
+    buf.sort((a, b) => a - b);
+    out[i] = buf[Math.floor(buf.length / 2)];
+  }
+  return out;
+}
+
+function movingAvg(src, win) {
+  const n = src.length;
+  const half = Math.max(0, Math.floor(win / 2));
+  const out = new Float64Array(n);
+  const pre = new Float64Array(n + 1);
+  for (let i = 0; i < n; i += 1) pre[i + 1] = pre[i] + src[i];
+  for (let i = 0; i < n; i += 1) {
+    const a = Math.max(0, i - half);
+    const b = Math.min(n - 1, i + half);
+    out[i] = (pre[b + 1] - pre[a]) / (b - a + 1);
+  }
+  return out;
+}
+
+const AGC_MAX_DB = 9;
+const AGC_SMOOTH_SEC = 0.45;
+const AGC_GAIN_SEC = 0.1;
+
+function flattenLevel(pcm, rate, opts = {}) {
+  const sr = Number(rate) > 0 ? Number(rate) : 44100;
+  const n = pcm.length;
+  const fl = Math.round(0.02 * sr);
+  const hop = Math.round(0.01 * sr);
+  if (n < fl * 20) return pcm;
+  const frames = Math.floor((n - fl) / hop) + 1;
+  const lv = new Float64Array(frames);
+  for (let k = 0; k < frames; k += 1) {
+    const s = k * hop;
+    let e = 0;
+    for (let i = 0; i < fl; i += 1) {
+      const v = pcm[s + i];
+      e += v * v;
+    }
+    lv[k] = 10 * Math.log10(e / fl + 1e-30);
+  }
+  const sorted = Array.prototype.slice.call(lv).sort((a, b) => a - b);
+  const speech = quantile(sorted, 0.9);
+  if (!(speech > -70)) return pcm;
+  const maxDb = opts.maxDb != null ? opts.maxDb : AGC_MAX_DB;
+  const env = movingAvg(medianFilter(lv, 7), Math.max(3, Math.round(AGC_SMOOTH_SEC / 0.01)));
+  const gains = new Float64Array(frames);
+  for (let k = 0; k < frames; k += 1) {
+    gains[k] = 1;
+    if (lv[k] < speech - 34) continue;
+    const db = Math.max(-maxDb, Math.min(maxDb, speech - env[k]));
+    gains[k] = Math.pow(10, db / 20);
+  }
+  const smooth = movingAvg(gains, Math.max(3, Math.round(AGC_GAIN_SEC / 0.01)));
+  const out = new Float32Array(n);
+  const order = new Float64Array(frames);
+  for (let k = 0; k < frames; k += 1) order[k] = smooth[k];
+  for (let i = 0; i < n; i += 1) {
+    const q = i / hop;
+    const k0 = Math.min(frames - 1, Math.floor(q));
+    const k1 = Math.min(frames - 1, k0 + 1);
+    const r = Math.max(0, q - k0);
+    out[i] = pcm[i] * (order[k0] * (1 - r) + order[k1] * r);
+  }
+  return out;
+}
+
+module.exports = { analyzeFrames, suppressNoise, writeWavS16, flattenLevel, FRAME, HOP, NFFT };

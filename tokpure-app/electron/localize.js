@@ -1257,29 +1257,49 @@ function decodeFloat(file) {
   });
 }
 
-/** 句内长气口折叠：克隆引擎偶尔会在同一句里插 0.5~2.4 秒「死气口」（实测），
-    整句听感就是断成两截。denoise 已经把这些段落拉到数字静音，这里统一压到 0.14 秒，
-    其余样本一个不动（不重采样、不再加任何滤波器，语音一点不少）。 */
+/** 句内长气口折叠：克隆引擎会在同一句里插 0.3~2.4 秒的停顿（实测），
+    听感就是断成两截。3.9.30 只认「数字静音」（|v|<1e-3，即 -60dBFS 以下），
+    而 denoise 只把「比语音低 15dB 且连续 ≥350ms」的深静音拉到零 ——
+    所以**带一点残余噪声的中等气口（-50~-40dBFS）全都漏了过去**，句子中间
+    仍然一段一段地空。这里改成按帧电平判定：本句语音电平（90% 分位）以下 26dB
+    持续 ≥0.26s 就算气口，保留 0.15s、其余折掉。26dB 的门限离轻声字还有余量，
+    句末的真气声不会被吃掉（那通常是 -20~-30dBFS，远高于门限）。
+    只做样本搬移，不重采样、不加滤波器，语音一个样本都不动。 */
 function tightenPauses(pcm, rate) {
   const sr = Number(rate) > 0 ? Number(rate) : DENOISE_RATE;
-  const minRun = Math.round(0.22 * sr);
-  const keepRun = Math.round(0.14 * sr);
-  const quiet = (v) => Math.abs(v) < 1e-3; // -60dBFS 以下：只可能是已确认的死气口
+  const n = pcm.length;
+  const fl = Math.round(0.020 * sr);        // 20ms 帧
+  if (n < fl * 12) return pcm;
+  const frames = Math.floor(n / fl);
+  const lv = new Float64Array(frames);
+  for (let k = 0; k < frames; k += 1) {
+    let e = 0;
+    for (let i = 0; i < fl; i += 1) { const v = pcm[k * fl + i]; e += v * v; }
+    lv[k] = 10 * Math.log10(e / fl + 1e-30);
+  }
+  const sorted = Array.prototype.slice.call(lv).sort((a, b) => a - b);
+  const speech = sorted[Math.min(sorted.length - 1, Math.floor(0.9 * sorted.length))];
+  if (!(speech > -70)) return pcm;
+  const thr = speech - 26;
+  const minRun = Math.round(0.26 * sr);
+  const keepRun = Math.round(0.15 * sr);
   const runs = [];
   let removed = 0;
-  let i = 0;
-  while (i < pcm.length) {
-    if (!quiet(pcm[i])) { i += 1; continue; }
-    let j = i;
-    while (j < pcm.length && quiet(pcm[j])) j += 1;
-    if (j - i >= minRun) {
-      runs.push([i, j]);
-      removed += (j - i) - keepRun;
+  let k = 0;
+  while (k < frames) {
+    if (lv[k] >= thr) { k += 1; continue; }
+    let j = k;
+    while (j < frames && lv[j] < thr) j += 1;
+    const a = k * fl;
+    const b = Math.min(n, j * fl);
+    if (b - a >= minRun) {
+      runs.push([a, b]);
+      removed += (b - a) - keepRun;
     }
-    i = j;
+    k = j;
   }
   if (!runs.length) return pcm;
-  const out = new Float32Array(pcm.length - removed);
+  const out = new Float32Array(n - removed);
   let src = 0;
   let dst = 0;
   for (const [a, b] of runs) {
@@ -1288,16 +1308,20 @@ function tightenPauses(pcm, rate) {
     dst += keepRun;
     src = b;
   }
-  if (src < pcm.length) out.set(pcm.subarray(src), dst);
+  if (src < n) out.set(pcm.subarray(src), dst);
   return out;
 }
 
-/** 把一句克隆音做「谱减 + 句尾裁剪 + 长气口折叠」，返回可继续进清洁链的文件路径 */
+/** 把一句克隆音做「谱减 + 句尾裁剪 + 长气口折叠 + 句内响度拉平」，
+    返回可继续进清洁链的文件路径。
+    响度拉平放在最后：先用 denoise 把气口压成静音，再把有语音的段落按 450ms
+    慢包络拉平，这样「一个字一个字音量不一样」被修掉，气口也不会被 AGC 抬起来。 */
 async function cleanCloneVoice(raw, out) {
   const pcm = await decodeFloat(raw);
   const r = denoise.suppressNoise(pcm, DENOISE_RATE);
   const tight = tightenPauses(r.pcm, DENOISE_RATE);
-  denoise.writeWavS16(out, tight, DENOISE_RATE);
+  const flat = denoise.flattenLevel(tight, DENOISE_RATE);
+  denoise.writeWavS16(out, flat, DENOISE_RATE);
   return {
     file: out,
     mutedSec: r.mutedSec,
@@ -1460,11 +1484,14 @@ function groupForFlow(segs, langId) {
     const text = String((seg && seg.text) || '').trim();
     if (!text) continue;
     const last = units[units.length - 1];
-    // 只并「停顿短、整体不长」的相邻句：并得太长会让单句生成时间翻倍
+    // 只并「停顿短、整体不长」的相邻句：并得太长会让单句生成时间翻倍，
+    // 而且字幕只能按字位比例摊到语段里，语段越长、每条字幕的漂移越大（实测长语段
+    // 末尾能差半句）。3.9.31 把上限收到 60 字（西文 120 字符），兼顾连贯与对齐。
+    const mergeCap = CJK ? 60 : 120;
     const canMerge = !!last
       && (Number(seg.start) - last.end) <= 0.4
-      && (last.text.length + text.length) <= 84
-      && (Number(seg.end) - last.start) <= 9;
+      && (last.text.length + text.length) <= mergeCap
+      && (Number(seg.end) - last.start) <= 8;
     if (canMerge) {
       // 西文并句必须补空格，否则合成出来的两个词会黏成一个（"there.How" 读错）；
       // 中日韩本身不用空格，直接拼
@@ -1523,12 +1550,26 @@ async function buildFlowNarration(units, duration, langId, dir, emit, opts = {})
       const maxTokens = Math.min(1400, Math.round(25 * estSec * 1.35) + 24);
       const maxSeconds = Math.min(600, Math.max(60, Math.round(estSec * 22) + 60));
       const raw = path.join(ttsDir, `${i}.wav`);
+      // 「说完没说完」不能靠感觉：克隆模型偶尔会提前停（或撞上 token 上限），
+      // 这一句的后半截就没了，而字幕照常显示 —— 用户看到的就是「有字幕没声音」。
+      // 判据：命中 token 上限，或时长明显短于「这段话最快也要说多久」，就带更大的
+      // 上限重生成一次（同一路径覆盖），仍不完整才接受，并在日志里计数。
+      const fastSec = chars / (langId === 'zh' || langId === 'ja' || langId === 'ko' ? 7 : 22);
+      const needSec = Math.max(0.35, fastSec * 0.8);
       try {
         if (opts.synthFn) {
-          const r = await opts.synthFn(spokenText, raw, i, { maxTokens, maxSeconds, tag: i });
-          if (r && r.truncated) truncatedUsed += 1;
+          let r = await opts.synthFn(spokenText, raw, i, { maxTokens, maxSeconds, tag: i });
+          const dur0 = wavDuration(raw);
+          if ((r && r.truncated) || dur0 < needSec) {
+            const retryTokens = Math.min(1400, Math.max(maxTokens + 64, Math.round(maxTokens * 1.8)));
+            const r2 = await opts.synthFn(spokenText, raw, i, { maxTokens: retryTokens, maxSeconds, tag: i });
+            if (r2 && r2.truncated) truncatedUsed += 1;
+          }
         } else {
           await synth(spokenText, raw, langId, opts.voice);
+          if (wavDuration(raw) < needSec) {
+            await synth(spokenText, raw, langId, opts.voice);
+          }
         }
       } catch (e) {
         checkCanceled();
@@ -1591,17 +1632,38 @@ async function buildFlowNarration(units, duration, langId, dir, emit, opts = {})
     const want = Number.isFinite(gap) && gap > 0 ? gap : 0.2;
     pauses.push(Math.max(0.12, Math.min(0.5, want)));
   }
-  const starts = new Array(units.length).fill(0);
-  let at = Math.max(0, Math.min(0.2, Number(units[0].start) || 0));
-  for (let i = 0; i < units.length; i += 1) {
-    starts[i] = at;
-    at += spoken[i] + (i < pauses.length ? pauses[i] : 0);
-  }
-  let total = starts[units.length - 1] + spoken[units.length - 1];
 
-  const MIN_TEMPO = 0.90;
+  const MIN_TEMPO = 0.94;
   const MAX_TEMPO = 1.20;
+  const MAX_PAUSE = 0.55;     // 呼吸口最多放到 0.55s：再长就又变成「一句一断」
   const safeDur = Math.max(0.1, duration);
+
+  // 同一份气口数组按不同「缩放 / 额外量」重排时间轴
+  const layout = (scale, extra) => {
+    const arr = new Array(units.length).fill(0);
+    let at = Math.max(0, Math.min(0.2, Number(units[0].start) || 0));
+    for (let i = 0; i < units.length; i += 1) {
+      arr[i] = at;
+      at += spoken[i] + (i < pauses.length ? Math.min(MAX_PAUSE, pauses[i] * scale + extra) : 0);
+    }
+    return { starts: arr, total: arr[units.length - 1] + spoken[units.length - 1] };
+  };
+
+  let played = layout(1, 0);
+  let starts = played.starts;
+  let total = played.total;
+
+  /* 配音比片子短时，3.9.30 是「先把整片放慢到 0.90，再 apad 出一大段片尾静音」。
+     放慢会把声音拖长、咬字发黏，片尾又挂几秒空白，两个都不自然。
+     现在先把这个富余时长摊进语段间的呼吸口（每个最多 1.0s），让语速保持原样；
+     摊不下才允许极轻微放慢（最低 0.94）。 */
+  if (total < duration && pauses.length) {
+    const add = Math.min(duration - total, pauses.length * (MAX_PAUSE - 0.12)) / pauses.length;
+    played = layout(1, add);
+    starts = played.starts;
+    total = played.total;
+  }
+
   let tempo = Math.max(MIN_TEMPO, Math.min(MAX_TEMPO, total / safeDur));
   if (total / tempo > duration + 0.05 && pauses.length) {
     // 到 1.20 还放不下：先按比例压缩气口（最小 0.08s），再允许最后一次轻微变速
@@ -1610,12 +1672,9 @@ async function buildFlowNarration(units, duration, langId, dir, emit, opts = {})
     const minSum = 0.08 * pauses.length;
     const cut = Math.min(over * tempo, Math.max(0, gapSum - minSum));
     const keep = gapSum > 0 ? (gapSum - cut) / gapSum : 1;
-    at = starts[0];
-    for (let i = 0; i < units.length; i += 1) {
-      starts[i] = at;
-      at += spoken[i] + (i < pauses.length ? Math.max(0.08, pauses[i] * keep) : 0);
-    }
-    total = starts[units.length - 1] + spoken[units.length - 1];
+    played = layout(keep, 0);
+    starts = played.starts;
+    total = played.total;
     tempo = Math.max(MIN_TEMPO, Math.min(1.35, total / safeDur));
   }
 

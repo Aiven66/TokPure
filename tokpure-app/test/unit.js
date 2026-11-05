@@ -400,11 +400,11 @@ test('speakableText：中文/日文/韩文里的拉丁缩写按字母名读，�
   assert.strictEqual(speakableText(null, 'zh'), '');
 });
 
-test('tightenPauses：句内长死气口压到 0.14s，语音样本一个不丢', () => {
+test('tightenPauses：句内长气口压到 0.15s，带残余噪声的中等气口也要折', () => {
   const tightenPauses = new Function('DENOISE_RATE',
     `return (${extractFn('tightenPauses')})`)(44100);
   const sr = 44100;
-  const build = (gapSec) => {
+  const build = (gapSec, gapAmp = 0) => {
     const n = () => Math.round(0.5 * sr);
     const out = new Float32Array(n() * 2 + Math.round(gapSec * sr));
     const tone = (base) => {
@@ -412,23 +412,66 @@ test('tightenPauses：句内长死气口压到 0.14s，语音样本一个不丢'
     };
     tone(0);
     tone(n() + Math.round(gapSec * sr));
+    if (gapAmp > 0) {
+      // 气口里带一点残余噪声（-50dBFS 左右）：denoise 不会把它拉成数字静音，
+      // 旧版只看 |v|<1e-3 就会漏掉，成片里句子中间就空一拍
+      for (let i = 0; i < Math.round(gapSec * sr); i += 1) {
+        out[n() + i] = gapAmp * Math.sin(i * 1.7);
+      }
+    }
     return out;
   };
-  // 0.44s 的死气口 → 压到 0.14s，总长从 1.44s 变成 ~1.14s（边界上恰好过零的样本会有 ±几样本出入）
+  // 0.44s 的死气口 → 压到 0.15s，总长从 1.44s 变成 ~1.15s（帧边界会有几个样本出入）
   const a = build(0.44);
   const ta = tightenPauses(a, sr);
-  assert.ok(Math.abs(ta.length - Math.round(1.14 * sr)) <= 4, `总长 ${ta.length} 不在 1.14s±4`);
+  assert.ok(Math.abs(ta.length - Math.round(1.15 * sr)) <= 64, `总长 ${ta.length} 不在 1.15s±64`);
   // 语音样本原样保留（前 0.5s 正弦逐样本一致）
   for (let i = 0; i < Math.round(0.5 * sr); i += 997) assert.strictEqual(ta[i], a[i]);
   // 后半句也没有丢：最后一个样本必须还在
   assert.strictEqual(ta[ta.length - 1], a[a.length - 1]);
-  // 0.1s 的正常呼吸口不折（不是长死气口）
+  // 带 -50dBFS 残余噪声的 0.4s 气口同样折掉
+  const noisy = build(0.4, 0.003);
+  const tn = tightenPauses(noisy, sr);
+  assert.ok(tn.length < noisy.length - Math.round(0.15 * sr), '带噪声的气口没有被折叠');
+  // 0.1s 的正常呼吸口不折（不到 0.26s 的最小气口长度）
   const b = build(0.1);
   const tb = tightenPauses(b, sr);
   assert.strictEqual(tb.length, b.length);
-  // 没有死气口时原样返回（不复制、不改写）
+  // 没有气口时原样返回（不复制、不改写）
   const c = build(0);
   assert.strictEqual(tightenPauses(c, sr), c);
+});
+
+test('flattenLevel：句内慢漂移拉平，气口不被抬起来', () => {
+  const denoise = require('../electron/denoise');
+  const sr = 44100;
+  const n = sr * 3;
+  const pcm = new Float32Array(n);
+  // 前 1.5s 正常音量，后 1.5s 掉 12dB（模拟克隆引擎「后半句突然变轻」）
+  const half = n / 2;
+  for (let i = 0; i < half; i += 1) pcm[i] = 0.5 * Math.sin(i * 0.2);
+  for (let i = half; i < n; i += 1) pcm[i] = 0.125 * Math.sin(i * 0.2);
+  const out = denoise.flattenLevel(pcm, sr);
+  const rms = (arr, a, b) => {
+    let e = 0;
+    for (let i = a; i < b; i += 1) e += arr[i] * arr[i];
+    return Math.sqrt(e / (b - a));
+  };
+  const before = 20 * Math.log10(rms(pcm, half, n) / rms(pcm, 0, half));
+  const after = 20 * Math.log10(rms(out, half, n) / rms(out, 0, half));
+  assert.ok(before < -11, `构造素材两半差 ${before.toFixed(1)}dB 不够`);
+  assert.ok(after > before + 6, `慢漂移只拉回 ${(after - before).toFixed(1)}dB`);
+  assert.ok(after > -7, `拉平后仍差 ${after.toFixed(1)}dB`);
+  // 整句电平大体保持（±3dB 内），不要因为拉平把整句抬响
+  const all = (arr) => 20 * Math.log10(rms(arr, 0, n));
+  assert.ok(Math.abs(all(out) - all(pcm)) < 3, '整句电平被大幅改变');
+  // 静音段（气口）不放大
+  const quiet = new Float32Array(sr * 2);
+  for (let i = 0; i < sr * 2; i += 1) quiet[i] = i < sr ? 0 : 0.2 * Math.sin(i * 0.2);
+  const q = denoise.flattenLevel(quiet, sr);
+  let peak = 0;
+  for (let i = 0; i < sr * 0.8; i += 1) peak = Math.max(peak, Math.abs(q[i]));
+  assert.ok(peak < 1e-4, `气口被抬到 ${peak}`);
 });
 
 test('buildFlowNarration：整片一次变速、连续语流串接、字幕随实际语音重排', () => {
@@ -447,8 +490,11 @@ test('buildFlowNarration：整片一次变速、连续语流串接、字幕随�
   // 整片最多一次变速，且放慢（<1）也要真的执行
   const tempoUse = flow.match(/atempo=/g) || [];
   assert.strictEqual(tempoUse.length, 1, `buildFlowNarration 出现了 ${tempoUse.length} 处 atempo`);
-  assert.ok(/MIN_TEMPO = 0\.90/.test(flow) && /MAX_TEMPO = 1\.20/.test(flow), '整片变速区间不是 0.90~1.20');
+  assert.ok(/MIN_TEMPO = 0\.94/.test(flow) && /MAX_TEMPO = 1\.20/.test(flow), '整片变速区间不是 0.94~1.20');
+  assert.ok(/MAX_PAUSE = 0\.55/.test(flow) && /layout\(1, add\)/.test(flow), '富余时长没有先摊进气口');
   assert.ok(/Math\.abs\(tempo - 1\) > 0\.005/.test(flow), '放慢没有接 atempo');
+  assert.ok(/wavDuration\(raw\) < needSec/.test(flow), '没有做「这句没说完」检测');
+  assert.ok(/retryTokens/.test(flow), '没有带更大的 token 上限重生成');
   assert.ok(/normalizeTrack\(voiceFile\)/.test(flow), '整轨没有做响度收口');
   // 每段有自己的定位与静音补位，amix 后再统一限幅
   assert.ok(/adelay=/.test(flow) && /amix=inputs=/.test(flow), '缺少按时间轴定位拼接');
