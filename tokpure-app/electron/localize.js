@@ -2563,7 +2563,9 @@ function makeLocalSynth({ ctx, langId, crossLang = false }) {
               lang: langId,
               threads: ctx.threads,
               conc: ctx.conc,
-              steps: ctx.steps
+              steps: ctx.steps,
+              // 多路时按槽位恢复原设备（第二路是纯 CPU 副 worker，重建不能变成 MPS）
+              device: ctx.devices && ctx.devices[slot]
             });
             await s.prepare(ctx.refAudio);
             ctx.sessions[slot] = s;
@@ -2658,19 +2660,18 @@ async function start(payload, proxy, emit) {
   emit = withTouch(emit);
   const dir = makeJobDirFor(job);
   let localSession = null;
-  /* 本地克隆并行方案（按内存定容，而不是按核数硬开）
-     每个常驻 worker 要扛一份 0.5B 模型权重 + 解码 KV，实测常驻 2.5~3.7GB。
-     16GB 机器上开 2~3 路会吃到 7~11GB，触发 macOS 内存压缩/换页，
-     于是每路 CPU 掉到 30~40%、单句从 40 秒拖到 2 分钟以上——用户看到的就是「卡死」。
-     所以内存低于 40GB 只开 1 路，用进程内多句并发榨干多核；
-     内存够大才开第二路（每路再省一份模型内存就没必要了）。 */
+  /* 本地克隆并行方案（按内存与空闲内存定容，而不是按核数硬开）
+     实测（Apple Silicon / Metal）：单个 MPS 进程的聚合吞吐约 6 token/s，把进程内并发
+     从 1 加到 5 并不会提高总吞吐，只会把单句延迟拉长 3 倍（首句从约 40 秒拖到 2 分钟
+     以上，进度条看着像卡死）。所以并发固定为 2：单句更快出结果，总时长不变。
+     每个常驻 worker 要扛一份 0.5B 模型权重 + 解码 KV，实测常驻 2.5~3.7GB；
+     16GB 机器上开多路会触发换页，收益会被吃光甚至更慢，因此低内存只开 1 路。 */
   const MEM_GB = Math.max(1, Math.floor(os.totalmem() / (1024 ** 3)));
   const CPU_N = Math.max(2, (os.cpus() || []).length || 4);
   const LOCAL_WORKERS = MEM_GB >= 40 ? 2 : 1;
-  const LOCAL_CONC = MEM_GB >= 32 ? 8 : 5;
-  // 实测（M1 16GB / Metal）：进程内并发 1 路约 2~3 token/s、5 路约 9~15 token/s，
-  // 逐 token 解码时 Python 侧的等待正好被 GPU 掩盖；再往上加收益见顶，只增延迟。
-  // CPU 回退时上层会把并发降到 3，避免 5 句 × 多线程抢核反而更慢。
+  // 实测 MPS 上并发 1/3/5 的聚合吞吐在噪声范围内基本一致，但单句延迟随并发线性变长；
+  // 取 2 兼顾吞吐与「每句多久能出结果」的体感。CPU 回退时也按 2 路（再多只会抢核）。
+  const LOCAL_CONC = MEM_GB >= 32 ? 4 : 2;
   const LOCAL_THREADS = Math.max(2, Math.floor(CPU_N / 3));
   // flow-matching 的采样步数：8 步仍有轻微颗粒感，12 步的波形明显更顺滑
   // （磨平的正是「沙沙/发闷」的底噪），解码耗时多约一倍，生成仍需占大头。
@@ -2975,8 +2976,10 @@ async function start(payload, proxy, emit) {
               dir,
               langId
             });
-          // 并发上限 = 会话数 × 每进程并发句数，与 worker 内部信号量一致
-          const synthConcurrency = isLocal ? Math.max(1, localPool.length * concOf(localPool[0])) : 3;
+          // 并发上限 = 各会话每进程并发句数之和，与 worker 内部信号量一致
+          const synthConcurrency = isLocal
+            ? Math.max(1, localPool.reduce((n, s) => n + concOf(s), 0))
+            : 3;
           const totalSegs = Math.max(1, outSegs.length);
           // 进度桥：句间按文字长度加权，句内用 worker 的 token 进度（见 makeTtsProgress）
           const ttsProg = makeTtsProgress({
@@ -3373,17 +3376,19 @@ async function startOral(payload, proxy, emit) {
   const pool = [];
   const MEM_GB = Math.max(1, Math.floor(os.totalmem() / (1024 ** 3)));
   const CPU_N = Math.max(2, (os.cpus() || []).length || 4);
-  const LOCAL_CONC = MEM_GB >= 32 ? 8 : 5;
+  // 实测 MPS 上并发 1/3/5 的聚合吞吐在噪声范围内基本一致，但单句延迟随并发线性变长；
+  // 取 2 兼顾吞吐与「每句多久能出结果」的体感（见 startTranslate 处的实测说明）。
+  const LOCAL_CONC = MEM_GB >= 32 ? 4 : 2;
   const LOCAL_THREADS = Math.max(2, Math.floor(CPU_N / 3));
   const LOCAL_STEPS = 12;
   const beatBus = { sink: null };
 
-  /* 实际并发 = 会话数 × 每进程并发句数；GPU 上取满，CPU 回退时降到 3 路
-     （实测 CPU 上 3 路吞吐最高，再多只会互相抢核，单句反而更慢）。 */
+  /* 实际并发 = 各会话每进程并发句数之和（CPU 上 2 路吞吐最高，再多只会互相抢核） */
   const concOf = (sess) => {
     const dev = (sess && sess.device) || 'cpu';
-    return dev === 'mps' ? LOCAL_CONC : Math.min(3, LOCAL_CONC);
+    return dev === 'mps' ? LOCAL_CONC : Math.min(2, LOCAL_CONC);
   };
+  const poolConc = () => pool.reduce((n, s) => n + concOf(s), 0);
 
   try {
     /* 0) FFmpeg 预检：缺失/被覆盖时在开跑前就报清楚，而不是跑到渲染出片才 spawn ENOENT */
@@ -3580,7 +3585,6 @@ async function startOral(payload, proxy, emit) {
       let ttsError = '';
       if (!sameLanguage) {
         try {
-          const sess0 = pool[0];
           const synthFn = makeLocalSynth({
             ctx: {
               sessions: pool,
@@ -3592,7 +3596,7 @@ async function startOral(payload, proxy, emit) {
             langId,
             crossLang: !sameLanguage
           });
-          const synthConcurrency = Math.max(1, pool.length * concOf(sess0));
+          const synthConcurrency = Math.max(1, poolConc());
           const totalSegs = Math.max(1, outSegs.length);
           const ttsProg = makeTtsProgress({
             weights: outSegs.map((s) => Math.max(3, String(s.text || '').length)),
@@ -3993,16 +3997,30 @@ async function startTranslate(payload, proxy, emit) {
   const dir = makeJobDirFor(job);
   const pool = [];
   const MEM_GB = Math.max(1, Math.floor(os.totalmem() / (1024 ** 3)));
+  const FREE_GB = os.freemem() / (1024 ** 3);
   const CPU_N = Math.max(2, (os.cpus() || []).length || 4);
-  const LOCAL_CONC = MEM_GB >= 32 ? 8 : 5;
+  /* 并发与副 worker 的实测依据（Apple Silicon / Metal，同一句 32 字中文，steps=12）：
+     - 单 worker 的聚合吞吐约 6 token/s；进程内并发 1/3/5 的聚合吞吐在噪声范围内
+       基本一致，但单句延迟随并发线性变长（并发 5 时首句要 130 秒才出结果，并发 1
+       约 30~45 秒）。所以并发取 2：总时长不变，但每句更快出结果、进度条不再「卡死」。
+     - GPU 饱和时 CPU 核基本空闲：再起一个纯 CPU 的常驻 worker 分担句子，稳态吞吐
+       +30%~60%（模型、采样参数、步数全不变，听感无差）。代价是常驻多 3GB 内存，
+       16GB 机器一旦开始换页收益就被吃光（实测 swap 涨到 16GB 时反而更慢），
+       所以只在空闲内存 ≥5GB 时才启用，否则坚决只跑 1 路。
+     - CPU 侧线程数实测 2 最优（4/6 线程反而更慢），并发也压在 2。 */
+  const LOCAL_CONC = MEM_GB >= 32 ? 4 : 2;
+  const LOCAL_WORKERS = MEM_GB >= 12 && FREE_GB >= 5 ? 2 : 1;
   const LOCAL_THREADS = Math.max(2, Math.floor(CPU_N / 3));
+  const HELPER_THREADS = 2;
+  const HELPER_CONC = 2;
   // flow-matching 采样步数：12 步的波形明显更顺滑，磨掉 8 步残留的颗粒感
   const LOCAL_STEPS = 12;
   const beatBus = { sink: null };
   const concOf = (sess) => {
     const dev = (sess && sess.device) || 'cpu';
-    return dev === 'mps' ? LOCAL_CONC : Math.min(3, LOCAL_CONC);
+    return dev === 'mps' ? LOCAL_CONC : HELPER_CONC;
   };
+  const poolConc = () => pool.reduce((n, s) => n + concOf(s), 0);
 
   /* 进度闸门：配音阶段的克隆进程日志、后台 BGM 任务会穿插发早阶段的读数，
      统一在这里夹成「只增不减」，进度条永远不会回退；顺带刷新任务锁心跳 */
@@ -4085,6 +4103,28 @@ async function startTranslate(payload, proxy, emit) {
     cloneLoaded = true;
     pool.push(session);
     activeJob.killSessions = () => pool.forEach((s) => { try { s.close(); } catch (_) {} });
+    // 副 worker：GPU 已饱和时用空闲的 CPU 核分担句子（内存不足时跳过）。
+    // 后台加载、不阻塞主流程；起来后自动进入 pool，由 makeLocalSynth 按句轮转分配。
+    // 起不来（内存不够 / 模型加载失败）就少一路，绝不影响主任务。
+    if (LOCAL_WORKERS > 1) {
+      (async () => {
+        try {
+          const h = await voicelocal.openSession({
+            refAudio: profile.absRef,
+            lang: detected,
+            device: 'cpu',
+            threads: HELPER_THREADS,
+            conc: HELPER_CONC,
+            steps: LOCAL_STEPS
+          });
+          await h.prepare(profile.absRef);
+          checkCanceled();
+          pool.push(h);
+        } catch (e) {
+          console.warn('[tts] CPU 副 worker 未启用：', String((e && e.message) || e).replace(/\s+/g, ' ').slice(0, 120));
+        }
+      })();
+    }
     checkCanceled();
     emit({ stage: '我的声音已就绪', percent: 32 });
 
@@ -4193,19 +4233,20 @@ async function startTranslate(payload, proxy, emit) {
       let ttsNote = '';
       let ttsError = '';
       try {
-        const sess0 = pool[0];
         const synthFn = makeLocalSynth({
           ctx: {
             sessions: pool,
             refAudio: profile.absRef,
             threads: LOCAL_THREADS,
             conc: LOCAL_CONC,
-            steps: LOCAL_STEPS
+            steps: LOCAL_STEPS,
+            // 槽位 0 是 MPS 主 worker，槽位 1 是纯 CPU 副 worker（重建时据此恢复设备）
+            devices: ['auto', 'cpu']
           },
           langId,
           crossLang: !sameLanguage
         });
-        const synthConcurrency = Math.max(1, pool.length * concOf(sess0));
+        const synthConcurrency = Math.max(1, LOCAL_CONC + (LOCAL_WORKERS > 1 ? HELPER_CONC : 0));
         // 连续语流：短句先并成完整语段再合成，避免逐句起调与窗口截断（3.9.29）
         const units = groupForFlow(outSegs, langId);
         const ttsProg = makeTtsProgress({
@@ -4327,7 +4368,7 @@ async function flowNarrationForTest(payload = {}) {
   let synthFn;
   let synthConcurrency = 1;
   const threads = Math.max(2, Math.floor(((os.cpus() || []).length || 4) / 3));
-  const conc = 5;
+  const conc = 2;
   const steps = 12;
   try {
     if (payload.voiceId) {

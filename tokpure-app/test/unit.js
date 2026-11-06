@@ -335,8 +335,27 @@ test('3.9.34 音质：vocoder 步数 8→12，合成文本补齐句末标点', (
   assert.ok(/ensureTerminal\(speakableText\(unit\.text, langId\), langId\)/.test(flow), '连续语流合成前没补句末标点');
 });
 
+/* ---------------- 5.0b 3.9.35 提速（并发降噪 + CPU 副 worker） ---------------- */
+test('3.9.35 提速：并发统一为 2，空闲内存充足时启用 CPU 副 worker', () => {
+  // 实测：MPS 上并发 1/3/5 的聚合吞吐基本一致，但单句延迟随并发线性变长，
+  // 所以三个入口都收敛到 2 路；旧的高并发配置必须彻底消失。
+  const conc = (locSrc.match(/const LOCAL_CONC = MEM_GB >= 32 \? 4 : 2;/g) || []).length;
+  assert.ok(conc >= 3, `只有 ${conc} 个入口把并发改成 2 路（切片/口播/翻译应一致）`);
+  assert.ok(!/LOCAL_CONC = MEM_GB >= 32 \? 8 : 5;/.test(locSrc), '仍有入口停在 5 路并发');
+  // 副 worker 必须按「空闲内存」决定，不能只看总内存，否则 16GB 机器会换页反而更慢
+  assert.ok(/const LOCAL_WORKERS = MEM_GB >= 12 && FREE_GB >= 5 \? 2 : 1;/.test(locSrc), '缺少按空闲内存启用副 worker 的判据');
+  assert.ok(/const FREE_GB = os\.freemem\(\)/.test(locSrc), '没有读取系统空闲内存');
+  assert.ok(/device: 'cpu'/.test(locSrc), '副 worker 没有显式指定 CPU 设备');
+  assert.ok(/threads: HELPER_THREADS/.test(locSrc), '副 worker 没有用实测最优的 2 线程');
+  assert.ok(/devices: \['auto', 'cpu'\]/.test(locSrc), '会话重建时没有恢复各槽位的设备');
+  // 并发上限必须按各会话求和，不能再用「会话数 × 第一路并发」高估
+  const sumConc = (locSrc.match(/reduce\(\(n, s\) => n \+ concOf\(s\), 0\)/g) || []).length;
+  assert.ok(sumConc >= 2, `只有 ${sumConc} 处按各会话求和并发上限`);
+  const vc = read('electron/voicelocal.js');
+  assert.ok(/if \(device\) env\.VC_DEVICE = String\(device\)/.test(vc), 'openSession 不支持指定设备');
+});
+
 /* ---------------- 5.1 3.9.29 连续语流（不再断断续续 / 更自然） ---------------- */
-/** 从源码里切出一个函数声明（按花括号配对），用于直接跑纯函数 */
 function extractFn(name) {
   const start = locSrc.indexOf(`function ${name}(`);
   assert.ok(start >= 0, `localize.js 里找不到 ${name}`);

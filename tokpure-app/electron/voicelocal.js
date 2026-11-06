@@ -180,7 +180,7 @@ function requireEngine() {
  * 启动一次常驻会话。
  * @param {{refAudio:string, lang:string, onLog?:Function}} opts
  */
-async function openSession({ refAudio, lang, onLog, threads, conc, steps } = {}) {
+async function openSession({ refAudio, lang, onLog, threads, conc, steps, device } = {}) {
   const s = requireEngine();
   if (!refAudio || !fs.existsSync(refAudio)) throw new Error('缺少原声参考音频');
 
@@ -205,7 +205,9 @@ async function openSession({ refAudio, lang, onLog, threads, conc, steps } = {})
   // 设备自动选择：Apple Silicon 优先走 Metal(MPS)，实测同一批句子吞吐约为
   // CPU 的 3~5 倍（逐 token 解码时 Python 侧的等待被 GPU 掩盖）；MPS 不可用
   // 或加载失败时 worker 会自动退回 cpu，不会让任务失败。
-  if (!env.VC_DEVICE) env.VC_DEVICE = 'auto';
+  // 上层也可以显式指定（如 GPU 已饱和时再起一个 device=cpu 的副 worker）。
+  if (device) env.VC_DEVICE = String(device);
+  else if (!env.VC_DEVICE) env.VC_DEVICE = 'auto';
   // 进程内并发句数：0.5B 模型逐 token 解码时 Python 线程经常在等矩阵乘，
   // 同时跑 2~3 句能把空闲核利用起来（上游 alignment 分析器已在上层替换为无状态实现）
   if (conc) env.VC_CONC = String(conc);
