@@ -146,6 +146,116 @@ function voiceInfo(name) {
 
 let activeJob = null;
 
+/* ---------------- 任务锁（含自愈） ----------------
+   多语切片 / 多语口播 / 视频翻译三个入口共用同一把锁：本地克隆引擎同时喂两条
+   任务只会互相抢内存，最后两条都变龟速。旧实现只在 finally 里清锁，于是只要
+   有一个 await 永远不返回（引擎进程已经没了、下载卡住、界面重载后没人再发进度、
+   用户点过「停止」但子任务没死透），锁就永久挂着：界面明明空闲，点「开始」却
+   被告知「已有任务进行中」。
+   现在给锁补上时间线与看门狗：每个进度回调都刷新心跳，超过 JOB_IDLE_MS 没有任何
+   进度就判定陈旧并强制释放；申请锁时旧任务正在收尾则先等它一小会。 */
+const JOB_IDLE_MS = 10 * 60 * 1000;  // 连续 10 分钟没有任何进度 → 判定陈旧
+const JOB_TAIL_WAIT_MS = 2500;       // 旧任务正在收尾时，最多等它这么久
+const KIND_NAME = { cast: 'AI 多语切片', oral: 'AI 多语口播', translate: 'AI 视频翻译' };
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** 给 emit 包一层心跳：进度回调本身就是「任务还活着」的证据 */
+function withTouch(fn) {
+  return (p) => {
+    touchJob(p && p.stage);
+    return fn(p);
+  };
+}
+
+/** 刷新心跳：每个进度回调都会经过这里，看门狗据此判断任务是否还活着 */
+function touchJob(phase) {
+  if (!activeJob) return;
+  activeJob.tick = Date.now();
+  if (phase) activeJob.phase = String(phase).replace(/\s+/g, ' ').slice(0, 24);
+}
+
+function jobLabel(job) {
+  if (!job) return '';
+  const name = KIND_NAME[job.kind] || 'AI 任务';
+  return job.phase ? `${name} · ${job.phase}` : name;
+}
+
+/** 清锁（幂等）：只清自己那一把，避免旧任务的 finally 误清新任务的锁 */
+function releaseJob(job) {
+  if (!job) return;
+  job.done = true;
+  if (job.watch) { clearInterval(job.watch); job.watch = null; }
+  if (activeJob === job) activeJob = null;
+}
+
+/** 强制释放陈旧锁：先按取消处理（杀子进程、关会话），再清锁 */
+function forceReleaseJob(reason) {
+  const job = activeJob;
+  if (!job) return;
+  const label = jobLabel(job);
+  job.canceled = true;
+  (job.children || new Set()).forEach((c) => { try { c.kill('SIGKILL'); } catch (_) {} });
+  if (job.child) { try { job.child.kill('SIGKILL'); } catch (_) {} }
+  (job.aborts || []).forEach((c) => { try { c.abort(); } catch (_) {} });
+  if (typeof job.killSessions === 'function') { try { job.killSessions(); } catch (_) {} }
+  try { lipsync.cancel(); } catch (_) {}
+  releaseJob(job);
+  console.warn(`[job] 已释放陈旧任务锁（${reason}）：${label}`);
+}
+
+/** 申请任务锁：旧任务正在收尾就等一会，陈旧锁直接释放，仍占用才报错 */
+async function acquireJob(kind) {
+  const t0 = Date.now();
+  while (activeJob && Date.now() - t0 < JOB_TAIL_WAIT_MS) {
+    if (activeJob.done) { activeJob = null; break; }
+    await sleep(120);
+  }
+  if (activeJob) {
+    const idle = Date.now() - (activeJob.tick || activeJob.startedAt || 0);
+    if (idle > JOB_IDLE_MS) forceReleaseJob(`已 ${Math.round(idle / 60000)} 分钟没有进度`);
+    else throw new Error(`已有任务进行中（${jobLabel(activeJob)}），请稍候`);
+  }
+  const job = {
+    kind,
+    canceled: false,
+    child: null,
+    children: new Set(),
+    aborts: new Set(),
+    killSessions: null,
+    startedAt: Date.now(),
+    tick: Date.now(),
+    phase: '准备中',
+    done: false
+  };
+  job.watch = setInterval(() => {
+    if (activeJob !== job) { releaseJob(job); return; }
+    const idle = Date.now() - job.tick;
+    if (idle > JOB_IDLE_MS) forceReleaseJob(`连续 ${Math.round(idle / 60000)} 分钟没有进度`);
+  }, 30000);
+  if (job.watch.unref) job.watch.unref();
+  activeJob = job;
+  return job;
+}
+
+/** 只检查不占锁（试听这类短任务用）：陈旧锁照样会被释放 */
+function assertJobIdle(msg) {
+  if (!activeJob) return;
+  const idle = Date.now() - (activeJob.tick || activeJob.startedAt || 0);
+  if (idle > JOB_IDLE_MS) { forceReleaseJob(`已 ${Math.round(idle / 60000)} 分钟没有进度`); return; }
+  throw new Error(`${msg}（${jobLabel(activeJob)}），请稍后再试`);
+}
+
+/** 建临时目录失败时不能把锁留在手上 */
+function makeJobDirFor(job) {
+  try {
+    return makeJobDir();
+  } catch (e) {
+    releaseJob(job);
+    throw e;
+  }
+}
+
 const langById = (id) => LANGS.find((l) => l.id === id) || null;
 const threads = () => Math.max(2, Math.min(8, (os.cpus() || []).length - 2 || 4));
 
@@ -626,8 +736,8 @@ async function llamaTranslate(lines, langId, modelId, opts = {}) {
   // 0.5B/1.5B 这类小模型对「英文长指令」会直接照抄原文；
   // 中文系统提示 + 一条目标语言示例（few-shot）能显著提升翻译成功率。
   const sys = opts.strict
-    ? `你是专业视频字幕翻译。只输出${lang.zhName}译文，禁止输出原文、拼音、注释或解释。${lang.style || ''}`
-    : `你是专业视频字幕翻译。把每条字幕翻译成自然、口语化的${lang.zhName}。${lang.style || ''}`;
+    ? `你是专业视频字幕翻译。只输出${lang.zhName}译文，禁止输出原文、拼音、注释或解释。${lang.style || ''}译文的口语时长要尽量贴近原文：中译外时外语通常更啰嗦，请精选措辞、宁短勿长。`
+    : `你是专业视频字幕翻译。把每条字幕翻译成自然、口语化的${lang.zhName}。${lang.style || ''}口语时长尽量贴近原文，宁短勿长。`;
   const prompt = opts.simple
     ? `逐条翻译为${lang.zhName}，只输出「编号. 译文」：\n${numbered}`
     : opts.strict
@@ -1260,10 +1370,11 @@ function decodeFloat(file) {
 /** 句内长气口折叠：克隆引擎会在同一句里插 0.3~2.4 秒的停顿（实测），
     听感就是断成两截。3.9.30 只认「数字静音」（|v|<1e-3，即 -60dBFS 以下），
     而 denoise 只把「比语音低 15dB 且连续 ≥350ms」的深静音拉到零 ——
-    所以**带一点残余噪声的中等气口（-50~-40dBFS）全都漏了过去**，句子中间
-    仍然一段一段地空。这里改成按帧电平判定：本句语音电平（90% 分位）以下 26dB
-    持续 ≥0.26s 就算气口，保留 0.15s、其余折掉。26dB 的门限离轻声字还有余量，
-    句末的真气声不会被吃掉（那通常是 -20~-30dBFS，远高于门限）。
+    所以带一点残余噪声的中等气口（-50~-40dBFS）全都漏了过去，句子中间仍然一段一段地空。
+    3.9.34 把判据再收一档：只有「比本句语音低 30dB、且连续 ≥0.45s」的气口才算
+    引擎的异常停顿，折到 0.30s；0.2~0.4s 的正常逗号换气原样保留。
+    旧版 26dB / 0.26s / 折到 0.15s 会把真人该有的换气全部压平 —— 语音听起来
+    「赶、平、像机器念」，而且轻声的辅音（/s/ /f/ 一类）偶尔也被当气口吃掉。
     只做样本搬移，不重采样、不加滤波器，语音一个样本都不动。 */
 function tightenPauses(pcm, rate) {
   const sr = Number(rate) > 0 ? Number(rate) : DENOISE_RATE;
@@ -1280,9 +1391,9 @@ function tightenPauses(pcm, rate) {
   const sorted = Array.prototype.slice.call(lv).sort((a, b) => a - b);
   const speech = sorted[Math.min(sorted.length - 1, Math.floor(0.9 * sorted.length))];
   if (!(speech > -70)) return pcm;
-  const thr = speech - 26;
-  const minRun = Math.round(0.26 * sr);
-  const keepRun = Math.round(0.15 * sr);
+  const thr = speech - 30;
+  const minRun = Math.round(0.45 * sr);
+  const keepRun = Math.round(0.30 * sr);
   const runs = [];
   let removed = 0;
   let k = 0;
@@ -1451,6 +1562,20 @@ const LETTER_NAMES = {
   }
 };
 
+/** 合成前补齐句末标点。
+    字幕是按原片切出来的，经常停在半句（结尾是逗号、冒号，甚至没有标点）；
+    克隆模型靠句末标点判断「降调收尾 + 停住」，缺标点时会用上扬语调一路读下去，
+    听感就是「没读完 / 断在半截」。只补一个句号，不增删任何文字。 */
+function ensureTerminal(text, langId) {
+  const src = String(text || '').trim();
+  if (!src) return src;
+  const zh = String(langId || '').toLowerCase();
+  const period = zh === 'zh' || zh === 'ja' ? '。' : '.';
+  const done = zh === 'zh' || zh === 'ja' ? /[。！？!?…]$/ : /[.!?…]$/;
+  if (done.test(src)) return src;
+  return src.replace(/[，、；：,;:\s]+$/, '') + period;
+}
+
 /** 合成用文本：CJK 语种下把独立大写缩写展开成字母名，其他语种原样返回 */
 function speakableText(text, langId) {
   const src = String(text || '');
@@ -1540,7 +1665,7 @@ async function buildFlowNarration(units, duration, langId, dir, emit, opts = {})
       checkCanceled();
       const unit = units[i];
       // 混读：字幕保持原文，送进合成的是「字母名展开版」（AI → 诶艾 / エーアイ / 에이아이）
-      const spokenText = speakableText(unit.text, langId);
+      const spokenText = ensureTerminal(speakableText(unit.text, langId), langId);
       // 按展开后的字数估时长：缩写多的句子（AI、GPT、API）展开后会明显变长，
       // 仍按原文字数算会把 token 上限给小、句子被截断
       const chars = Math.max(4, spokenText.length);
@@ -1809,7 +1934,7 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
         // 到点截断比让整条任务停在这一句上强。
         const maxSeconds = Math.min(600, Math.max(60, Math.round(slot * 40) + 60));
         let voice;
-        const spokenText = speakableText(seg.text, langId);
+        const spokenText = ensureTerminal(speakableText(seg.text, langId), langId);
         try {
           const r = await opts.synthFn(spokenText, raw, i, { maxTokens, maxSeconds, tag: i });
           if (r && r.truncated) truncatedUsed += 1;
@@ -1886,7 +2011,7 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
     const seg = segs[i];
     const raw = opts.synthFn ? raws[i] : path.join(ttsDir, `${i}.wav`);
     if (!opts.synthFn) {
-      const voice = await synth(speakableText(seg.text, langId), raw, langId, opts.voice);
+      const voice = await synth(ensureTerminal(speakableText(seg.text, langId), langId), raw, langId, opts.voice);
       if (!voice) defaultVoiceUsed = true;
       if (!voiceUsed) voiceUsed = voice;
     }
@@ -1989,7 +2114,7 @@ async function buildNarration(segs, duration, langId, dir, emit, from, to, opts 
 
 /** 试听：用同一套音色与塑形链合成一句话，返回 data URL 供渲染层直接播放 */
 async function previewVoice(payload = {}) {
-  if (activeJob) throw new Error('译制进行中，请稍后再试听');
+  assertJobIdle('译制进行中');
   const langId = langById(payload.lang) ? payload.lang : 'en';
   const dir = path.join(app.getPath('temp'), 'tokpure-voice-preview');
   fs.mkdirSync(dir, { recursive: true });
@@ -2505,11 +2630,9 @@ function uniqueOut(dir, langId, ext) {
 }
 
 async function start(payload, proxy, emit) {
-  if (activeJob) throw new Error('已有译制任务进行中，请稍候');
-  if (aijobs.isBusy()) throw new Error('已有本地 AI 任务进行中，请稍候');
-
   const targets = Array.from(new Set((payload.targets || []).filter((id) => langById(id))));
   if (!targets.length) throw new Error('请至少选择一种目标语言');
+  if (aijobs.isBusy()) throw new Error('已有本地 AI 任务进行中，请稍候');
   const clipSeconds = Number(payload.clipSeconds) || 0;
   const sourceLang = payload.sourceLang || 'auto';
   const translateModel = normalizeTranslateModel(payload.translateModel);
@@ -2531,8 +2654,9 @@ async function start(payload, proxy, emit) {
     }
   }
 
-  activeJob = { canceled: false, child: null, children: new Set(), killSessions: null };
-  const dir = makeJobDir();
+  const job = await acquireJob('cast');
+  emit = withTouch(emit);
+  const dir = makeJobDirFor(job);
   let localSession = null;
   /* 本地克隆并行方案（按内存定容，而不是按核数硬开）
      每个常驻 worker 要扛一份 0.5B 模型权重 + 解码 KV，实测常驻 2.5~3.7GB。
@@ -2548,9 +2672,9 @@ async function start(payload, proxy, emit) {
   // 逐 token 解码时 Python 侧的等待正好被 GPU 掩盖；再往上加收益见顶，只增延迟。
   // CPU 回退时上层会把并发降到 3，避免 5 句 × 多线程抢核反而更慢。
   const LOCAL_THREADS = Math.max(2, Math.floor(CPU_N / 3));
-  // flow-matching 的采样步数：6 步虽然快，但 vocoder 会留下颗粒感/沙沙的底噪，
-  // 8 步的听感明显干净，时间只多约一成，质量优先。
-  const LOCAL_STEPS = 8;
+  // flow-matching 的采样步数：8 步仍有轻微颗粒感，12 步的波形明显更顺滑
+  // （磨平的正是「沙沙/发闷」的底噪），解码耗时多约一倍，生成仍需占大头。
+  const LOCAL_STEPS = 12;
   const localPool = [];
   /* GPU 上把并发取满，CPU 回退时降到 3 路（CPU 上 3 路吞吐最高，再多只会抢核） */
   const concOf = (sess) => {
@@ -2983,7 +3107,7 @@ async function start(payload, proxy, emit) {
     // 渲染失败的语种在卡片上已经有明确提示，这里只把真正出片的文件交给结果列表
     return { outputDir: outDir, files: files.filter((f) => f && f.video), sourceVoice: srcVoice };
   } finally {
-    activeJob = null;
+    releaseJob(job);
     localPool.forEach((s) => { try { s.close(); } catch (_) {} });
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }
@@ -2991,19 +3115,25 @@ async function start(payload, proxy, emit) {
 
 function cancel() {
   if (!activeJob) return false;
-  activeJob.canceled = true;
-  const kids = new Set([...(activeJob.children || []), activeJob.child].filter(Boolean));
+  const job = activeJob;
+  job.canceled = true;
+  const kids = new Set([...(job.children || new Set()), job.child].filter(Boolean));
   kids.forEach((c) => { try { c.kill('SIGKILL'); } catch (_) {} });
   // 口型模型权重是一次性下载，下载器只认 AbortController，这里一并中止，
   // 否则用户点了「停止」还要等几百 MB 下载完才真正结束。
-  (activeJob.aborts || []).forEach((c) => { try { c.abort(); } catch (_) {} });
-  if (typeof activeJob.killSessions === 'function') {
-    try { activeJob.killSessions(); } catch (_) {}
+  (job.aborts || []).forEach((c) => { try { c.abort(); } catch (_) {} });
+  if (typeof job.killSessions === 'function') {
+    try { job.killSessions(); } catch (_) {}
   }
   try { lipsync.cancel(); } catch (_) {}
   ['whisper', 'whisper-base', 'llamacpp', TRANSLATE_LITE, TRANSLATE_FULL].forEach((id) => {
     try { hub.cancelInstall(id); } catch (_) {}
   });
+  /* 停止后给作业 4 秒正常收尾（写日志、清临时目录）；超过 4 秒仍没释放就强制清锁，
+     否则用户「停止 → 立刻重新开始」会被告知「已有任务进行中」（卡住的子进程不会自己回来）。 */
+  setTimeout(() => {
+    if (activeJob === job) forceReleaseJob('用户已停止，作业未在 4 秒内收尾');
+  }, 4000).unref?.();
   return true;
 }
 
@@ -3225,12 +3355,10 @@ async function ensureOralReady(proxy, emit, from, to) {
 }
 
 async function startOral(payload, proxy, emit) {
-  if (activeJob) throw new Error('已有任务进行中，请稍候');
-  if (aijobs.isBusy()) throw new Error('已有本地 AI 任务进行中，请稍候');
-
   const targets = Array.from(new Set((payload.targets || []).filter((id) => langById(id))));
   if (!targets.length) throw new Error('请至少选择一种目标语言');
   if (!payload.input || !fs.existsSync(payload.input)) throw new Error('请先选择口播短视频');
+  if (aijobs.isBusy()) throw new Error('已有本地 AI 任务进行中，请稍候');
   const sourceLang = payload.sourceLang || 'auto';
   const translateModel = normalizeTranslateModel(payload.translateModel);
   const color = /^#[0-9a-f]{6}$/i.test(payload.subtitleColor || '') ? payload.subtitleColor : '#FFFFFF';
@@ -3239,20 +3367,15 @@ async function startOral(payload, proxy, emit) {
   const keepBgm = payload.keepBgm !== false;
   const needLip = payload.lipSync !== false;
 
-  activeJob = {
-    canceled: false,
-    child: null,
-    children: new Set(),
-    aborts: new Set(),
-    killSessions: null
-  };
-  const dir = makeJobDir();
+  const job = await acquireJob('oral');
+  emit = withTouch(emit);
+  const dir = makeJobDirFor(job);
   const pool = [];
   const MEM_GB = Math.max(1, Math.floor(os.totalmem() / (1024 ** 3)));
   const CPU_N = Math.max(2, (os.cpus() || []).length || 4);
   const LOCAL_CONC = MEM_GB >= 32 ? 8 : 5;
   const LOCAL_THREADS = Math.max(2, Math.floor(CPU_N / 3));
-  const LOCAL_STEPS = 8;
+  const LOCAL_STEPS = 12;
   const beatBus = { sink: null };
 
   /* 实际并发 = 会话数 × 每进程并发句数；GPU 上取满，CPU 回退时降到 3 路
@@ -3606,7 +3729,7 @@ async function startOral(payload, proxy, emit) {
     emit({ stage: '已完成', percent: 100 });
     return { outputDir: outDir, files: files.filter((f) => f && f.video), detected, voiceMode };
   } finally {
-    activeJob = null;
+    releaseJob(job);
     pool.forEach((s) => { try { s.close(); } catch (_) {} });
     try { lipsync.cancel(); } catch (_) {}
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
@@ -3718,7 +3841,7 @@ function removeVoice(id) {
 const PROFILE_PREVIEW = new Map();
 
 async function previewProfile(payload = {}) {
-  if (activeJob) throw new Error('任务进行中，请稍后再试听');
+  assertJobIdle('任务进行中');
   const profile = voices.get(payload.voiceId);
   const langId = langById(payload.lang) ? payload.lang : 'en';
   const key = `${profile.id}:${langId}`;
@@ -3737,7 +3860,7 @@ async function previewProfile(payload = {}) {
     lang: langId,
     threads: Math.max(2, Math.floor((os.cpus() || []).length / 2)),
     conc: 1,
-    steps: 8
+    steps: 12
   });
   try {
     await session.prepare(profile.absRef);
@@ -3855,9 +3978,6 @@ async function renderSwapForTest(payload = {}) {
 }
 
 async function startTranslate(payload, proxy, emit) {
-  if (activeJob) throw new Error('已有任务进行中，请稍候');
-  if (aijobs.isBusy()) throw new Error('已有本地 AI 任务进行中，请稍候');
-
   const targets = Array.from(new Set((payload.targets || []).filter((id) => langById(id))));
   if (!targets.length) throw new Error('请至少选择一种目标语言');
   if (!payload.input || !fs.existsSync(payload.input)) throw new Error('请先选择原片视频');
@@ -3867,21 +3987,17 @@ async function startTranslate(payload, proxy, emit) {
   const color = /^#[0-9a-f]{6}$/i.test(payload.subtitleColor || '') ? payload.subtitleColor : '#FFFFFF';
   const keepBgm = payload.keepBgm !== false;
   const burnSubs = payload.subtitles !== false;
+  if (aijobs.isBusy()) throw new Error('已有本地 AI 任务进行中，请稍候');
 
-  activeJob = {
-    canceled: false,
-    child: null,
-    children: new Set(),
-    aborts: new Set(),
-    killSessions: null
-  };
-  const dir = makeJobDir();
+  const job = await acquireJob('translate');
+  const dir = makeJobDirFor(job);
   const pool = [];
   const MEM_GB = Math.max(1, Math.floor(os.totalmem() / (1024 ** 3)));
   const CPU_N = Math.max(2, (os.cpus() || []).length || 4);
   const LOCAL_CONC = MEM_GB >= 32 ? 8 : 5;
   const LOCAL_THREADS = Math.max(2, Math.floor(CPU_N / 3));
-  const LOCAL_STEPS = 8;
+  // flow-matching 采样步数：12 步的波形明显更顺滑，磨掉 8 步残留的颗粒感
+  const LOCAL_STEPS = 12;
   const beatBus = { sink: null };
   const concOf = (sess) => {
     const dev = (sess && sess.device) || 'cpu';
@@ -3889,11 +4005,12 @@ async function startTranslate(payload, proxy, emit) {
   };
 
   /* 进度闸门：配音阶段的克隆进程日志、后台 BGM 任务会穿插发早阶段的读数，
-     统一在这里夹成「只增不减」，进度条永远不会回退 */
+     统一在这里夹成「只增不减」，进度条永远不会回退；顺带刷新任务锁心跳 */
   let lastPct = 0;
   const rawEmit = emit;
   emit = (p) => {
     if (!p) return;
+    touchJob(p.stage);
     const out = Object.assign({}, p);
     const v = Number(out.percent);
     if (Number.isFinite(v)) {
@@ -4186,7 +4303,7 @@ async function startTranslate(payload, proxy, emit) {
     emit({ stage: '已完成', percent: 100 });
     return { outputDir: outDir, files: files.filter((f) => f && f.video), detected, voice: profile.name };
   } finally {
-    activeJob = null;
+    releaseJob(job);
     pool.forEach((s) => { try { s.close(); } catch (_) {} });
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }
@@ -4211,7 +4328,7 @@ async function flowNarrationForTest(payload = {}) {
   let synthConcurrency = 1;
   const threads = Math.max(2, Math.floor(((os.cpus() || []).length || 4) / 3));
   const conc = 5;
-  const steps = 8;
+  const steps = 12;
   try {
     if (payload.voiceId) {
       const profile = voices.get(payload.voiceId);

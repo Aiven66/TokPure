@@ -307,6 +307,34 @@ test('进度只增不减：全局百分比有单调整闸，配音阶段不再�
   assert.ok(/if \(l\.stage && !cloneLoaded\)/.test(start), '配音阶段仍会回退阶段文案');
 });
 
+/* ---------------- 5.x 3.9.34 任务锁自愈（不再误报「已有任务进行中」） ---------------- */
+test('任务锁自愈：陈旧锁会按心跳强制释放，三个入口共用同一申请逻辑', () => {
+  assert.ok(/const JOB_IDLE_MS = 10 \* 60 \* 1000;/.test(locSrc), '缺少任务锁空闲阈值');
+  assert.ok(/async function acquireJob\(kind\)/.test(locSrc), '缺少 acquireJob');
+  assert.ok(/function releaseJob\(job\)/.test(locSrc), '缺少 releaseJob（幂等清锁）');
+  assert.ok(/function forceReleaseJob\(reason\)/.test(locSrc), '缺少陈旧锁强制释放');
+  assert.ok(/job\.watch = setInterval/.test(locSrc), '缺少看门狗');
+  assert.ok(/activeJob\.tick = Date\.now\(\)/.test(locSrc), '进度回调没有刷新心跳');
+  // 三个入口（多语切片 / 多语口播 / 视频翻译）都必须走 acquireJob
+  const uses = (locSrc.match(/await acquireJob\('/g) || []).length;
+  assert.ok(uses >= 3, `只有 ${uses} 个入口接了 acquireJob`);
+  const dirs = (locSrc.match(/makeJobDirFor\(job\)/g) || []).length;
+  assert.ok(dirs >= 3, `只有 ${dirs} 个入口在初始化失败时放锁`);
+  // 旧式「先看 activeJob 再抛错」必须全部消失，否则锁没人清
+  assert.ok(!/if \(activeJob\) throw new Error\('已有/.test(locSrc), '仍存在直接读 activeJob 的旧忙检查');
+  // 用户点「停止」后 4 秒未收尾要强制清锁，否则立刻重开还会误报
+  assert.ok(/用户已停止，作业未在 4 秒内收尾/.test(locSrc), '停止后没有兜底清锁');
+});
+
+test('3.9.34 音质：vocoder 步数 8→12，合成文本补齐句末标点', () => {
+  const steps = (locSrc.match(/const LOCAL_STEPS = 12;/g) || []).length;
+  assert.ok(steps >= 2, `LOCAL_STEPS 只有 ${steps} 处是 12（切片/口播/翻译应一致）`);
+  assert.ok(/steps: 12/.test(locSrc), '试听没有同步用 12 步');
+  assert.ok(!/const LOCAL_STEPS = 8;/.test(locSrc), '仍有入口停在 8 步');
+  const flow = locSrc.slice(locSrc.indexOf('async function buildFlowNarration'));
+  assert.ok(/ensureTerminal\(speakableText\(unit\.text, langId\), langId\)/.test(flow), '连续语流合成前没补句末标点');
+});
+
 /* ---------------- 5.1 3.9.29 连续语流（不再断断续续 / 更自然） ---------------- */
 /** 从源码里切出一个函数声明（按花括号配对），用于直接跑纯函数 */
 function extractFn(name) {
@@ -400,7 +428,7 @@ test('speakableText：中文/日文/韩文里的拉丁缩写按字母名读，�
   assert.strictEqual(speakableText(null, 'zh'), '');
 });
 
-test('tightenPauses：句内长气口压到 0.15s，带残余噪声的中等气口也要折', () => {
+test('tightenPauses：只折 ≥0.45s 的异常气口，并保留 0.30s 真人换气', () => {
   const tightenPauses = new Function('DENOISE_RATE',
     `return (${extractFn('tightenPauses')})`)(44100);
   const sr = 44100;
@@ -414,32 +442,51 @@ test('tightenPauses：句内长气口压到 0.15s，带残余噪声的中等气�
     tone(n() + Math.round(gapSec * sr));
     if (gapAmp > 0) {
       // 气口里带一点残余噪声（-50dBFS 左右）：denoise 不会把它拉成数字静音，
-      // 旧版只看 |v|<1e-3 就会漏掉，成片里句子中间就空一拍
+      // 只看 |v|<1e-3 会漏掉，成片里句子中间就空一拍
       for (let i = 0; i < Math.round(gapSec * sr); i += 1) {
         out[n() + i] = gapAmp * Math.sin(i * 1.7);
       }
     }
     return out;
   };
-  // 0.44s 的死气口 → 压到 0.15s，总长从 1.44s 变成 ~1.15s（帧边界会有几个样本出入）
-  const a = build(0.44);
+  // 1.0s 的异常气口 → 保留 0.30s，总长从 2.0s 变成 ~1.3s（帧边界会有几个样本出入）
+  const a = build(1.0);
   const ta = tightenPauses(a, sr);
-  assert.ok(Math.abs(ta.length - Math.round(1.15 * sr)) <= 64, `总长 ${ta.length} 不在 1.15s±64`);
+  assert.ok(Math.abs(ta.length - Math.round(1.3 * sr)) <= 64, `总长 ${ta.length} 不在 1.30s±64`);
   // 语音样本原样保留（前 0.5s 正弦逐样本一致）
   for (let i = 0; i < Math.round(0.5 * sr); i += 997) assert.strictEqual(ta[i], a[i]);
   // 后半句也没有丢：最后一个样本必须还在
   assert.strictEqual(ta[ta.length - 1], a[a.length - 1]);
-  // 带 -50dBFS 残余噪声的 0.4s 气口同样折掉
-  const noisy = build(0.4, 0.003);
+  // 带 -50dBFS 残余噪声的 0.9s 气口同样折掉（其余音低于语音 30dB 就视为气口）
+  const noisy = build(0.9, 0.003);
   const tn = tightenPauses(noisy, sr);
-  assert.ok(tn.length < noisy.length - Math.round(0.15 * sr), '带噪声的气口没有被折叠');
-  // 0.1s 的正常呼吸口不折（不到 0.26s 的最小气口长度）
-  const b = build(0.1);
+  assert.ok(Math.abs(tn.length - Math.round(1.3 * sr)) <= 64, `带噪声气口折叠后 ${tn.length} 不在 1.30s±64`);
+  // 0.44s 的逗号换气不折：这是真人该有的停顿，压短会让朗读听起来又赶又像机器
+  const b = build(0.44);
   const tb = tightenPauses(b, sr);
   assert.strictEqual(tb.length, b.length);
+  // 0.1s 的正常呼吸口也不折
+  const c = build(0.1);
+  const tc = tightenPauses(c, sr);
+  assert.strictEqual(tc.length, c.length);
   // 没有气口时原样返回（不复制、不改写）
-  const c = build(0);
-  assert.strictEqual(tightenPauses(c, sr), c);
+  const d = build(0);
+  assert.strictEqual(tightenPauses(d, sr), d);
+});
+
+test('ensureTerminal：合成前补齐句末标点（半截字幕不再读成上扬未收尾）', () => {
+  const ensureTerminal = new Function(`return (${extractFn('ensureTerminal')})`)();
+  assert.strictEqual(ensureTerminal('谢谢大家', 'zh'), '谢谢大家。');
+  assert.strictEqual(ensureTerminal('谢谢大家。', 'zh'), '谢谢大家。');
+  assert.strictEqual(ensureTerminal('等等！', 'zh'), '等等！');
+  // 停在逗号/冒号的半句：去掉尾标点后补句号
+  assert.strictEqual(ensureTerminal('我们先看这个，', 'zh'), '我们先看这个。');
+  assert.strictEqual(ensureTerminal('注意：', 'zh'), '注意。');
+  // 西文用英文句号，韩文也用英文句号
+  assert.strictEqual(ensureTerminal('Hi everyone', 'en'), 'Hi everyone.');
+  assert.strictEqual(ensureTerminal('Thank you all?', 'en'), 'Thank you all?');
+  assert.strictEqual(ensureTerminal('감사합니다', 'ko'), '감사합니다.');
+  assert.strictEqual(ensureTerminal('', 'en'), '');
 });
 
 test('flattenLevel：句内慢漂移拉平，气口不被抬起来', () => {
