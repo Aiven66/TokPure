@@ -13,6 +13,12 @@ contextBridge.exposeInMainWorld('tokpure', {
     openWeb: (target) => invoke('auth:openWeb', target),
     onChanged: (cb) => ipcRenderer.on('auth:changed', (_e, s) => cb(s))
   },
+  license: {
+    get: () => invoke('license:get'),
+    refresh: () => invoke('license:refresh'),
+    openUpgrade: (plan) => invoke('license:openUpgrade', plan),
+    onChanged: (cb) => ipcRenderer.on('license:changed', (_e, s) => cb(s))
+  },
   settings: {
     get: () => invoke('settings:get'),
     save: (patch) => invoke('settings:save', patch),

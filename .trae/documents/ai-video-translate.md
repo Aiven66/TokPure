@@ -105,6 +105,87 @@
 - 同一条链路在修复前（3.9.28）同一素材只合成出 5.3 秒语音（后半句被 token 上限截断），
   片尾静默 8.5s；回环 ASR 只剩前 29 个汉字。
 
+## 3.9.38 付费墙（Pro 功能上锁）+ 官网修复
+
+用户诉求：①博客详情页面包屑「博客」点进去 404 ②头部「文档/API」点了没反应，去掉
+③「价格方案」改叫「价格」，整条付费墙优化，桌面端部分高级功能只对付费用户开放
+④付费链路要完整跑通。
+
+### 桌面端：Pro 功能门禁
+
+新增 `electron/license.js`，**授权来源只有一个**：官网 `/api/entitlement`。
+服务端用 service role 读 `subscriptions`，`isEntitled()` 判 active，或 canceled 但
+`current_period_end` 未过期。客户端只做缓存：
+
+- 正常每 6 小时刷新一次（`REFRESH_MS`），登录态变化立刻刷新；
+- 刷新失败（断网）**不改 paid**，只标 `offline`，靠 7 天宽限期（`GRACE_MS`）兜底；
+- 超过 7 天且无法联网 → `reason: grace_expired`，回落到 free；
+- 401 视为未付费；401 之外的 5xx 不回退权益。
+
+这样断网不会瞬间锁死付费用户，但改本地 `license.json` 也撑不过 7 天。
+
+`PRO_FEATURES = ['localize','oralcast','translate','clips','enhance']` 与
+`src/app.js` 的 `PRO_VIEWS` 一一对应。`switchView` 最前面拦截：
+
+```js
+if (PRO_VIEWS.includes(name) && !isPro()) { showPaywall(name); return; }
+```
+
+免费功能（下载、去水印、AI 字幕、梗图贴纸）完全不受影响。
+
+UI 侧：
+- 侧边栏 Pro 项加 `PRO` 角标（点进去之前就知道要付费，减少挫败感）；
+- 付费墙是**浮层卡片**而不是整页遮挡：写清 5 项能力、`$9.9 / 月`、
+  「随时取消 · 30 天无理由退款」，提供「升级到 Pro」「已付费？刷新授权」
+  「继续使用免费功能」三个出口，Esc 可关；
+- 点「刷新授权」成功且此前有 `pendingView`，直接进入原来点的那个功能；
+- 账号按钮显示 `PRO / STUDIO` chip，下拉菜单加「升级到 Pro」。
+
+IPC：`license:get` / `license:refresh` / `license:openUpgrade`，变化通过
+`license:changed` 推给渲染层。升级链接指向
+`https://tokpure.clipopai.com/pricing.html?from=desktop&plan=pro|studio`。
+
+### 官网
+
+- `/blog` 404：面包屑链接由 `config.blog.basePath='/blog'` 生成，站点只有
+  `blog.html`。在 `vercel.json` 补 `"/blog"` 与 `"/blog/"` 两条 rewrite 到
+  `blog.html`（没改 basePath，否则 `/blog.html/slug` 会拼错）。
+- 删除 8 个页面头部的「文档/API」导航（页脚链接保留）。
+- `价格方案` → `价格`：pricing.html 的 title/meta/og/twitter/JSON-LD 共 6 处，
+  7 个 `assets/i18n/*.json` 同步改 key（字典 key 就是中文原文）。
+- 价格页：免费卡明确列出 5 项 Pro 专属与并发限制；Pro 卡新增
+  「桌面端 Pro 专属 · 全部本地运行」高亮块；删掉无法交付的
+  「多节点代理池、指纹标头伪装」，换成真实可交付的「自定义代理链路与并发队列」。
+- 收银台未登录时原本只报错没有出路，改为「登录 / 注册后继续」，
+  带 `next` 回跳当前页。
+
+### 付费链路实测（真实 Creem + 真实 Supabase）
+
+用临时脚本在本地托管 Vercel 函数（`/tmp`，不入仓库），12 项全通过：
+
+| 步骤 | 结果 |
+| --- | --- |
+| `GET /api/entitlement` 无 token | 401 `{paid:false, plan:'free'}` |
+| 新建账号 + 密码登录 | 拿到 access_token |
+| 付费前 entitlement | `paid:false` |
+| `POST /api/payment/creem` | 200，返回 `https://www.creem.io/checkout/prod_2ev.../ch_...` |
+| 签名 webhook `checkout.completed` | 200，订阅落库 |
+| 付费后 entitlement | `paid:true, plan:'pro', status:'active'` |
+| 签名 webhook `subscription.canceled` | 200，周期内仍 `paid:true` |
+| 签名 webhook `subscription.expired` | 200，`paid:false` |
+| 伪造签名 webhook | 401 |
+| Waffo 渠道 | 200，返回 pancake 收银台 |
+
+测试账号与订阅行已清理。注意：本地托管函数时 Node 需
+`NODE_TLS_REJECT_UNAUTHORIZED=0`（本机抓包代理的根证书不在 Node 信任链里）。
+
+### 本轮测试
+
+- 桌面端 `npm test` 50 项全绿（新增 5 项 3.9.38 断言：entitlement 唯一来源、
+  宽限期、Pro 清单一致性、`switchView` 门禁、IPC/preload 白名单）。
+- 桌面端 `npm run test:smoke` PASSED。
+- 官网 `npm run build` 成功；`npm test` 静态 PASS（1 条体积警告）、运行时审计 0 失败。
+
 ## 3.9.37 消除「呲呲呲」嘶声、把清晰度拉回真人水平
 
 用户反馈：①成片还有「呲呲呲」的噪音 ②声音不够清晰、瑕疵多，要媲美真人。

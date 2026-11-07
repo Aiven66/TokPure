@@ -337,25 +337,42 @@ export function PaymentModal() {
             <div className="p-4 rounded-lg bg-surface-container-low font-body-sm text-body-sm text-on-surface-variant">
               {error || '支付未能完成，请重试。'}
             </div>
-            <div className="flex flex-col gap-2 mt-5">
-              <button
-                type="button"
-                onClick={() => startPayment(channel)}
-                className="w-full py-3 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm font-bold hover:brightness-110 transition-all"
-              >
-                重试
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPhase('select');
-                  setError('');
-                }}
-                className="w-full py-3 rounded-lg bg-surface-container-high text-on-surface font-headline-sm text-headline-sm hover:bg-surface-container-highest transition-colors"
-              >
-                换个支付方式
-              </button>
-            </div>
+            {!user ? (
+              <div className="flex flex-col gap-2 mt-5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = `/login.html?next=${encodeURIComponent(window.location.pathname)}`;
+                  }}
+                  className="w-full py-3 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm font-bold hover:brightness-110 transition-all"
+                >
+                  登录 / 注册后继续
+                </button>
+                <p className="font-label-sm text-label-sm text-on-surface-variant text-center">
+                  订阅权益绑定在账号上，登录后回到本页即可继续支付
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 mt-5">
+                <button
+                  type="button"
+                  onClick={() => startPayment(channel)}
+                  className="w-full py-3 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm font-bold hover:brightness-110 transition-all"
+                >
+                  重试
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhase('select');
+                    setError('');
+                  }}
+                  className="w-full py-3 rounded-lg bg-surface-container-high text-on-surface font-headline-sm text-headline-sm hover:bg-surface-container-highest transition-colors"
+                >
+                  换个支付方式
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -9,6 +9,7 @@ const tiktok = require('./tiktok');
 const ffmpeg = require('./ffmpeg');
 const Downloader = require('./downloader');
 const auth = require('./auth');
+const license = require('./license');
 const enginehub = require('./enginehub');
 const hardware = require('./hardware');
 const aijobs = require('./aijobs');
@@ -162,6 +163,11 @@ function registerIpc() {
   ipcMain.handle('auth:login', () => auth.login());
   ipcMain.handle('auth:logout', () => auth.logout());
   ipcMain.handle('auth:openWeb', (_e, target) => auth.openWeb(target));
+
+  // ---- 商业授权（Pro 功能解锁） ----
+  ipcMain.handle('license:get', () => license.get());
+  ipcMain.handle('license:refresh', () => license.refresh());
+  ipcMain.handle('license:openUpgrade', (_e, plan) => license.openUpgrade(plan));
 
   // ---- settings ----
   ipcMain.handle('settings:get', () => store.get());
@@ -532,6 +538,9 @@ app.whenReady().then(async () => {
   } catch (_) {}
   // 登录态变化（浏览器回跳 / 退出登录）实时推给渲染层刷新账号 UI
   auth.onSessionChange((session) => sendToRenderer('auth:changed', session));
+  // 授权状态：登录后自动联网校验一次，之后每 6 小时刷新；变化实时推给渲染层
+  license.onChange((state) => sendToRenderer('license:changed', state));
+  license.start();
   await refreshSystemProxy(true);
   // keep the auto-detected system proxy fresh (e.g. the user toggles their VPN client)
   setInterval(() => refreshSystemProxy(true), 60000);

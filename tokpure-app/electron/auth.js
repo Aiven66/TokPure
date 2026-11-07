@@ -19,7 +19,8 @@ const http = require('http');
 const { app, shell } = require('electron');
 
 /** 官网基址（可用环境变量覆盖，便于本地联调）。 */
-const WEB_BASE = (process.env.TOKPURE_WEB_BASE || 'https://tokpure.vercel.app').replace(/\/+$/, '');
+// 官网正式域名。桌面端的登录回跳、授权校验、升级入口都指向这里。
+const WEB_BASE = (process.env.TOKPURE_WEB_BASE || 'https://tokpure.clipopai.com').replace(/\/+$/, '');
 const LOGIN_URL = `${WEB_BASE}/login.html`;
 /** 等待用户在浏览器完成登录的最长时间。 */
 const LOGIN_TIMEOUT = 5 * 60 * 1000;

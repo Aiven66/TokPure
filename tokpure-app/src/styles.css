@@ -233,6 +233,43 @@ svg {
   font-family: var(--font-mono);
   color: var(--text-muted);
 }
+/* 免费账号看到的 Pro 角标：比 NEW 更醒目，点进去前就知道要付费 */
+.nav-item.is-pro .nav-badge {
+  display: none;
+}
+.nav-item.is-pro::after {
+  content: 'PRO';
+  font-size: 9px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: linear-gradient(135deg, rgba(254, 44, 85, 0.28), rgba(255, 176, 32, 0.24));
+  color: var(--primary-bright, #ff7a9c);
+  border: 1px solid rgba(254, 44, 85, 0.35);
+}
+.sidebar.collapsed .nav-item.is-pro::after {
+  display: none;
+}
+.plan-chip {
+  margin-left: 6px;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, var(--primary), #ff7a3d);
+  color: #fff;
+}
+.am-plan {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.am-item.am-upgrade {
+  color: var(--primary-bright, #ff7a9c);
+  font-weight: 600;
+}
 
 .sidebar-foot {
   display: flex;
@@ -765,6 +802,187 @@ body:not(.platform-win) .sidebar::before {
 }
 .auth-gate-link:hover {
   color: var(--on-surface);
+}
+
+/* ---------------- Pro 付费墙 ----------------
+   设计取舍：不整页遮挡，而是浮层卡片 —— 用户能看见背后的真实界面，
+   关掉后立刻回到免费功能，避免「一点就被关进小黑屋」的挫败感。 */
+.paywall {
+  position: fixed;
+  inset: 0;
+  z-index: 4200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(8, 9, 12, 0.72);
+  backdrop-filter: blur(6px);
+  animation: paywall-in 0.16s ease-out;
+}
+.paywall[hidden] {
+  display: none;
+}
+@keyframes paywall-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.paywall-card {
+  position: relative;
+  width: 468px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 28px 28px 22px;
+  background: var(--surface-container);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-window);
+  animation: paywall-pop 0.18s ease-out;
+}
+@keyframes paywall-pop {
+  from { transform: translateY(8px) scale(0.98); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.paywall-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.paywall-close:hover {
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+}
+.paywall-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, rgba(254, 44, 85, 0.22), rgba(255, 176, 32, 0.18));
+  border: 1px solid rgba(254, 44, 85, 0.32);
+  color: var(--primary-bright, #ff7a9c);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+.paywall-title {
+  margin: 12px 0 8px;
+  font-size: 19px;
+  line-height: 1.35;
+  font-weight: 700;
+  color: var(--on-surface);
+}
+.paywall-desc {
+  margin: 0 0 16px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+.paywall-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0 0 18px;
+  padding: 14px;
+  list-style: none;
+  background: var(--surface-container-low, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md, 10px);
+}
+.paywall-list li {
+  display: grid;
+  grid-template-columns: 18px auto 1fr;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.paywall-list li svg {
+  width: 15px;
+  height: 15px;
+  color: var(--primary-bright, #ff7a9c);
+  align-self: center;
+}
+.paywall-list b {
+  color: var(--on-surface);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.paywall-list i {
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+.paywall-price {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.paywall-price b {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--on-surface);
+}
+.paywall-price span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.paywall-price em {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--tertiary-bright);
+}
+.paywall-btn {
+  width: 100%;
+  height: 44px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.paywall-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.link-btn {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.link-btn:hover {
+  color: var(--on-surface);
+}
+.paywall-sep {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.paywall-note {
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  text-align: center;
 }
 
 /* ---------------- Content ---------------- */

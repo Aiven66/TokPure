@@ -723,6 +723,56 @@ test('suppressNoise：语音段原样保留，气口噪声被压掉', () => {
   }
 });
 
+/* ---------------- 5.7 3.9.38 付费门禁：授权来源唯一、离线宽限、Pro 功能上锁 ---------- */
+test('3.9.38 授权只认服务端 /api/entitlement，本地只做缓存与宽限', () => {
+  const src = read('electron/license.js');
+  assert.ok(/\/api\/entitlement/.test(src), '没有请求 entitlement 接口');
+  assert.ok(/const PAID_PLANS = \['pro', 'studio'\];/.test(src), '付费套餐清单不对');
+  assert.ok(/const GRACE_MS = 7 \* 24 \* 60 \* 60 \* 1000;/.test(src), '离线宽限期不是 7 天');
+  assert.ok(/reason: 'grace_expired'/.test(src), '超过宽限期没有回落到 free');
+  assert.ok(/reason: prev\.paid \? 'offline' : 'offline_free'/.test(src), '网络失败时没有保留已付费状态（宽限期失效）');
+  assert.ok(/if \(res\.status === 401\) return \{ ok: true, paid: false/.test(src), '401 没有按未付费处理');
+});
+
+test('3.9.38 Pro 功能清单与 pricing.html 的 Pro 专属一致', () => {
+  const lic = read('electron/license.js');
+  const m = lic.match(/const PRO_FEATURES = \[([^\]]+)\];/);
+  assert.ok(m, 'license.js 没有 PRO_FEATURES');
+  const features = m[1].split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean);
+  assert.deepStrictEqual(features, ['localize', 'oralcast', 'translate', 'clips', 'enhance']);
+  const app = read('src/app.js');
+  const am = app.match(/const PRO_VIEWS = \[([^\]]+)\];/);
+  assert.ok(am, 'app.js 没有 PRO_VIEWS');
+  const views = am[1].split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean);
+  assert.deepStrictEqual([...views].sort(), [...features].sort(), 'PRO_VIEWS 与 PRO_FEATURES 不一致');
+});
+
+test('3.9.38 免费用户切到 Pro 视图会被付费墙拦截', () => {
+  const app = read('src/app.js');
+  assert.ok(/if \(PRO_VIEWS\.includes\(name\) && !isPro\(\)\) \{\s*showPaywall\(name\);/.test(app), 'switchView 没有门禁');
+  assert.ok(/id="paywall"/.test(read('src/index.html')), 'index.html 缺少付费墙');
+  assert.ok(/paywall-upgrade/.test(read('src/index.html')), '付费墙缺少升级按钮');
+  assert.ok(/paywall-refresh/.test(read('src/index.html')), '付费墙缺少「已付费？刷新授权」');
+});
+
+test('3.9.38 主进程注册 license IPC 且 preload 只暴露白名单方法', () => {
+  const main = read('electron/main.js');
+  for (const ch of ["'license:get'", "'license:refresh'", "'license:openUpgrade'"]) {
+    assert.ok(main.includes(`ipcMain.handle(${ch}`), `main.js 缺少 IPC ${ch}`);
+  }
+  assert.ok(/license\.onChange\(\(state\) => sendToRenderer\('license:changed', state\)\)/.test(main), '授权变化没有推给渲染层');
+  const preload = read('electron/preload.js');
+  assert.ok(/license: \{/.test(preload) && /onChanged:/.test(preload), 'preload 没有暴露 license');
+  assert.ok(!/ipcRenderer\.expose|require\('electron'\)\.ipcRenderer\)/.test(preload), 'preload 泄露了原始 ipcRenderer');
+});
+
+test('3.9.38 升级入口与登录回跳都指向正式域名', () => {
+  const auth = read('electron/auth.js');
+  assert.ok(/tokpure\.clipopai\.com/.test(auth), '客户端没有指向正式域名');
+  const lic = read('electron/license.js');
+  assert.ok(/\/pricing\.html\?from=desktop&plan=/.test(lic), '升级入口没有带桌面端来源参数');
+});
+
 /* ---------------- 汇总 ---------------- */
 console.log(`\n${passed} 项通过，${failures.length} 项失败`);
 if (failures.length) {

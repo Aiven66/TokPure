@@ -43,7 +43,9 @@ const state = {
   paused: false,
   platform: '',
   revealLabel: '在访达中显示',
-  trashLabel: '已移到废纸篓'
+  trashLabel: '已移到废纸篓',
+  license: { paid: false, plan: 'free', status: 'none' },
+  pendingView: null
 };
 
 /* ---------------- helpers ---------------- */
@@ -103,8 +105,105 @@ function hydrateIcons(root = document) {
   });
 }
 
+/* ---------------- Pro 门禁 ----------------
+   付费专属：视频翻译 / 多语切片 / 多语口播 / 批量切片 / 画质增强。
+   免费：下载、去水印、AI 字幕、梗图贴纸、队列、媒体库。
+   判定来自主进程 license（服务端 /api/entitlement），渲染层不自行判断账号字段。 */
+const PRO_VIEWS = ['translate', 'localize', 'oralcast', 'clips', 'enhance'];
+const PRO_LABEL = {
+  translate: 'AI 视频翻译',
+  localize: 'AI 多语切片',
+  oralcast: 'AI 多语口播',
+  clips: 'AI 批量切片',
+  enhance: 'AI 画质增强'
+};
+const isPro = () => Boolean(state.license && state.license.paid);
+
+function applyLicense(lic) {
+  if (!lic) return;
+  const wasPaid = isPro();
+  state.license = lic;
+  const paid = isPro();
+  const chip = $('#plan-chip');
+  if (chip) {
+    chip.hidden = !paid;
+    chip.textContent = lic.plan === 'studio' ? 'STUDIO' : 'PRO';
+  }
+  const up = $('#account-menu-upgrade');
+  if (up) up.hidden = paid;
+  const planText = $('#account-menu-plan');
+  if (planText) {
+    planText.textContent = paid
+      ? `已解锁 ${lic.plan === 'studio' ? 'Studio' : 'Pro'} · 全部 AI 功能`
+      : '免费版 · 未解锁 Pro 功能';
+  }
+  $$('#nav .nav-item').forEach((el) => {
+    const gated = PRO_VIEWS.includes(el.dataset.view);
+    el.classList.toggle('is-pro', gated && !paid);
+    // 免费用户点 Pro 功能前就能看到「PRO」，避免点进去才发现要付费
+    el.setAttribute('title', gated && !paid ? `${PRO_LABEL[el.dataset.view] || ''}（Pro 专属）` : '');
+  });
+  if (paid && wasPaid !== paid) hidePaywall();
+}
+
+function showPaywall(view) {
+  const box = $('#paywall');
+  if (!box) return;
+  state.pendingView = view || null;
+  const name = PRO_LABEL[view];
+  const label = $('#paywall-feature');
+  if (label) label.textContent = name || '该功能';
+  box.hidden = false;
+  // 让键盘用户与读屏都能立刻定位到升级按钮
+  setTimeout(() => {
+    const btn = $('#paywall-upgrade');
+    if (btn) btn.focus();
+  }, 30);
+}
+
+function hidePaywall() {
+  const box = $('#paywall');
+  if (box) box.hidden = true;
+}
+
+function initLicense() {
+  const refresh = async (silent) => {
+    try {
+      const lic = await api.license.refresh();
+      applyLicense(lic);
+      if (!silent) {
+        if (isPro()) toast('授权已更新，Pro 功能已解锁');
+        else toast('尚未检测到有效订阅，请完成支付后再刷新', 'info');
+      }
+      if (isPro() && state.pendingView) {
+        const v = state.pendingView;
+        state.pendingView = null;
+        hidePaywall();
+        switchView(v);
+      }
+    } catch (e) {
+      if (!silent) toast(cleanIpcError(e), 'err');
+    }
+  };
+  api.license.get().then(applyLicense).catch(() => {});
+  api.license.onChanged(applyLicense);
+  $('#paywall-close').onclick = hidePaywall;
+  $('#paywall-later').onclick = hidePaywall;
+  $('#paywall').onclick = (e) => { if (e.target === $('#paywall')) hidePaywall(); };
+  $('#paywall-upgrade').onclick = () => api.license.openUpgrade('pro');
+  $('#paywall-refresh').onclick = () => refresh(false);
+  $('#account-menu-upgrade').onclick = () => api.license.openUpgrade('pro');
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('#paywall').hidden) hidePaywall();
+  });
+}
+
 /* ---------------- view switching ---------------- */
 function switchView(name) {
+  if (PRO_VIEWS.includes(name) && !isPro()) {
+    showPaywall(name);
+    return;
+  }
   state.currentView = name;
   $$('#nav .nav-item').forEach((el) => el.classList.toggle('active', el.dataset.view === name));
   $$('.view').forEach((el) => el.classList.toggle('active', el.id === `view-${name}`));
@@ -2275,6 +2374,7 @@ async function boot() {
   hydrateIcons();
   wireUi();
   initAuth();
+  initLicense();
 
   const info = await api.system.appInfo();
   applyPlatformUi(info.platform);

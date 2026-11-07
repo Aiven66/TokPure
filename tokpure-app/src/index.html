@@ -110,13 +110,16 @@
             <button class="account-btn" id="account-btn" type="button" title="账号">
               <span class="account-avatar"><span data-ic="user" data-size="15"></span></span>
               <span class="account-name" id="account-name">未登录</span>
+              <span class="plan-chip" id="plan-chip" hidden>PRO</span>
             </button>
             <div class="account-menu" id="account-menu">
               <div class="am-head">
                 <div class="am-name" id="account-menu-name">未登录</div>
                 <div class="am-mail" id="account-menu-mail">—</div>
+                <div class="am-plan" id="account-menu-plan">免费版 · 未解锁 Pro 功能</div>
               </div>
               <button class="am-item" id="account-menu-signin" type="button"><span data-ic="key" data-size="15"></span>登录 / 注册</button>
+              <button class="am-item am-upgrade" id="account-menu-upgrade" type="button" hidden><span data-ic="sparkles" data-size="15"></span>升级到 Pro</button>
               <button class="am-item" id="account-menu-web" type="button"><span data-ic="external" data-size="15"></span>打开官网</button>
               <button class="am-item danger" id="account-menu-logout" type="button"><span data-ic="power" data-size="15"></span>退出登录</button>
             </div>
@@ -1567,6 +1570,31 @@
       </button>
       <p class="auth-gate-status" id="auth-gate-status">正在检查登录状态…</p>
       <button class="auth-gate-link" id="auth-gate-web" type="button">访问 TokPure 官网</button>
+    </div>
+  </div>
+
+  <!-- Pro 门禁：免费账号点开 Pro 专属功能时出现。不遮挡免费功能，随时可关。 -->
+  <div class="paywall" id="paywall" hidden>
+    <div class="paywall-card" role="dialog" aria-modal="true" aria-labelledby="paywall-title">
+      <button class="paywall-close" id="paywall-close" type="button" aria-label="关闭"><span data-ic="x" data-size="16"></span></button>
+      <div class="paywall-badge"><span data-ic="sparkles" data-size="14"></span>PRO</div>
+      <h2 class="paywall-title" id="paywall-title">「<span id="paywall-feature">该功能</span>」是 Pro 专属功能</h2>
+      <p class="paywall-desc">所有 AI 能力都在你自己的电脑上运行，不上传任何素材。升级后可无限使用以下功能：</p>
+      <ul class="paywall-list">
+        <li><span data-ic="languages" data-size="15"></span><b>AI 视频翻译</b><i>克隆你的声音，把原片换成你的语言与音色</i></li>
+        <li><span data-ic="film" data-size="15"></span><b>AI 多语切片</b><i>一条长视频，一次产出多语种竖版短片</i></li>
+        <li><span data-ic="mic" data-size="15"></span><b>AI 多语口播</b><i>文案直接生成口播视频，无需出镜</i></li>
+        <li><span data-ic="scissors" data-size="15"></span><b>AI 批量切片</b><i>自动找高光，批量导出可发布的短切片</i></li>
+        <li><span data-ic="sparkles" data-size="15"></span><b>AI 画质增强</b><i>超分与插帧，把旧片提到 4K/60fps</i></li>
+      </ul>
+      <div class="paywall-price"><b id="paywall-price">$9.9</b><span>/ 月</span><em>随时取消 · 30 天无理由退款</em></div>
+      <button class="btn primary paywall-btn" id="paywall-upgrade" type="button"><span data-ic="sparkles" data-size="16"></span>升级到 Pro，立即解锁</button>
+      <div class="paywall-foot">
+        <button class="link-btn" id="paywall-refresh" type="button">已付费？刷新授权</button>
+        <span class="paywall-sep">·</span>
+        <button class="link-btn" id="paywall-later" type="button">继续使用免费功能</button>
+      </div>
+      <p class="paywall-note">免费功能（视频下载、去水印、AI 字幕、梗图贴纸）不受影响，可一直使用。</p>
     </div>
   </div>
 
