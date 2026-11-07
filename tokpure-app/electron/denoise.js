@@ -18,6 +18,8 @@
      逐句增益之后只压掉 1.6dB，等于没压。
 
    3.9.25 最终做法：**安静帧统计噪声底 + 逐频点维纳谱减 + 整帧电平斜坡 + 句尾裁剪**。
+   （3.9.37 起「维纳谱减」是真正的决策引导维纳增益，见下方 DD_ALPHA 的说明；
+     谱减的金属嘶声、以及整帧电平斜坡起点过低导致的吞字，都已修掉。）
    1) 噪声底不再靠「是不是噪声」的猜测，而是**测**出来：本句电平低于
       「语音电平（95% 分位）-12dB」的帧就是气口/噪声帧，取这些帧逐频点功率的
       **75% 分位**当噪声功率谱 N(f)。谐波不谐波都一样被测进来（上一版漏掉的就是它）；
@@ -46,13 +48,26 @@ const FRAME = 1024;            // 23.2ms @44.1kHz
 const HOP = 512;               // 11.6ms 帧移，同时也是斜坡长度
 const NFFT = 2048;             // 频点 1024 个（21.5Hz/bin）
 const REL_DB = 12;             // 噪声帧电平必须低于本句语音电平 12dB
+const NOISE_FLOOR_Q = 0.15;    // 噪底取帧电平的 15% 分位（真正的气口/静音）
+const NOISE_GUARD_DB = 8;      // 噪声候选帧不得高于噪底 8dB（防止把轻声字当噪声）
 const QUIET_CAP_DB = -22;      // 绝对电平上限（比这更响的帧绝不当噪声统计）
 const NOISE_Q = 0.75;          // 噪声谱取候选帧的 75% 分位（贴住最响气口）
-const OVER_SUB = 2.5;          // 谱减过减系数（>1 才能把噪声底压干净）
-const GAIN_FLOOR_DB = -40;     // 每个频点的最低增益
-const GAIN_RELEASE = 0.35;     // 增益回落：每帧保留 35%（1~2 帧落到位）
-const GATE_START_DB = 8;       // 整帧电平低于语音 8dB 起开始按斜坡压
-const GATE_FULL_DB = 18;       // 低到 18dB 时压到底
+/* 3.9.37：谱减（1 - 2.5·N/P）换成「决策引导维纳」增益。
+   谱减在低信噪比频点上会把增益推到地板，相邻帧的留存频点随机跳变，
+   听感就是「呲呲呲」的金属嘶声（musical noise）；实测同一句克隆音，
+   4.8~11k 的逐帧能量抖动（标准差）从 15.6dB 被抬到 19.3dB —— 噪声是降噪器自己造出来的。
+   维纳增益只跟「先验信噪比」走，再加决策引导（用上一帧的增益与后验 SNR 平滑），
+   增益曲线连续、没有随机尖峰；地板从 -40dB 抬到 -24dB，不再把频点挖成空洞。 */
+const DD_ALPHA = 0.90;         // 决策引导平滑：上一帧估计占 90%（≈145ms 时间常数）
+const GAIN_FLOOR_DB = -24;     // 每个频点的最低增益
+const GAIN_RELEASE = 0.6;      // 增益回落：每帧保留 60%（约 4 帧 / 46ms 落到位）
+/* 整帧电平斜坡的起点从 8dB 抬到 14dB、压到底从 18dB 抬到 26dB：
+   正常说话的句内动态就有 12~18dB（轻声字、词尾、虚词天然低一截），
+   8dB 起压等于把「轻声的字」按噪声一起吃掉——实测 474 帧里有 97 帧落在 8~18dB
+   的斜坡里，中位帧被压掉约 9dB，听感就是「吞字、不清晰」。
+   气口/噪声帧实测都在语音电平 25dB 以下（本句 166 帧 >18dB），抬高起点不会漏噪。 */
+const GATE_START_DB = 14;      // 整帧电平低于语音 14dB 起开始按斜坡压
+const GATE_FULL_DB = 26;       // 低到 26dB 时压到底
 const GATE_DB = 48;            // 整帧最大衰减
 const SIB_DB = 12;             // 3k~10k/100~1500 ≥ +12dB 视为齿音
 const SIB_FLOOR_DB = 18;       // 齿音帧最多压 18dB（保住 /s/ /ʃ/ 的可懂度）
@@ -191,9 +206,18 @@ function analyzeFrames(pcm, rate, opts = {}) {
   }
   const sortedLv = Array.prototype.slice.call(lv).sort((a, b) => a - b);
   const speechRef = quantile(sortedLv, 0.95);
+  /* 3.9.37：噪声帧的门限再压一道「噪底闸」。
+     旧版只要求「低于语音 12dB」，而克隆引擎的气口实测在 -66dBFS、语音 -18dBFS，
+     于是 speech-12dB 这条线落在 -30dB，把大量「轻声的字」也当成噪声统计进 N(f)。
+     实测后果：N(f) 几乎等于轻声字的功率谱，维纳增益在语音段也只剩 -3.6dB
+     （4.8~11k 高频尤其明显），声音被削薄、发闷 —— 这正是「不够清晰」的来源之一。
+     现在再取帧电平的 15% 分位当噪底，候选帧必须落在噪底 +8dB 以内：
+     真正的气口/静音才参与噪声谱统计，轻声字不再被误判。 */
+  const noiseFloor = quantile(sortedLv, opts.noiseFloorQ != null ? opts.noiseFloorQ : NOISE_FLOOR_Q);
+  const noiseGuard = opts.noiseGuardDb != null ? opts.noiseGuardDb : NOISE_GUARD_DB;
+  const thr = Math.min(speechRef - relDb, capDb, noiseFloor + noiseGuard);
   const sortedHp = Array.prototype.slice.call(hp).sort((a, b) => a - b);
   const hpRef = quantile(sortedHp, 0.95);
-  const thr = Math.min(speechRef - relDb, capDb);
 
   // 第二遍：只分析低于门限的帧（这些就是气口/噪声帧），逐频点功率存成紧凑数组
   const bins = NFFT / 2 + 1;
@@ -322,7 +346,6 @@ function suppressNoise(pcm, rate, opts = {}) {
   const win = new Float64Array(FRAME);
   for (let i = 0; i < FRAME; i += 1) win[i] = Math.sqrt(0.5 - 0.5 * Math.cos((2 * Math.PI * i) / FRAME));
   const floorLin = Math.pow(10, (opts.gainFloorDb != null ? opts.gainFloorDb : GAIN_FLOOR_DB) / 20);
-  const overSub = opts.overSub != null ? opts.overSub : OVER_SUB;
 
   // 重叠相加（前置一帧的余量，保证首帧也有完整重叠）。
   // sqrt-hann 分析窗 + sqrt-hann 合成窗，50% 重叠，sum(w^2)=1 严格单位增益重建
@@ -335,6 +358,7 @@ function suppressNoise(pcm, rate, opts = {}) {
   const gain = new Float64Array(bins);
   const gainS = new Float64Array(bins);
   const prev = new Float64Array(bins).fill(1);
+  const prevGamma = new Float64Array(bins).fill(1);
   // 噪声功率谱直接用 analyzeFrames 的分位统计结果，不随帧自适应：
   // 向下自适应会跟着「最轻的那段气口」跑，反而把更响的几段气口漏掉（实测只压 2~5dB）。
   const noise = noisePsd ? Float64Array.from(noisePsd) : null;
@@ -351,26 +375,34 @@ function suppressNoise(pcm, rate, opts = {}) {
     fftRun(f, re, im);
     if (noise) {
       const over = speechRef - lv[ki];
-      // 逐频点增益：G = max(1 - overSub * N/P, floor)
+      // 逐频点「决策引导维纳」增益：
+      //   gamma = P/N（后验 SNR）
+      //   xi    = alpha·(G_prev²·gamma_prev) + (1-alpha)·max(gamma-1, 0)（先验 SNR）
+      //   G     = xi / (1 + xi)
+      // 与谱减相比少了 1 - k·N/P 这一项，增益不会因为 N/P 的细微波动在
+      // 「全通」与「地板」之间来回跳，这正是「呲呲呲」金属嘶声的来源。
       for (let b = 0; b < bins; b += 1) {
         const p = re[b] * re[b] + im[b] * im[b];
-        let g = 1 - (overSub * noise[b]) / (p + 1e-20);
+        const gamma = p / (noise[b] + 1e-20);
+        const prior = DD_ALPHA * (prev[b] * prev[b] * prevGamma[b])
+          + (1 - DD_ALPHA) * Math.max(gamma - 1, 0);
+        let g = prior / (1 + prior);
         if (g < floorLin) g = floorLin;
-        else if (g > 1) g = 1;
         gain[b] = g;
+        prevGamma[b] = gamma;
       }
-      // 3 点频域平滑，压掉「音乐噪声」的孤立频点
+      // 5 点频域平滑（[0.15 0.2 0.3 0.2 0.15]）：维纳增益本身已连续，
+      // 这里只抹掉单个频点的残余抖动；只平滑 3 点时高频窄带仍会留下颗粒感。
       for (let b = 0; b < bins; b += 1) {
-        const l = gain[b > 0 ? b - 1 : 0];
-        const r = gain[b < bins - 1 ? b + 1 : bins - 1];
-        gainS[b] = 0.25 * l + 0.5 * gain[b] + 0.25 * r;
+        const l2 = gain[b > 1 ? b - 2 : 0];
+        const l1 = gain[b > 0 ? b - 1 : 0];
+        const r1 = gain[b < bins - 1 ? b + 1 : bins - 1];
+        const r2 = gain[b < bins - 2 ? b + 2 : bins - 1];
+        gainS[b] = 0.15 * l2 + 0.2 * l1 + 0.3 * gain[b] + 0.2 * r1 + 0.15 * r2;
       }
-      // 时域：增益变大立刻跟（保住语音起音），变小在 1~2 帧（12~23ms）内落到位。
-      // 这里不能用「慢关」（3.9.25 初版 35%/帧 ≈ 100ms）：一条 100~200ms 的气口
-      // 里有一半时间增益还没降下来，实测只能压 2~5dB，成片里就是「嗡嗡的底噪」。
-      // 另外叠一层「整帧电平」衰减：气口里的嘶声是突发的，逐频点谱减对它无效
-      // （实测该频点功率比噪声分位高 14~22dB，增益仍≈1）；但只要这一帧的电平
-      // 明显低于本句语音电平，这个帧里就不可能是人声，整帧一起按斜坡往下压。
+      // 时域：增益变大立刻跟（保住语音起音），变小按 GAIN_RELEASE 平滑回落。
+      // 另外叠一层「整帧电平」衰减：气口里的嘶声是突发的，逐频点增益对它无效；
+      // 只要这一帧的电平明显低于本句语音电平，这个帧里就不可能是人声。
       const rel = opts.release != null ? opts.release : GAIN_RELEASE;
       const gate = frameGate(over, hiRel[ki], opts);
       for (let b = 0; b < bins; b += 1) {

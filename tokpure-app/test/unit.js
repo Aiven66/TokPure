@@ -660,6 +660,69 @@ test('安装克隆引擎的流程存在（venv + pip + 校验 import）', () => 
   assert.ok(/download\.pytorch\.org\/whl\/cpu/.test(read('electron/voicelocal.js')), 'Windows 没有用 torch CPU 轮子源');
 });
 
+/* ---------------- 5.6 3.9.37 音质：噪音根因与清晰度 ---------------------------- */
+test('3.9.37 降噪：谱减换成决策引导维纳，噪声底不再被轻声字污染', () => {
+  const den = read('electron/denoise.js');
+  assert.ok(/const DD_ALPHA = 0\.90;/.test(den), '缺少决策引导维纳增益');
+  assert.ok(/prior \/ \(1 \+ prior\)/.test(den), '增益不是维纳形式（xi/(1+xi)）');
+  assert.ok(!/OVER_SUB/.test(den), '仍在用谱减过减系数（金属嘶声的来源）');
+  assert.ok(/const GAIN_FLOOR_DB = -24;/.test(den), '频点增益地板仍低到 -40dB（会挖出嘶声空洞）');
+  assert.ok(/const GATE_START_DB = 14;/.test(den), '整帧电平斜坡起点仍会吃掉轻声字（吞字）');
+  assert.ok(/noiseFloor \+ noiseGuard/.test(den), '噪声候选帧没有噪底闸，轻声字会被统计成噪声');
+  assert.ok(/prevGamma\[b\] = gamma;/.test(den), '没有保存后验 SNR，决策引导不成立');
+});
+
+test('3.9.37 清晰度：清洁链改为高频补偿，不再四点削中高频', () => {
+  const loc = read('electron/localize.js');
+  assert.ok(/highshelf=f=5200:gain=\+8/.test(loc), '缺少 5.2k 高频补偿（克隆音高频比真人暗 8~12dB）');
+  assert.ok(/highshelf=f=8500:gain=\+4/.test(loc), '缺少 8.5k 高频补偿');
+  assert.ok(!/equalizer=f=3000:width_type=q:width=1\.1:g=-4\.5/.test(loc), '仍在用旧的四点削中高频');
+  assert.ok(/afftdn=nr=10:nf=-55:tn=0/.test(loc), '配乐降噪仍在逐帧跟踪噪声底（会生成呲呲声）');
+});
+
+test('suppressNoise：语音段原样保留，气口噪声被压掉', () => {
+  const denoise = require('../electron/denoise');
+  const sr = 44100;
+  const n = Math.round(2.6 * sr);
+  const speechEnd = Math.round(1.6 * sr);
+  const pcm = new Float32Array(n);
+  let seed = 12345;
+  const rnd = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return (seed / 0x7fffffff) * 2 - 1;
+  };
+  for (let i = 0; i < n; i += 1) {
+    pcm[i] = i < speechEnd
+      ? 0.3 * Math.sin((2 * Math.PI * 440 * i) / sr) + 0.002 * rnd()
+      : 0.01 * rnd();
+  }
+  const out = denoise.suppressNoise(pcm, sr).pcm;
+  let e0 = 0;
+  let e1 = 0;
+  let c = 0;
+  for (let i = Math.round(0.2 * sr); i < speechEnd - Math.round(0.1 * sr); i += 1) {
+    e0 += pcm[i] ** 2;
+    e1 += out[i] ** 2;
+    c += 1;
+  }
+  const speechDb = 10 * Math.log10(e1 / e0);
+  assert.ok(speechDb > -1.5 && speechDb < 1, `语音段被改变 ${speechDb.toFixed(2)}dB`);
+  let n0 = 0;
+  let n1 = 0;
+  c = 0;
+  const from = speechEnd + Math.round(0.2 * sr);
+  const to = Math.min(n - 10, out.length);
+  for (let i = from; i < to; i += 1) {
+    n0 += pcm[i] ** 2;
+    n1 += out[i] ** 2;
+    c += 1;
+  }
+  if (c > 0) {
+    const noiseDb = 10 * Math.log10((n1 / c) / (n0 / c));
+    assert.ok(noiseDb < -10, `气口噪声只压了 ${noiseDb.toFixed(1)}dB`);
+  }
+});
+
 /* ---------------- 汇总 ---------------- */
 console.log(`\n${passed} 项通过，${failures.length} 项失败`);
 if (failures.length) {
