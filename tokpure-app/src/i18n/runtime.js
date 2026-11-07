@@ -275,6 +275,12 @@
     try { localStorage.setItem(STORE_KEY, code); } catch (e) { /* 忽略隐私模式限制 */ }
     apply(document.documentElement);
     syncSwitcher();
+    // 原生菜单栏不会经过 DOM 词表，主进程按同一个语言码重建菜单
+    try {
+      if (window.tokpure && window.tokpure.system && window.tokpure.system.setLang) {
+        window.tokpure.system.setLang(code);
+      }
+    } catch (e) { /* 浏览器预览环境没有 preload 时忽略 */ }
     // 通知 app.js 重绘由 JS 生成的动态文案（它们由 T() 产出，无法靠 DOM 词表反向还原）
     try {
       document.dispatchEvent(new CustomEvent('tokpure:lang', { detail: { lang: code } }));

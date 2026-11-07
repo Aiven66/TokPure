@@ -257,7 +257,7 @@
         </div>
         <div class="vt-wave${state.previewId === v.id ? ' live' : ''}">${waveBars(v.peaks)}</div>
         <div class="vt-vfoot">
-          <span class="vt-vmeta mono">${(Number(v.duration) || 0).toFixed(1)}s 有效 · 静音 ${speech}% · ${fmtBytes(v.bytes)} · ${fmtDate(v.createdAt)} 导入</span>
+          <span class="vt-vmeta mono">${T('{0}s 有效 · 静音 {1}% · {2} · {3} 导入', (Number(v.duration) || 0).toFixed(1), speech, fmtBytes(v.bytes), fmtDate(v.createdAt))}</span>
           <span class="vt-vacts">
             <button type="button" class="vt-icon" data-play="${esc(v.id)}" title="试听">${ico('play', 12)}</button>
             <button type="button" class="vt-icon danger" data-del="${esc(v.id)}" title="删除这个声音">${ico('trash', 12)}</button>

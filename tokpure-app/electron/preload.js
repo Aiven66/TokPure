@@ -66,6 +66,7 @@ contextBridge.exposeInMainWorld('tokpure', {
   system: {
     ffmpeg: () => invoke('ffmpeg:status'),
     appInfo: () => invoke('app:info'),
+    setLang: (code) => invoke('app:setLang', code),
     netTest: () => invoke('net:test'),
     netDetect: () => invoke('net:detect')
   },

@@ -815,68 +815,79 @@ test('3.9.39 各语言占位符与中文原文一致且无空译文', () => {
   }
 });
 
-test('3.9.39 多语口播 / 视频翻译两个视图的静态文案全部有词表', () => {
-  const html = read('src/index.html');
+test('3.9.40 全站静态文案（index.html 所有视图 + 引擎中心字段）都有词表', () => {
   const keys = new Set(Object.keys(DICTS.en).map(normText));
   const missing = [];
-  // 视图内部还有嵌套 <section>，必须按标签嵌套找真正的结束位置
-  const sectionEnd = (from) => {
-    const re = /<section\b|<\/section>/g;
-    re.lastIndex = from;
-    let depth = 0;
-    let m;
-    while ((m = re.exec(html))) {
-      depth += m[0] === '</section>' ? -1 : 1;
-      if (depth === 0) return m.index;
-    }
-    return html.length;
-  };
-  for (const view of ['oralcast', 'translate']) {
-    const idIdx = html.indexOf(`id="view-${view}"`);
-    assert.ok(idIdx >= 0, `index.html 缺少 view-${view}`);
-    const start = html.lastIndexOf('<section', idIdx);
-    const chunk = html.slice(start, sectionEnd(start))
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[\s\S]*?<\/style>/gi, '');
-    for (const raw of chunk.split(/<[^>]*>/)) {
-      if (!/[\u4e00-\u9fa5]/.test(raw)) continue;
-      const k = normText(raw);
-      if (k && !keys.has(k)) missing.push(`${view}: ${k.slice(0, 60)}`);
-    }
-    const attrRe = /(?:aria-label|title|placeholder|alt)="([^"]*[\u4e00-\u9fa5][^"]*)"/g;
-    let m;
-    while ((m = attrRe.exec(chunk))) {
-      const k = normText(m[1]);
-      if (!keys.has(k)) missing.push(`${view}@attr: ${k}`);
-    }
+  // 文本节点是按 textContent 匹配的，HTML 实体在运行时已被解码，这里同样解码后再比
+  const decode = (s) => s
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  const html = read('src/index.html')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+  for (const raw of html.split(/<[^>]*>/)) {
+    if (!/[\u4e00-\u9fa5]/.test(raw)) continue;
+    const k = normText(decode(raw));
+    if (k && !keys.has(k)) missing.push(`index.html: ${k.slice(0, 70)}`);
+  }
+  const attrRe = /(?:aria-label|title|placeholder|alt)="([^"]*[\u4e00-\u9fa5][^"]*)"/g;
+  let m;
+  while ((m = attrRe.exec(html))) {
+    const k = normText(decode(m[1]));
+    if (!keys.has(k)) missing.push(`index.html@attr: ${k}`);
+  }
+  // 引擎中心的名称/简介/模型说明由主进程回中文，渲染层按 textContent 命中词表
+  const hub = read('electron/enginehub.js');
+  const hubRe = /^\s*(name|summary|lang|note|label|desc):\s*'((?:[^'\\]|\\.)*)'/gm;
+  while ((m = hubRe.exec(hub))) {
+    const k = normText(m[2]);
+    if (/[\u4e00-\u9fa5]/.test(k) && !keys.has(k)) missing.push(`enginehub.${m[1]}: ${k}`);
   }
   assert.deepStrictEqual(missing, [], `这些文案没有词条：\n${missing.join('\n')}`);
 });
 
 test('3.9.39 两个页面的动态文案统一走 T() 且 key 都在词表里', () => {
   const en = DICTS.en;
-  for (const f of ['src/translate.js', 'src/oralcast.js']) {
+  // 四个渲染脚本都是经典脚本，裸 T() 解析到全局 window.T，key 必须都在词表里
+  const min = { 'src/translate.js': 10, 'src/oralcast.js': 10, 'src/localize.js': 10, 'src/app.js': 50 };
+  for (const f of Object.keys(min)) {
     const src = read(f);
-    assert.ok(/const T = \(key, a, b, c\) =>/.test(src), `${f} 没有 T() 包装`);
-    const re = /\bT\(\s*'((?:[^'\\]|\\.)*)'/g;
+    const re = /(?:\bT|window\.T)\(\s*'((?:[^'\\]|\\.)*)'/g;
     let m;
     let n = 0;
     while ((m = re.exec(src))) {
       n += 1;
       assert.ok(m[1] in en, `${f} 的 T('${m[1]}') 在词表里不存在`);
     }
-    assert.ok(n >= 10, `${f} 里只有 ${n} 处 T()，动态文案可能还没接入词表`);
+    assert.ok(n >= min[f], `${f} 里只有 ${n} 处 T()，动态文案可能还没接入词表`);
   }
-  // 侧边栏 Pro 提示是 app.js 里拼的属性文案，同样要走词表
-  const app = read('src/app.js');
-  const re = /window\.T\(\s*'((?:[^'\\]|\\.)*)'/g;
+});
+
+test('3.9.40 原生菜单跟随界面语言，八种语言文案齐全', () => {
+  const main = read('electron/main.js');
+  // 菜单栏不能写死中文：英文界面下必须是 Edit / Window
+  assert.ok(/label: t\.edit/.test(main) && /label: t\.window/.test(main), '菜单标题没有走语言表');
+  assert.ok(!/label: '编辑'|label: '窗口'/.test(main), '菜单标题仍写死中文');
+  const preload = read('electron/preload.js');
+  assert.ok(/setLang: \(code\) => invoke\('app:setLang', code\)/.test(preload), 'preload 没有暴露 setLang');
+  assert.ok(/ipcMain\.handle\('app:setLang'/.test(main), '主进程没有注册 app:setLang');
+  // 八种语言的键集合必须一致，漏一条就会在某种语言下露出英文
+  const block = /const MENU_TEXT = \{([\s\S]*?)\n\};/.exec(main);
+  assert.ok(block, '找不到 MENU_TEXT');
+  const keys = {};
+  const langRe = /^\s{2}(?:'([\w-]+)'|(\w+)): \{([\s\S]*?)^\s{2}\},?$/gm;
   let m;
-  let n = 0;
-  while ((m = re.exec(app))) {
-    n += 1;
-    assert.ok(m[1] in en, `src/app.js 的 window.T('${m[1]}') 在词表里不存在`);
+  while ((m = langRe.exec(block[1]))) {
+    const code = m[1] || m[2];
+    keys[code] = (m[3].match(/(\w+):/g) || []).map((s) => s.slice(0, -1)).sort();
   }
-  assert.ok(n >= 1, 'app.js 里没有 window.T()，Pro 提示仍是裸中文');
+  const codes = Object.keys(keys);
+  assert.deepStrictEqual(codes.sort(), ['de', 'en', 'es', 'fr', 'ja', 'pt', 'zh-CN', 'zh-TW'], '菜单语言不全');
+  const base = keys.en;
+  assert.strictEqual(base.length, 16, `en 菜单项只有 ${base.length} 条`);
+  for (const c of codes) assert.deepStrictEqual(keys[c], base, `${c} 菜单项与 en 不一致`);
 });
 
 test('3.9.39 语言默认英文，只有用户手动切换过才沿用偏好', () => {

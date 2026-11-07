@@ -110,12 +110,13 @@ function hydrateIcons(root = document) {
    免费：下载、去水印、AI 字幕、梗图贴纸、队列、媒体库。
    判定来自主进程 license（服务端 /api/entitlement），渲染层不自行判断账号字段。 */
 const PRO_VIEWS = ['translate', 'localize', 'oralcast', 'clips', 'enhance'];
+// 必须与侧边栏 nav 文案逐字一致，T() 才能命中词表
 const PRO_LABEL = {
   translate: 'AI 视频翻译',
-  localize: 'AI 多语切片',
-  oralcast: 'AI 多语口播',
+  localize: 'AI多语切片',
+  oralcast: 'AI多语口播',
   clips: 'AI 批量切片',
-  enhance: 'AI 画质增强'
+  enhance: '画质增强'
 };
 const isPro = () => Boolean(state.license && state.license.paid);
 
@@ -134,7 +135,7 @@ function applyLicense(lic) {
   const planText = $('#account-menu-plan');
   if (planText) {
     planText.textContent = paid
-      ? `已解锁 ${lic.plan === 'studio' ? 'Studio' : 'Pro'} · 全部 AI 功能`
+      ? T('已解锁 {0} · 全部 AI 功能', lic.plan === 'studio' ? 'Studio' : 'Pro')
       : '免费版 · 未解锁 Pro 功能';
   }
   $$('#nav .nav-item').forEach((el) => {
@@ -153,8 +154,8 @@ function showPaywall(view) {
   if (!box) return;
   state.pendingView = view || null;
   const name = PRO_LABEL[view];
-  const label = $('#paywall-feature');
-  if (label) label.textContent = name || '该功能';
+  const title = $('#paywall-title');
+  if (title) title.textContent = T('「{0}」是 Pro 专属功能', T(name || '该功能'));
   box.hidden = false;
   // 让键盘用户与读屏都能立刻定位到升级按钮
   setTimeout(() => {
@@ -817,7 +818,7 @@ function setLabMode(mode) {
 function addLabRegion(region) {
   state.labRegions.push({
     id: 'r' + Date.now() + Math.random().toString(36).slice(2, 5),
-    name: region.name || ('区域 ' + (state.labRegions.length + 1)),
+    name: region.name || T('区域 {0}', state.labRegions.length + 1),
     x: region.x, y: region.y, w: region.w, h: region.h, start: 0, end: 0
   });
   renderLabRegions();
@@ -884,7 +885,7 @@ async function loadHub() {
     updateSubModelSelect();
     updateEnhNote();
   } catch (e) {
-    toast('引擎状态读取失败：' + (e.message || e), 'err');
+    toast(T('引擎状态读取失败：{0}', e.message || e), 'err');
   }
 }
 
@@ -897,9 +898,9 @@ function renderHub() {
   const hw = state.hub.hw;
   $('#hub-tier').textContent = hw.tierLabel;
   $('#hub-cpu').textContent = (hw.appleSilicon ? 'Apple Silicon · ' : '') + hw.cpuModel.slice(0, 34);
-  $('#hub-mem').textContent = fmtBytes(hw.memBytes) + ' · ' + hw.cores + ' 核';
+  $('#hub-mem').textContent = T('{0} · {1} 核', fmtBytes(hw.memBytes), hw.cores);
   $('#hub-gpu').textContent = hw.gpuLabel;
-  $('#hub-disk').textContent = fmtBytes(hw.freeDisk) + ' / 已用 ' + fmtBytes(state.hub.totalUsed);
+  $('#hub-disk').textContent = T('{0} / 已用 {1}', fmtBytes(hw.freeDisk), fmtBytes(state.hub.totalUsed));
 
   const featIcon = { subtitle: 'captions', enhance: 'zap', localize: 'languages' };
   $('#hub-engines').innerHTML = state.hub.engines.map((en) => {
@@ -974,7 +975,7 @@ async function hubInstall(kind, id, btn) {
     await api.hub.install(kind, id);
     toast('安装完成', 'ok');
   } catch (e) {
-    toast('安装失败：' + cleanIpcError(e), 'err');
+    toast(T('安装失败：{0}', cleanIpcError(e)), 'err');
   } finally {
     await loadHub();
   }
@@ -986,7 +987,7 @@ function updateSubModelSelect() {
   if (!sel || !state.hub) return;
   const cur = sel.value || 'whisper-base';
   sel.innerHTML = state.hub.models.filter((m) => m.engine === 'whisper').map((m) =>
-    `<option value="${m.id}" ${m.id === cur ? 'selected' : ''}>${esc(m.name)}${m.installed ? ' · 已下载' : ' · 未下载'}</option>`
+    `<option value="${m.id}" ${m.id === cur ? 'selected' : ''}>${esc(T(m.name))}${m.installed ? ' · ' + T('已下载') : ' · ' + T('未下载')}</option>`
   ).join('');
   updateSubRunState();
 }
@@ -1024,7 +1025,7 @@ function renderSubSegments() {
       <div class="sub-time">${srtTimestamp(s.start)}<br>↓<br>${srtTimestamp(s.end)}</div>
       <input type="text" data-i="${i}" value="${esc(s.text)}" />
     </div>`).join('');
-  $('#sub-seg-count').textContent = state.subSegments.length + ' 句';
+  $('#sub-seg-count').textContent = T('{0} 句', state.subSegments.length);
 }
 
 async function subPick() {
@@ -1054,7 +1055,7 @@ async function subRun() {
     $('#sub-burn-card').classList.remove('hidden');
     toast('字幕识别完成', 'ok');
   } catch (e) {
-    toast('识别失败：' + cleanIpcError(e), 'err');
+    toast(T('识别失败：{0}', cleanIpcError(e)), 'err');
   } finally {
     state.aiTask = null;
     btn.disabled = false;
@@ -1092,7 +1093,7 @@ function bindSubtitle() {
       $('#sub-reveal').disabled = false;
       toast('字幕烧录完成', 'ok');
     } catch (e) {
-      toast('烧录失败：' + cleanIpcError(e), 'err');
+      toast(T('烧录失败：{0}', cleanIpcError(e)), 'err');
     } finally {
       state.aiTask = null;
       btn.disabled = false;
@@ -1147,11 +1148,11 @@ function bindEnhance() {
       const res = await api.ai.enhance({ input: state.enhFile.path, engine: state.enhEngine, scale });
       state.enhOutput = res.output;
       $('#enh-done').classList.remove('hidden');
-      $('#enh-frames').textContent = '产出 ' + res.frames + ' 帧';
+      $('#enh-frames').textContent = T('产出 {0} 帧', res.frames);
       toast('画质增强完成', 'ok');
     } catch (e) {
       const msg = cleanIpcError(e);
-      if (msg !== '已取消') toast('增强失败：' + msg, 'err');
+      if (msg !== '已取消') toast(T('增强失败：{0}', msg), 'err');
       else toast('任务已取消', 'info');
     } finally {
       state.aiTask = null;
@@ -1179,7 +1180,7 @@ function updateClipModelSelect() {
   if (!sel || !state.hub) return;
   const cur = sel.value || (state.clips.cfg && state.clips.cfg.modelId) || 'whisper-base';
   sel.innerHTML = state.hub.models.filter((m) => m.engine === 'whisper').map((m) =>
-    `<option value="${m.id}" ${m.id === cur ? 'selected' : ''}>${esc(m.name)}${m.installed ? ' · 已下载' : ' · 未下载'}</option>`
+    `<option value="${m.id}" ${m.id === cur ? 'selected' : ''}>${esc(T(m.name))}${m.installed ? ' · ' + T('已下载') : ' · ' + T('未下载')}</option>`
   ).join('');
   updateClipAnalyzeState();
 }

@@ -103,10 +103,17 @@ async function elevenTest(key, proxy) {
   });
   if (res.status !== 200) throw new Error(pickError('elevenlabs', res));
   const d = res.data || {};
-  const quota = d.subscription && d.subscription.character_count != null
-    ? `已用 ${d.subscription.character_count}/${d.subscription.character_limit} 字符`
-    : '';
-  return { ok: true, info: quota || (d.first_name ? `账号 ${d.first_name}` : '连接正常') };
+  const sub = d.subscription || {};
+  const used = sub.character_count;
+  const limit = sub.character_limit;
+  const hasQuota = used != null && limit != null;
+  const quota = hasQuota ? `已用 ${used}/${limit} 字符` : '';
+  return {
+    ok: true,
+    info: quota || (d.first_name ? `账号 ${d.first_name}` : '连接正常'),
+    code: hasQuota ? 'quota' : d.first_name ? 'account' : 'ok',
+    account: d.first_name || '', quota, used: hasQuota ? used : null, limit: hasQuota ? limit : null
+  };
 }
 
 async function elevenClone({ key, audioFile, name, proxy }) {
@@ -214,7 +221,12 @@ async function test(provider, key, proxy) {
     // 体积统计是异步遍历磁盘的，这里等一下，避免刚启动时显示成 0 占用
     const bytes = s.bytes || (await voicelocal.size());
     const gb = bytes ? (bytes / 1024 / 1024 / 1024).toFixed(1) + 'GB' : '';
-    return { ok: true, info: `离线可用 · 23 语种${gb ? ' · 占用 ' + gb : ''}` };
+    return {
+      ok: true,
+      info: `离线可用 · 23 语种${gb ? ' · 占用 ' + gb : ''}`,
+      // 结构化字段供渲染层按当前语言拼装，info 保留给旧调用方兜底
+      code: 'local', langCount: 23, gb
+    };
   }
   if (!key) throw new Error('请先填写 API Key');
   if (id === 'fishaudio') return fishTest(key, proxy);

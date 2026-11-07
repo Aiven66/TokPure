@@ -116,9 +116,10 @@
 
   function voiceHintText() {
     const base = VOICE_HINT[state.voiceMode] || '';
-    if (state.voiceMode !== 'clone') return base;
+    if (state.voiceMode !== 'clone') return T(base);
     const est = cloneEstimate();
-    return `${base}按当前设置（${est.langs} 种语言）预计每个语种约 ${est.per} 分钟、全部约 ${est.total} 分钟，最先完成的语种会立刻出现在结果里。`;
+    return T('{0}按当前设置（{1} 种语言）预计每个语种约 {2} 分钟、全部约 {3} 分钟，最先完成的语种会立刻出现在结果里。',
+      T(base), est.langs, est.per, est.total);
   }
 
   function renderVoices() {
@@ -169,7 +170,7 @@
       state.audio.src = res.dataUrl;
       await state.audio.play();
     } catch (e) {
-      notify(`试听失败：${cleanError(e)}`, 'err');
+      notify(T('试听失败：{0}', cleanError(e)), 'err');
     }
   }
 
@@ -195,11 +196,11 @@
       // 每张卡片显示自己这一语种的已用时长与粗估剩余，长时间任务才不会看着像卡死
       const eta = [];
       if (elapsed > 3) {
-        eta.push(`已用 ${mmss(elapsed)}`);
+        eta.push(T('已用 {0}', mmss(elapsed)));
         if (!job.done && !job.err && pct > 2) {
           const remain = elapsed * (100 - pct) / pct;
-          if (remain >= 90) eta.push(`剩约 ${Math.round(remain / 60)} 分`);
-          else if (remain >= 20) eta.push(`剩约 ${Math.max(10, Math.round(remain / 10) * 10)} 秒`);
+          if (remain >= 90) eta.push(T('剩约 {0} 分', Math.round(remain / 60)));
+          else if (remain >= 20) eta.push(T('剩约 {0} 秒', Math.max(10, Math.round(remain / 10) * 10)));
         }
       }
       // 卡片宽度有限：把「当前阶段」和「时长」分两列，右侧时长永不换行、不被挤没
@@ -433,12 +434,11 @@
       // 估算超过 10 分钟就先说清楚代价（音色优先：不建议为了快而换成系统音色）
       const est = cloneEstimate();
       if (est.total > 10) {
-        const ok = window.confirm(
-          `原声克隆是逐句生成的，预计每个语种约 ${est.per} 分钟，${est.langs} 个语种共约 ${est.total} 分钟。\n\n` +
-          '这个模式会用原片说话人的真实嗓音朗读译文，是唯一能保住原声音色的方式；' +
-          '「本地近似」虽然快，但用的是系统音色，听起来会是另一个人。\n\n' +
-          '仍要开始原声克隆吗？'
-        );
+        const ok = window.confirm([
+          T('原声克隆是逐句生成的，预计每个语种约 {0} 分钟，{1} 个语种共约 {2} 分钟。', est.per, est.langs, est.total),
+          T('这个模式会用原片说话人的真实嗓音朗读译文，是唯一能保住原声音色的方式；「本地近似」虽然快，但用的是系统音色，听起来会是另一个人。'),
+          T('仍要开始原声克隆吗？')
+        ].join('\n\n'));
         if (!ok) return;
       }
     }
@@ -612,13 +612,27 @@
       if (cloneTest) cloneTest.textContent = local ? '检测引擎' : '测试连接';
     }
 
+    // 主进程只回结构化结果，文案按当前语言拼装
+    function fmtEngineInfo(r) {
+      if (!r) return '';
+      if (r.code === 'local') {
+        let s = T('离线可用') + ' · ' + T('{0} 语种', r.langCount);
+        if (r.gb) s += ' · ' + T('占用 {0}', r.gb);
+        return s;
+      }
+      if (r.code === 'quota') return T('已用 {0}/{1} 字符', r.used, r.limit);
+      if (r.code === 'account') return T('账号 {0}', r.account);
+      if (r.code === 'ok') return T('连接正常');
+      return r.info || '';
+    }
+
     async function probeLocalEngine() {
       cloneStatusText('正在检测本地引擎…');
       try {
         const r = await api().cloneTest({ provider: 'local' });
-        cloneStatusText(`本地引擎已就绪${r && r.info ? '：' + r.info : ''}`);
+        cloneStatusText(T('本地引擎已就绪：{0}', fmtEngineInfo(r)));
       } catch (e) {
-        cloneStatusText(`本地引擎不可用：${cleanError(e)}`);
+        cloneStatusText(T('本地引擎不可用：{0}', cleanError(e)));
       }
     }
 
@@ -684,9 +698,9 @@
       cloneStatusText('正在测试连接…');
       try {
         const r = await api().cloneTest({ provider, key });
-        cloneStatusText(`连接成功${r && r.info ? '：' + r.info : ''}`);
+        cloneStatusText(T('连接成功：{0}', fmtEngineInfo(r)));
       } catch (e) {
-        cloneStatusText(`连接失败：${cleanError(e)}`);
+        cloneStatusText(T('连接失败：{0}', cleanError(e)));
       }
     });
 

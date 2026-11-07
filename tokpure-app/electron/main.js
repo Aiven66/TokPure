@@ -105,6 +105,60 @@ function createWindow() {
   });
 }
 
+// 原生菜单文案跟随界面语言：客户端默认英文，菜单栏不能写死中文。
+// role 会自动提供标准行为与快捷键，这里只覆盖显示文本。
+const MENU_TEXT = {
+  en: {
+    edit: 'Edit', window: 'Window', about: 'About TokPure', hide: 'Hide TokPure',
+    hideOthers: 'Hide Others', unhide: 'Show All', quit: 'Quit TokPure',
+    undo: 'Undo', redo: 'Redo', cut: 'Cut', copy: 'Copy', paste: 'Paste', selectAll: 'Select All',
+    minimize: 'Minimize', zoom: 'Zoom', togglefullscreen: 'Toggle Full Screen'
+  },
+  'zh-CN': {
+    edit: '编辑', window: '窗口', about: '关于 TokPure', hide: '隐藏 TokPure',
+    hideOthers: '隐藏其他', unhide: '全部显示', quit: '退出 TokPure',
+    undo: '撤销', redo: '重做', cut: '剪切', copy: '复制', paste: '粘贴', selectAll: '全选',
+    minimize: '最小化', zoom: '缩放', togglefullscreen: '切换全屏'
+  },
+  'zh-TW': {
+    edit: '編輯', window: '視窗', about: '關於 TokPure', hide: '隱藏 TokPure',
+    hideOthers: '隱藏其他', unhide: '顯示全部', quit: '結束 TokPure',
+    undo: '還原', redo: '重做', cut: '剪下', copy: '拷貝', paste: '貼上', selectAll: '全選',
+    minimize: '縮到最小', zoom: '縮放', togglefullscreen: '切換全螢幕'
+  },
+  es: {
+    edit: 'Edición', window: 'Ventana', about: 'Acerca de TokPure', hide: 'Ocultar TokPure',
+    hideOthers: 'Ocultar otros', unhide: 'Mostrar todo', quit: 'Salir de TokPure',
+    undo: 'Deshacer', redo: 'Rehacer', cut: 'Cortar', copy: 'Copiar', paste: 'Pegar', selectAll: 'Seleccionar todo',
+    minimize: 'Minimizar', zoom: 'Zoom', togglefullscreen: 'Pantalla completa'
+  },
+  pt: {
+    edit: 'Editar', window: 'Janela', about: 'Sobre o TokPure', hide: 'Ocultar TokPure',
+    hideOthers: 'Ocultar outros', unhide: 'Mostrar tudo', quit: 'Sair do TokPure',
+    undo: 'Desfazer', redo: 'Refazer', cut: 'Recortar', copy: 'Copiar', paste: 'Colar', selectAll: 'Selecionar tudo',
+    minimize: 'Minimizar', zoom: 'Zoom', togglefullscreen: 'Tela cheia'
+  },
+  fr: {
+    edit: 'Édition', window: 'Fenêtre', about: 'À propos de TokPure', hide: 'Masquer TokPure',
+    hideOthers: 'Masquer les autres', unhide: 'Tout afficher', quit: 'Quitter TokPure',
+    undo: 'Annuler', redo: 'Rétablir', cut: 'Couper', copy: 'Copier', paste: 'Coller', selectAll: 'Tout sélectionner',
+    minimize: 'Réduire', zoom: 'Zoom', togglefullscreen: 'Plein écran'
+  },
+  de: {
+    edit: 'Bearbeiten', window: 'Fenster', about: 'Über TokPure', hide: 'TokPure ausblenden',
+    hideOthers: 'Andere ausblenden', unhide: 'Alle einblenden', quit: 'TokPure beenden',
+    undo: 'Widerrufen', redo: 'Wiederholen', cut: 'Ausschneiden', copy: 'Kopieren', paste: 'Einfügen', selectAll: 'Alles auswählen',
+    minimize: 'Minimieren', zoom: 'Zoomen', togglefullscreen: 'Vollbild'
+  },
+  ja: {
+    edit: '編集', window: 'ウインドウ', about: 'TokPureについて', hide: 'TokPureを隠す',
+    hideOthers: 'ほかを隠す', unhide: 'すべてを表示', quit: 'TokPureを終了',
+    undo: '取り消す', redo: 'やり直す', cut: 'カット', copy: 'コピー', paste: 'ペースト', selectAll: 'すべて選択',
+    minimize: 'しまう', zoom: 'ズーム', togglefullscreen: 'フルスクリーン'
+  }
+};
+let menuLang = 'en';
+
 function buildMenu() {
   // Windows/Linux use a frameless window with no native menu bar; installing the
   // macOS-style application menu there would only add leftover mac菜单 entries.
@@ -112,34 +166,39 @@ function buildMenu() {
     Menu.setApplicationMenu(null);
     return;
   }
+  const t = MENU_TEXT[menuLang] || MENU_TEXT.en;
   const template = [
     {
       label: 'TokPure',
       submenu: [
-        { role: 'about' },
+        { role: 'about', label: t.about },
         { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
+        { role: 'hide', label: t.hide },
+        { role: 'hideOthers', label: t.hideOthers },
+        { role: 'unhide', label: t.unhide },
         { type: 'separator' },
-        { role: 'quit' }
+        { role: 'quit', label: t.quit }
       ]
     },
     {
-      label: '编辑',
+      label: t.edit,
       submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
+        { role: 'undo', label: t.undo },
+        { role: 'redo', label: t.redo },
         { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' }
+        { role: 'cut', label: t.cut },
+        { role: 'copy', label: t.copy },
+        { role: 'paste', label: t.paste },
+        { role: 'selectAll', label: t.selectAll }
       ]
     },
     {
-      label: '窗口',
-      submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'togglefullscreen' }]
+      label: t.window,
+      submenu: [
+        { role: 'minimize', label: t.minimize },
+        { role: 'zoom', label: t.zoom },
+        { role: 'togglefullscreen', label: t.togglefullscreen }
+      ]
     }
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
@@ -286,6 +345,14 @@ function registerIpc() {
     node: process.versions.node,
     proxy: store.get().proxy
   }));
+  // 渲染层切换语言时同步重建原生菜单，避免界面英文、菜单栏中文
+  ipcMain.handle('app:setLang', (_e, code) => {
+    if (MENU_TEXT[code] && code !== menuLang) {
+      menuLang = code;
+      buildMenu();
+    }
+    return true;
+  });
 
   ipcMain.handle('net:test', async () => {
     await refreshSystemProxy(true);
