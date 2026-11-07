@@ -342,7 +342,10 @@ export function PaymentModal() {
                 <button
                   type="button"
                   onClick={() => {
-                    window.location.href = `/login.html?next=${encodeURIComponent(window.location.pathname)}`;
+                    // 登录后回到价格页并自动续上这一档，免去用户重新选择
+                    const plan = item.kind === 'plan' ? (item.id === 'tokpure-studio' ? 'studio' : 'pro') : '';
+                    const next = plan ? `/pricing.html?plan=${plan}` : window.location.pathname;
+                    window.location.href = `/login.html?next=${encodeURIComponent(next)}`;
                   }}
                   className="w-full py-3 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm font-bold hover:brightness-110 transition-all"
                 >

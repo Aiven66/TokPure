@@ -9,7 +9,7 @@
  * - Google 一键登录由 config.auth.googleEnabled 门控。
  */
 
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import {
   isAdminUser,
   isDesktopAuthRequest,
@@ -64,9 +64,20 @@ function AuthIsland() {
   const mode = params.get('mode');
   const isDesktop = isDesktopAuthRequest(pkgConfig, params);
 
+  // 站内回跳：只接受以单个 / 开头的相对路径，避免被构造成开放重定向
+  const next = params.get('next') || '';
+  const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '';
+
   const handleSuccess = () => {
-    window.location.assign(pkgConfig.auth.afterLoginHref);
+    window.location.assign(safeNext || pkgConfig.auth.afterLoginHref);
   };
+
+  // 已登录（含 Google 回跳后）且带 next：直接回到来源页，不再停在账号面板
+  useEffect(() => {
+    if (!isDesktop && !loading && user && safeNext) {
+      window.location.replace(safeNext);
+    }
+  }, [isDesktop, loading, user, safeNext]);
 
   // 桌面端 deep-link 流程：必须始终渲染表单岛屿。
   // 登录/注册成功后 user 会被置位，若此处提前切到 AccountPanel，
