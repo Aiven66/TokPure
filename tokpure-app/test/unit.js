@@ -773,6 +773,119 @@ test('3.9.38 升级入口与登录回跳都指向正式域名', () => {
   assert.ok(/\/pricing\.html\?from=desktop&plan=/.test(lic), '升级入口没有带桌面端来源参数');
 });
 
+/* ---------------- 5.8 3.9.39 多语口播 / 视频翻译全量多语言 ----------
+   词表 key 就是页面上的中文原文，运行时按文本节点精确匹配。这两个视图
+   过去只写死中文、且动态文案用模板拼接，导致切到 English 后仍显示中文。 */
+const I18N_CODES = ['en', 'zh-CN', 'zh-TW', 'es', 'pt', 'fr', 'de', 'ja'];
+
+function loadDict(code) {
+  if (code === 'zh-CN') return null;
+  const sandbox = { window: {}, console };
+  require('vm').runInNewContext(read(`src/i18n/${code}.js`), sandbox);
+  return sandbox.window.TokPureI18n.lan[code];
+}
+const DICTS = {};
+for (const c of I18N_CODES) DICTS[c] = loadDict(c);
+const normText = (s) => s.replace(/\s+/g, ' ').trim();
+const placeholders = (s) => (s.match(/\{\d\}/g) || []).sort().join(',');
+
+test('3.9.39 七份词表覆盖同一组 key', () => {
+  const base = Object.keys(DICTS.en).sort();
+  assert.ok(base.length > 900, `en 词表只有 ${base.length} 条`);
+  for (const c of I18N_CODES) {
+    if (!DICTS[c]) continue;
+    const keys = Object.keys(DICTS[c]).sort();
+    assert.deepStrictEqual(keys, base, `${c} 词表 key 与 en 不一致`);
+  }
+});
+
+test('3.9.39 各语言占位符与中文原文一致且无空译文', () => {
+  for (const c of I18N_CODES) {
+    const d = DICTS[c];
+    if (!d) continue;
+    for (const k of Object.keys(DICTS.en)) {
+      const v = d[k];
+      assert.strictEqual(typeof v, 'string', `${c} 缺少 ${JSON.stringify(k)}`);
+      assert.strictEqual(placeholders(v), placeholders(k), `${c} 的 ${JSON.stringify(k)} 占位符不匹配`);
+      // 大标题被 <em> 拆出的片段在部分语言里合法地译为空串（ja 的「用」、de/ja 的「，」）
+      if (!v) {
+        assert.ok(k === '，' || (c === 'ja' && k === '用'), `${c} 的 ${JSON.stringify(k)} 译文为空`);
+      }
+    }
+  }
+});
+
+test('3.9.39 多语口播 / 视频翻译两个视图的静态文案全部有词表', () => {
+  const html = read('src/index.html');
+  const keys = new Set(Object.keys(DICTS.en).map(normText));
+  const missing = [];
+  // 视图内部还有嵌套 <section>，必须按标签嵌套找真正的结束位置
+  const sectionEnd = (from) => {
+    const re = /<section\b|<\/section>/g;
+    re.lastIndex = from;
+    let depth = 0;
+    let m;
+    while ((m = re.exec(html))) {
+      depth += m[0] === '</section>' ? -1 : 1;
+      if (depth === 0) return m.index;
+    }
+    return html.length;
+  };
+  for (const view of ['oralcast', 'translate']) {
+    const idIdx = html.indexOf(`id="view-${view}"`);
+    assert.ok(idIdx >= 0, `index.html 缺少 view-${view}`);
+    const start = html.lastIndexOf('<section', idIdx);
+    const chunk = html.slice(start, sectionEnd(start))
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '');
+    for (const raw of chunk.split(/<[^>]*>/)) {
+      if (!/[\u4e00-\u9fa5]/.test(raw)) continue;
+      const k = normText(raw);
+      if (k && !keys.has(k)) missing.push(`${view}: ${k.slice(0, 60)}`);
+    }
+    const attrRe = /(?:aria-label|title|placeholder|alt)="([^"]*[\u4e00-\u9fa5][^"]*)"/g;
+    let m;
+    while ((m = attrRe.exec(chunk))) {
+      const k = normText(m[1]);
+      if (!keys.has(k)) missing.push(`${view}@attr: ${k}`);
+    }
+  }
+  assert.deepStrictEqual(missing, [], `这些文案没有词条：\n${missing.join('\n')}`);
+});
+
+test('3.9.39 两个页面的动态文案统一走 T() 且 key 都在词表里', () => {
+  const en = DICTS.en;
+  for (const f of ['src/translate.js', 'src/oralcast.js']) {
+    const src = read(f);
+    assert.ok(/const T = \(key, a, b, c\) =>/.test(src), `${f} 没有 T() 包装`);
+    const re = /\bT\(\s*'((?:[^'\\]|\\.)*)'/g;
+    let m;
+    let n = 0;
+    while ((m = re.exec(src))) {
+      n += 1;
+      assert.ok(m[1] in en, `${f} 的 T('${m[1]}') 在词表里不存在`);
+    }
+    assert.ok(n >= 10, `${f} 里只有 ${n} 处 T()，动态文案可能还没接入词表`);
+  }
+  // 侧边栏 Pro 提示是 app.js 里拼的属性文案，同样要走词表
+  const app = read('src/app.js');
+  const re = /window\.T\(\s*'((?:[^'\\]|\\.)*)'/g;
+  let m;
+  let n = 0;
+  while ((m = re.exec(app))) {
+    n += 1;
+    assert.ok(m[1] in en, `src/app.js 的 window.T('${m[1]}') 在词表里不存在`);
+  }
+  assert.ok(n >= 1, 'app.js 里没有 window.T()，Pro 提示仍是裸中文');
+});
+
+test('3.9.39 语言默认英文，只有用户手动切换过才沿用偏好', () => {
+  const rt = read('src/i18n/runtime.js');
+  assert.ok(/var FALLBACK = 'en';/.test(rt), '默认语言不是英文');
+  assert.ok(/if \(saved && LANGS\.some/.test(rt) && /return FALLBACK;/.test(rt), 'detect() 没有默认回落到英文');
+  assert.ok(!/navigator\.language|navigator\.languages/.test(rt), 'detect() 仍在按系统语言判定');
+});
+
 /* ---------------- 汇总 ---------------- */
 console.log(`\n${passed} 项通过，${failures.length} 项失败`);
 if (failures.length) {

@@ -141,7 +141,9 @@ function applyLicense(lic) {
     const gated = PRO_VIEWS.includes(el.dataset.view);
     el.classList.toggle('is-pro', gated && !paid);
     // 免费用户点 Pro 功能前就能看到「PRO」，避免点进去才发现要付费
-    el.setAttribute('title', gated && !paid ? `${PRO_LABEL[el.dataset.view] || ''}（Pro 专属）` : '');
+    el.setAttribute('title', gated && !paid
+      ? (typeof window.T === 'function' ? window.T('{0}（Pro 专属）', window.T(PRO_LABEL[el.dataset.view] || '')) : `${PRO_LABEL[el.dataset.view] || ''}（Pro 专属）`)
+      : '');
   });
   if (paid && wasPaid !== paid) hidePaywall();
 }

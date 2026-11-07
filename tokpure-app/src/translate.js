@@ -34,6 +34,8 @@
   const api = () => (window.tokpure && window.tokpure.vt) || null;
   const esc = (s) => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  // 动态拼接的文案无法被 i18n 运行时按 textContent 精确命中，必须显式走词表
+  const T = (key, a, b, c) => (typeof window.T === 'function' ? window.T(key, a, b, c) : key);
 
   const state = {
     bound: false,
@@ -113,7 +115,8 @@
       return;
     }
     const mins = Math.max(1, Math.round((state.source.duration / 60) * 10 * n + 1));
-    host.textContent = `原片 ${fmtDur(state.source.duration)} × ${n} 个语种 ≈ ${mins} 分钟（克隆配音约 10 倍实时，首句先加载模型）`;
+    host.textContent = T('原片 {0} × {1} 个语种 ≈ {2} 分钟（克隆配音约 10 倍实时，首句先加载模型）',
+      fmtDur(state.source.duration), n, mins);
   }
 
   /* ---------------- 引擎读数 ---------------- */
@@ -125,7 +128,7 @@
     row.dataset.state = ok ? 'ok' : 'lack';
     const b = row.querySelector('b');
     if (b) b.textContent = text;
-    row.title = `${RO_LABEL[key]}${ok ? '已就绪' : text}`;
+    row.title = ok ? T('{0} · 已就绪', T(RO_LABEL[key])) : `${T(RO_LABEL[key])} · ${T(text)}`;
   }
 
   function renderEngine(lib) {
@@ -138,7 +141,7 @@
       ['Llama.cpp 翻译', !!(state.status && state.status.translate && (state.status.translate.lite || state.status.translate.full)),
         '本地翻译模型 · 不联网'],
       ['我的声音克隆', !!engine.installed, engine.installed
-        ? `Chatterbox · 已安装${engine.weights ? '（权重已缓存）' : '（首次合成会下载权重）'}`
+        ? T(engine.weights ? 'Chatterbox · 已安装（权重已缓存）' : 'Chatterbox · 已安装（首次合成会下载权重）')
         : '开始任务时自动安装（约 2GB，需 Python 3.9–3.13）']
     ];
     host.innerHTML = rows.map(([label, ok, detail]) => `
@@ -179,7 +182,9 @@
     if (pill) {
       pill.hidden = !src;
       if (src) {
-        pill.textContent = `${fmtDur(src.duration)} · ${src.hasAudio ? '有音轨' : '无音轨'}`;
+        pill.textContent = src.hasAudio
+          ? T('{0} · 有音轨', fmtDur(src.duration))
+          : T('{0} · 无音轨', fmtDur(src.duration));
         pill.dataset.bad = (!src.hasAudio || (src.duration || 0) > 180) ? '1' : '';
       }
     }
@@ -188,7 +193,7 @@
       const meta = el('vt-file-meta');
       if (name) name.textContent = src.name;
       if (meta) {
-        meta.textContent = `${fmtBytes(src.size)} · ${fmtDur(src.duration)}${src.hasAudio ? '' : ' · 没有人声音轨'}`;
+        meta.textContent = `${fmtBytes(src.size)} · ${fmtDur(src.duration)}${src.hasAudio ? '' : ' · ' + T('无音轨')}`;
       }
     }
     renderEstimate();
@@ -289,9 +294,9 @@
         state.voiceId = state.voices.length ? state.voices[0].id : null;
       }
       renderVoices();
-      if (lib && lib.error) hint(`声音库读取异常：${lib.error}`, 'err');
+      if (lib && lib.error) hint(T('声音库读取异常：{0}', lib.error), 'err');
     } catch (e) {
-      hint(`声音库读取失败：${cleanError(e)}`, 'err');
+      hint(T('声音库读取失败：{0}', cleanError(e)), 'err');
       renderVoices();
     }
     syncRun();
@@ -319,7 +324,7 @@
     try {
       const p = await a.importVoice({ input: path, name });
       await loadLibrary(p && p.id);
-      hint(p && p.note ? `${p.name}：${p.note}。之后再上传其他声音可以直接切换。` : '声音已保存。', 'ok');
+      hint(p && p.note ? T('{0}：{1}。之后再上传其他声音可以直接切换。', p.name, p.note) : T('声音已保存。'), 'ok');
       notify('「我的声音」已就绪', 'ok');
     } catch (e) {
       hint(`${cleanError(e)}`, 'err');
@@ -339,7 +344,7 @@
       await a.removeVoice(id);
       if (state.voiceId === id) state.voiceId = null;
       await loadLibrary();
-      hint(`已删除「${(v && v.name) || '声音'}」。`, 'ok');
+      hint(T('已删除「{0}」。', (v && v.name) || T('声音')), 'ok');
       notify('已删除', 'ok');
     } catch (e) {
       notify(cleanError(e), 'err');
@@ -358,7 +363,8 @@
     }
     state.previewId = id;
     renderVoices();
-    hint(`正在用「${v.name}」的嗓子合成试听（${LANGS.find((l) => l.id === currentLang()) || LANGS[1]}.name）。首次要加载 0.5B 克隆模型，约 20~40 秒。`, 'info');
+    const langName = (LANGS.find((l) => l.id === currentLang()) || LANGS[1]).name;
+    hint(T('正在用「{0}」的嗓子合成试听（{1}）。首次要加载 0.5B 克隆模型，约 20~40 秒。', v.name, langName), 'info');
     try {
       const res = await a.previewVoice({ voiceId: id, lang: currentLang() });
       if (!res || !res.dataUrl) throw new Error('试听合成返回为空');
@@ -392,7 +398,8 @@
     else if (state.targets.size === 0) reason = '还没有选目标语言';
     if (btn) btn.disabled = !!reason || state.running || !a;
     if (sub) {
-      sub.textContent = state.running ? '正在本地运行…' : (reason || `${state.targets.size} 个语种 · 用「${(state.voices.find((v) => v.id === state.voiceId) || {}).name || '我的声音'}」`);
+      const voiceName = (state.voices.find((v) => v.id === state.voiceId) || {}).name || T('我的声音');
+      sub.textContent = state.running ? '正在本地运行…' : (reason || T('{0} 个语种 · 用「{1}」', state.targets.size, voiceName));
     }
     renderEstimate();
   }
@@ -558,8 +565,8 @@
         if (!state.results.some((x) => x.video === f.video)) state.results.push(f);
       });
       renderResults();
-      setStage(`已完成 · ${files.length} 条成片`, 100);
-      notify(`完成：${files.length} 条成片已输出`, 'ok');
+      setStage(T('已完成 · {0} 条成片', files.length), 100);
+      notify(T('完成：{0} 条成片已输出', files.length), 'ok');
     } catch (e) {
       const msg = cleanError(e);
       setStage(msg, state.lastPct);

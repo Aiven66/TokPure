@@ -36,6 +36,8 @@
   const el = (id) => document.getElementById(id);
   const api = () => (window.tokpure && window.tokpure.oral) || null;
   const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  // 动态拼接的文案无法被 i18n 运行时按 textContent 精确命中，必须显式走词表
+  const T = (key, a, b, c) => (typeof window.T === 'function' ? window.T(key, a, b, c) : key);
 
   const state = {
     bound: false,
@@ -91,8 +93,9 @@
     const n = Math.max(1, state.targets.size);
     const lip = el('oc-lip') && el('oc-lip').checked;
     const per = lip ? 13 : 8;
-    host.textContent = `按 1 分钟片长估算：每个语种约 ${per} 分钟（克隆配音 ${lip ? '约 7 分钟 + 口型约 5 分钟' : '约 7 分钟'} + 出片），`
-      + `当前 ${n} 个语种约 ${per * n} 分钟；片长按比例变化。`;
+    host.textContent = lip
+      ? T('按 1 分钟片长估算：每个语种约 {0} 分钟（克隆配音约 7 分钟 + 口型约 5 分钟 + 出片），当前 {1} 个语种约 {2} 分钟；片长按比例变化。', per, n, per * n)
+      : T('按 1 分钟片长估算：每个语种约 {0} 分钟（克隆配音约 7 分钟 + 出片），当前 {1} 个语种约 {2} 分钟；片长按比例变化。', per, n, per * n);
   }
 
   function syncTargets() {
@@ -222,11 +225,11 @@
       const elapsed = job.since ? (now - job.since) / 1000 : 0;
       const eta = [];
       if (elapsed > 3) {
-        eta.push(`已用 ${mmss(elapsed)}`);
+        eta.push(T('已用 {0}', mmss(elapsed)));
         if (!job.done && !job.err && pct > 2) {
           const remain = elapsed * (100 - pct) / pct;
-          if (remain >= 90) eta.push(`剩约 ${Math.round(remain / 60)} 分`);
-          else if (remain >= 20) eta.push(`剩约 ${Math.max(10, Math.round(remain / 10) * 10)} 秒`);
+          if (remain >= 90) eta.push(T('剩约 {0} 分', Math.round(remain / 60)));
+          else if (remain >= 20) eta.push(T('剩约 {0} 秒', Math.max(10, Math.round(remain / 10) * 10)));
         }
       }
       const nowText = job.detail ? `${job.label} · ${esc(job.detail)}` : job.label;
@@ -337,11 +340,11 @@
       return;
     }
     if (targets.length > 2) {
-      const ok = window.confirm(
-        `口型同步是逐帧重绘，每个语种都要单独跑一遍。\n\n当前选了 ${targets.length} 个语种，`
-        + `按 1 分钟片长每个约 13 分钟，预计共约 ${13 * targets.length} 分钟。\n\n`
-        + '建议先跑 1 个语种确认口型和音色，满意后再批量。仍要继续吗？'
-      );
+      const ok = window.confirm([
+        T('口型同步是逐帧重绘，每个语种都要单独跑一遍。'),
+        T('当前选了 {0} 个语种，按 1 分钟片长每个约 13 分钟，预计共约 {1} 分钟。', targets.length, 13 * targets.length),
+        T('建议先跑 1 个语种确认口型和音色，满意后再批量。仍要继续吗？')
+      ].join('\n\n'));
       if (!ok) return;
     }
     state.jobs = {};
@@ -379,9 +382,9 @@
       const n = state.results.length;
       const fallback = state.results.filter((f) => f.lip === 'fallback').length;
       const failed = Object.keys(state.jobs).filter((k) => state.jobs[k] && state.jobs[k].err).length;
-      if (fallback) notify(`已产出 ${n} 条口播，其中 ${fallback} 条因未识别到人脸降级为配音版`, 'warn');
-      else if (!n && failed) notify(`口播未产出：${failed} 个语种失败，请查看产出队列中的提示`, 'err');
-      else notify(`口播完成：已产出 ${n} 条口型对齐的多语视频`);
+      if (fallback) notify(T('已产出 {0} 条口播，其中 {1} 条因未识别到人脸降级为配音版', n, fallback), 'warn');
+      else if (!n && failed) notify(T('口播未产出：{0} 个语种失败，请查看产出队列中的提示', failed), 'err');
+      else notify(T('口播完成：已产出 {0} 条口型对齐的多语视频', n));
       loadStatus();
     } catch (e) {
       const msg = cleanError(e);
