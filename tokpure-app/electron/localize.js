@@ -1576,15 +1576,28 @@ function ensureTerminal(text, langId) {
   return src.replace(/[，、；：,;:\s]+$/, '') + period;
 }
 
+/* 中文里的高频缩写直接改读中文说法。AI 展开成「诶艾」时，「诶」是多音字
+   （éi / èi / ǎi），克隆音经常把它读成「哎」，用户听到的就是「AI 读错了」；
+   改成「人工智能」不存在多音歧义，语义也更清楚。只有整词命中才替换，
+   AIGC / OpenAI / AIdol 这类不碰。 */
+const CJK_ACRONYM = { zh: { AI: '人工智能' } };
+
 /** 合成用文本：CJK 语种下把独立大写缩写展开成字母名，其他语种原样返回 */
 function speakableText(text, langId) {
   const src = String(text || '');
   const names = LETTER_NAMES[String(langId || '').toLowerCase()];
   if (!names) return src;
+  const acronym = CJK_ACRONYM[String(langId || '').toLowerCase()];
+  const pre = acronym
+    ? Object.keys(acronym).reduce(
+      (s, k) => s.replace(new RegExp(`(^|[^A-Za-z0-9])${k}(?![A-Za-z0-9])`, 'g'), (m, p) => p + acronym[k]),
+      src
+    )
+    : src;
   // (前面不是字母数字) + (可选数字) + (一串大写字母) + (后面不是字母数字)
   // "5G" 一起匹配；"OpenAI" / "iPhone" / "TikTok" 里的字母不连续或大小写混合，不会命中
-  return src.replace(/(^|[^A-Za-z0-9])(\d*)([A-Z]{1,})(?![A-Za-z0-9])/g, (m, pre, digits, caps) => {
-    let out = pre + digits;
+  return pre.replace(/(^|[^A-Za-z0-9])(\d*)([A-Z]{1,})(?![A-Za-z0-9])/g, (m, pre2, digits, caps) => {
+    let out = pre2 + digits;
     for (const ch of caps) out += names[ch] || ch;
     return out;
   });
@@ -2157,7 +2170,10 @@ async function analyzeSourceVoice(input, win) {
 // 没有真正配乐，只有人流、回声和空调底噪，抬到 -28 LUFS 就等于把整片环境噪音
 // 放到「只比人声小一点」的档位，听感就是用户说的「非常明显的噪音」。
 // 现在留 13dB 的间隔：旋律仍然听得到，但不再抢人声。
-const BGM_TARGET_LUFS = -31;
+// 3.9.35 把目标从 -31 抬到 -26：-31 时伴奏比配音低 13 LUFS，再被人声闪避压掉 30dB，
+// 用户听到的就是「朗读时完全没有背景音乐」。现在留 8dB 间隔——句间音乐清楚可闻，
+// 朗读时侧链只让它后退约 7dB，人声仍比伴奏高 15 LUFS 以上，清晰度不受影响。
+const BGM_TARGET_LUFS = -26;
 // 「这条床到底是不是配乐」的门槛（降噪+限带之后测的 LUFS）。
 // 实测本条口播素材（展馆现场、没有人声之外的配乐）分离出来的床只有 -41.7 LUFS，
 // 频谱里 93% 的能量压在 300Hz 以下 —— 那不是音乐，是低频轰鸣 + 人流回声。
@@ -2178,10 +2194,11 @@ const BGM_CLEAN = 'highpass=f=60:poles=2,lowpass=f=13000,afftdn=nr=20:nf=-52:tn=
 // 人声一起，伴奏自动后退；人声停，伴奏回来。阈值必须落在配音的实际电平之下：
 // 配音归一后约 -18 LUFS（RMS≈0.125），以前写的 0.16 比语音还高，侧链等于没接，
 // 伴奏（还带着分离残留的原语言人声）一直原音量压在译文下面——这就是「几个人同时说」。
-// 3.9.17 统一为 threshold=0.004（≈-48dBFS）/ ratio=6 / attack=12ms / release=350ms：
-// 比语音电平低近 30dB 才起控，保证任何一句都真的把床压下去；12ms 起、350ms 落，
-// 句间不会出现 1~2Hz 的「抽吸」。真正的配乐床被 BGM_MIN_LUFS 门槛保证存在时才用得上。
-const BGM_DUCK = 'sidechaincompress=threshold=0.004:ratio=6:attack=12:release=350:level_sc=1';
+// 3.9.17 曾把它压到 threshold=0.004（≈-48dBFS）/ ratio=6：配音一响就把伴奏压掉 30dB 以上，
+// 等于「朗读时背景音乐消失」，句间又整块回来，整片听感就是音量忽大忽小。
+// 3.9.35 按正弦素材实测标定（伴奏 -27.1dBFS 时）：新参数让伴奏后退 7.7dB，
+// 句间完全不压；旧参数会让它掉 30dB+。7~8dB 正好是「人声让位、配乐仍清楚可闻」的区间。
+const BGM_DUCK = 'sidechaincompress=threshold=0.02:ratio=3:attack=18:release=480:level_sc=0.6';
 
 /**
  * 只分离「这次要出片的窗口」，各语种共用同一份伴奏。
@@ -2198,9 +2215,8 @@ async function separateBgm({ source, win, dur, dir, onProgress, onChild }) {
   // 93% 能量在 300Hz 以下）。这种床只要混进成片，句间停顿就会漏出一层低频轰鸣，
   // 正是用户反复反馈的「非常明显的噪音」；直接丢弃，停顿就是干净静音。
   if (lufs == null || lufs < BGM_MIN_LUFS) return null;
-  // 抬升上限 +2dB：再往上就是把分离残留（人声剥离后的「空气/人流」）一起放大，
-  // 那正是「听起来很吵」的来源；衰减下限 -8dB 防止伴奏被压没
-  const gain = Math.max(-8, Math.min(2, BGM_TARGET_LUFS - lufs));
+  // 抬升上限 +6dB（-26 的目标需要更大的提升空间），衰减下限 -8dB 防止伴奏被压没
+  const gain = Math.max(-8, Math.min(6, BGM_TARGET_LUFS - lufs));
   return { file: res.file, lufs, gain, stats: res.stats || null };
 }
 

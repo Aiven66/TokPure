@@ -516,7 +516,10 @@ function movingAvg(src, win) {
 
 const AGC_MAX_DB = 9;
 const AGC_SMOOTH_SEC = 0.45;
-const AGC_GAIN_SEC = 0.1;
+/* 增益平滑从 0.1s 放慢到 0.28s：0.1s 时增益追着每个音节跑，句内的重音与词尾被来回
+   加减，听感就是「同一句里声音忽大忽小」。放慢之后只修整句/半句级别的电平漂移，
+   音节内部的强弱关系原样保留（那才是自然的语气）。 */
+const AGC_GAIN_SEC = 0.28;
 
 function flattenLevel(pcm, rate, opts = {}) {
   const sr = Number(rate) > 0 ? Number(rate) : 44100;

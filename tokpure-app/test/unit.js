@@ -427,9 +427,13 @@ test('speakableText：中文/日文/韩文里的拉丁缩写按字母名读，�
   const m = locSrc.match(/const LETTER_NAMES = (\{[\s\S]*?\n\});/);
   assert.ok(m, '源码里找不到 LETTER_NAMES');
   const LETTER_NAMES = new Function(`return (${m[1]})`)();
-  const speakableText = new Function('LETTER_NAMES', `return (${extractFn('speakableText')})`)(LETTER_NAMES);
-  // 中文：AI 不能按拼音读成「爱」
-  assert.strictEqual(speakableText('这个 AI 工具很好用', 'zh'), '这个 诶艾 工具很好用');
+  const am = locSrc.match(/const CJK_ACRONYM = (\{[^;]*\});/);
+  assert.ok(am, '源码里找不到 CJK_ACRONYM');
+  const CJK_ACRONYM = new Function(`return (${am[1]})`)();
+  const speakableText = new Function('LETTER_NAMES', 'CJK_ACRONYM', `return (${extractFn('speakableText')})`)(LETTER_NAMES, CJK_ACRONYM);
+  // 中文：AI 读「诶艾」时「诶」是多音字，克隆音会读成「哎」；直接改读「人工智能」不会读错
+  assert.strictEqual(speakableText('这个 AI 工具很好用', 'zh'), '这个 人工智能 工具很好用');
+  assert.strictEqual(speakableText('AIGC 与 OpenAI 都在用 AI', 'zh'), '诶艾吉西 与 OpenAI 都在用 人工智能');
   // 缩写串与数字前缀（5G）
   assert.strictEqual(speakableText('GPT-4 和 5G 都支持', 'zh'), '吉皮提-4 和 5吉 都支持');
   // 单个字母
