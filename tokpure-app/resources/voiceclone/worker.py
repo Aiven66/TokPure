@@ -39,6 +39,12 @@ try:
     VC_CFG = float(os.environ.get("VC_CFG", "0.5"))
 except Exception:
     VC_CFG = 0.5
+# 采样温度：官方默认 0.8。跨语言克隆时 0.8 偶尔会生成拖尾/气泡音/忽高忽低的残响，
+# 0.7 明显更稳，听感也更接近同一个人连续说话（下调太多会变得平板）。
+try:
+    VC_TEMP = float(os.environ.get("VC_TEMP", "0.7"))
+except Exception:
+    VC_TEMP = 0.7
 _SAY_SEM = threading.Semaphore(VC_CONC)
 # 每句的 token 上限：上游 generate() 里把 max_new_tokens 写死成 1000，
 # 只能通过线程本地变量传给自实现的推理循环，避免多线程串值。
@@ -387,6 +393,9 @@ def main():
                     cfg = max(0.0, min(1.0, cfg))
                     if abs(cfg - 0.5) > 1e-6:
                         kwargs["cfg_weight"] = cfg
+                    # 固定温度（上层不再逐句传）：让同一片里每一句的音色/气口一致，
+                    # 不会这一句偏亮、下一句偏闷。
+                    kwargs["temperature"] = VC_TEMP
                     # 上游 generate() 不接受 max_new_tokens，只能经线程本地变量传进推理循环
                     _CAP.n = cap
                     # 超时从「真正开始算」这一刻起算：排队等待不算这一句的账

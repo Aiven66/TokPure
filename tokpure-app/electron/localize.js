@@ -548,6 +548,56 @@ async function transcribe(wav, modelId, lang, emit, from, to) {
   return { segments, detected: detected || 'en', stderr };
 }
 
+/* ---------------- 配音回读校验 ----------------
+   克隆引擎偶发「提前收尾」：一句话只读了前半段，时长却落在正常范围，
+   单看时长的判据抓不到，成片里就是「字幕有字、声音没读到」。
+   这里用本地 whisper 回读刚合成的一句，按字词覆盖率判断是否漏读。
+   只要引擎与 base 模型就绪就启用；识别失败直接放行，不影响出片。 */
+function normSpeechTokens(text, langId) {
+  const s = String(text || '').toLowerCase();
+  if (CJK_LANGS.has(langId)) {
+    return Array.from(s.replace(/[^\u3040-\u30ff\u3400-\u9fff\uf900-\ufaffa-z0-9]/g, '')
+      .replace(/[0-9]/g, '#'));
+  }
+  return s.replace(/[^a-z0-9'’]+/g, ' ')
+    .trim().split(' ')
+    .filter(Boolean)
+    .map((w) => (/^[0-9]+$/.test(w) ? '#' : w));
+}
+
+function lcsCount(a, b) {
+  if (!a.length || !b.length) return 0;
+  let prev = new Array(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i += 1) {
+    const cur = new Array(b.length + 1).fill(0);
+    for (let j = 1; j <= b.length; j += 1) {
+      cur[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+async function readbackCoverage(wav, expectedText, langId, dir, tag, modelPath) {
+  const bin = hub.engineBin('whisper');
+  // 优先用 base（快）；没装 base 就退到当前已装的最大模型（多数用户是 turbo）
+  const model = modelPath || hub.modelPath('whisper-base') || (pickWhisperModel() || {}).file;
+  if (!bin || !model || !fs.existsSync(wav)) return null;
+  const outBase = path.join(dir, `rb-${tag}`);
+  try {
+    await run(bin, ['-m', model, '-f', wav, '-l', langId, '-otxt', '-of', outBase,
+      '-t', '2', '-nt', '-np'], { timeout: 60000 });
+  } catch (_) {
+    return null;
+  }
+  let heard = '';
+  try { heard = fs.readFileSync(`${outBase}.txt`, 'utf8'); } catch (_) { return null; }
+  const exp = normSpeechTokens(expectedText, langId);
+  const got = normSpeechTokens(heard, langId);
+  if (!exp.length) return null;
+  return { exp: exp.length, heard: got.length, coverage: lcsCount(exp, got) / exp.length };
+}
+
 /* ---------------- 片段窗口 ---------------- */
 function pickWindow(segments, duration, clipSeconds) {
   if (!clipSeconds || clipSeconds <= 0 || duration <= clipSeconds + 1) {
@@ -930,20 +980,16 @@ function analyzeVoice(buf) {
 const CLEAN_PRE = 'highpass=f=80:poles=2,lowpass=f=11000';
 
 /* 高频「补气」+ 温和去齿音（名字沿用 CLEAN_SHELF）。
-   3.9.37 实测（同一句克隆音 vs 12 秒真人参考音，各频带相对 300~800Hz）：
-     4.8~6k   克隆 -28.1 / 真人 -20.2   → 差 7.9dB
-     6~8k     克隆 -31.3 / 真人 -21.8   → 差 9.5dB
-     8~11k    克隆 -35.3 / 真人 -23.6   → 差 11.7dB
-   克隆引擎（Chatterbox，24kHz 声码器）把 5k 以上整体滚降了 8~12dB，
-   而旧版还在这段上再减 3~4.5dB（2100/3000/4300/6200 四级叠加，实测 2.5~4.8k
-   被压低约 8dB），等于把「清晰度」所在的频段连削两次 —— 用户听到的「闷、糊、
-   不够清晰」就是这两件事叠起来的。
-   现在改成「补 + 去齿」：两个静态 high-shelf 把 4.8~11k 抬回来（实测补后与真人
-   各频带差 2~5dB），再用一个 -2dB 窄带（Q=1.6）压住 6.2k 的齿尖，避免提亮后 /s/ 发刺。
-   全部是固定增益，没有逐帧变化，不会产生「沙沙的抽吸」。 */
+   3.9.37 曾按另一条测试音色标定 +8/+4，理由是「克隆 5k 以上比真人低 8~12dB」。
+   3.9.41 用当前 Chatterbox 权重 + 用户实际音色复测（各频带相对 500/1000Hz）：
+     真人参考   2k -6.2 / 3k -8.1 / 4.5k -10.4 / 6.5k -12.8 / 9k -12.9
+     克隆原声   2k -6.4 / 3k -6.9 / 4.5k -9.1  / 6.5k -11.9 / 9k -12.1
+   即克隆原声的高频**已经和真人基本齐平**，+8/+4 的补偿会把 4.5~9k 再抬高 3~5dB，
+   听感就是齿音发刺、句尾「呲呲」的宽带嘶声被一起放大。现在只保留 2dB 左右的
+   「补气」量（6.5k/9k 落回真人附近），既清楚又不刺。 */
 const CLEAN_SHELF = 'equalizer=f=6200:width_type=q:width=1.6:g=-2,'
-  + 'highshelf=f=5200:gain=+8,'
-  + 'highshelf=f=8500:gain=+4';
+  + 'highshelf=f=5200:gain=+3,'
+  + 'highshelf=f=8500:gain=+0.5';
 
 /* 轻压缩：把 threshold 从 0.05 提到 0.25、ratio 从 2.5 降到 2（3.9.17 的关键修正）。
    逐级实测（同一句克隆输出，只看「≥4.8kHz 相对 500-800Hz」的能量，越低越干净）：
@@ -1590,6 +1636,7 @@ function ensureTerminal(text, langId) {
    改成「人工智能」不存在多音歧义，语义也更清楚。只有整词命中才替换，
    AIGC / OpenAI / AIdol 这类不碰。 */
 const CJK_ACRONYM = { zh: { AI: '人工智能' } };
+const CJK_LANGS = new Set(['zh', 'ja', 'ko']);
 
 /** 合成用文本：CJK 语种下把独立大写缩写展开成字母名，其他语种原样返回 */
 function speakableText(text, langId) {
@@ -1673,6 +1720,18 @@ async function buildFlowNarration(units, duration, langId, dir, emit, opts = {})
   let truncatedUsed = 0;
   const raws = new Array(units.length);
 
+  // 按「这段话要说多久」估算 token 上限。缩写展开后会变长，仍按原文字数算会把
+  // 上限给小、句子被截断；这里统一按展开后的字数算，补读/拆句复用同一套算法。
+  const capOf = (text) => {
+    const chars = Math.max(4, String(text || '').length);
+    const estSec = chars / (CJK_LANGS.has(langId) ? 4 : 15);
+    return {
+      chars,
+      maxTokens: Math.min(1400, Math.round(25 * estSec * 1.35) + 24),
+      maxSeconds: Math.min(600, Math.max(60, Math.round(estSec * 22) + 60))
+    };
+  };
+
   /* 1) 合成：上限按「这段话要说多久」算，不再按字幕窗口算 —— 句子必须说完 */
   const workers = Math.max(1, Math.min(opts.synthConcurrency || 1, units.length));
   const order = units.map((_, i) => i)
@@ -1690,12 +1749,10 @@ async function buildFlowNarration(units, duration, langId, dir, emit, opts = {})
       const spokenText = ensureTerminal(speakableText(unit.text, langId), langId);
       // 按展开后的字数估时长：缩写多的句子（AI、GPT、API）展开后会明显变长，
       // 仍按原文字数算会把 token 上限给小、句子被截断
-      const chars = Math.max(4, spokenText.length);
-      // 克隆引擎每秒约 25 个语音 token，按语速估「这句话要说多久」，
-      // 再给 1.35 倍余量：上限给小了会在句中截断（听感就是「半句没了」）
-      const estSec = chars / (langId === 'zh' || langId === 'ja' || langId === 'ko' ? 4 : 15);
-      const maxTokens = Math.min(1400, Math.round(25 * estSec * 1.35) + 24);
-      const maxSeconds = Math.min(600, Math.max(60, Math.round(estSec * 22) + 60));
+      const cap = capOf(spokenText);
+      const chars = cap.chars;
+      const maxTokens = cap.maxTokens;
+      const maxSeconds = cap.maxSeconds;
       const raw = path.join(ttsDir, `${i}.wav`);
       // 「说完没说完」不能靠感觉：克隆模型偶尔会提前停（或撞上 token 上限），
       // 这一句的后半截就没了，而字幕照常显示 —— 用户看到的就是「有字幕没声音」。
@@ -1735,6 +1792,74 @@ async function buildFlowNarration(units, duration, langId, dir, emit, opts = {})
     }
   };
   await Promise.all(Array.from({ length: workers }, worker));
+
+  /* 1.5) 回读校验：克隆引擎偶尔把一句话的后半截「吞掉」，时长却在正常范围，
+     只看时长的判据抓不到。这里用本地 whisper 回读每一句，字词覆盖率明显偏低
+     就补读一次；仍不够就把这句按标点拆短逐段合成再拼回去，保证字幕上的字都有声。 */
+  if (opts.synthFn) {
+    const asrBin = hub.engineBin('whisper');
+    const asrModel = hub.modelPath('whisper-base') || (pickWhisperModel() || {}).file;
+    if (asrBin && asrModel) {
+      // base 很小，可以两条并行；退到 turbo 时只开一条，避免同时占 2×1.6GB 内存
+      const fastModel = /ggml-base|ggml-tiny/.test(path.basename(asrModel));
+      const lanes = fastModel ? 2 : 1;
+      const queue = units.map((_, i) => i).filter((i) => raws[i] && fs.existsSync(raws[i]));
+      let fixed = 0;
+      const lane = async () => {
+        for (;;) {
+          const i = queue.shift();
+          if (i == null) return;
+          checkCanceled();
+          const spokenText = ensureTerminal(speakableText(units[i].text, langId), langId);
+          if (normSpeechTokens(spokenText, langId).length < 5) continue;
+          const cov = await readbackCoverage(raws[i], spokenText, langId, ttsDir, `u${i}a`, asrModel);
+          if (!cov || cov.coverage >= 0.72) continue;
+          const cap = capOf(spokenText);
+          const retryTokens = Math.min(1400, Math.round(cap.maxTokens * 1.7));
+          try {
+            await opts.synthFn(spokenText, raws[i], i, {
+              maxTokens: retryTokens, maxSeconds: cap.maxSeconds, tag: i
+            });
+          } catch (_) {
+            continue;
+          }
+          const cov2 = await readbackCoverage(raws[i], spokenText, langId, ttsDir, `u${i}b`, asrModel);
+          if (cov2 && cov2.coverage >= 0.72) {
+            fixed += 1;
+            continue;
+          }
+          const parts = splitClauses(spokenText);
+          if (parts.length < 2) continue;
+          const files = [];
+          try {
+            for (let k = 0; k < parts.length; k += 1) {
+              const piece = ensureTerminal(parts[k], langId);
+              const pcap = capOf(piece);
+              const f = path.join(ttsDir, `${i}-fix${k}.wav`);
+              await opts.synthFn(piece, f, i, {
+                maxTokens: pcap.maxTokens, maxSeconds: pcap.maxSeconds, tag: i
+              });
+              files.push(f);
+            }
+            await concatWav(files, raws[i]);
+            fixed += 1;
+          } catch (_) {
+            /* 拆句仍失败就保留补读后的版本，不影响出片 */
+          } finally {
+            files.forEach((f) => { try { fs.unlinkSync(f); } catch (_) { /* ignore */ } });
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: lanes }, lane));
+      if (fixed) {
+        emit({
+          percent: 100,
+          index: units.length - 1,
+          detail: `第 ${units.length}/${units.length} 段 · 补读 ${fixed} 段`
+        });
+      }
+    }
+  }
 
   /* 2) 逐段清洁与电平 */
   const spoken = new Array(units.length).fill(0);
@@ -1813,7 +1938,10 @@ async function buildFlowNarration(units, duration, langId, dir, emit, opts = {})
 
   let tempo = Math.max(MIN_TEMPO, Math.min(MAX_TEMPO, total / safeDur));
   if (total / tempo > duration + 0.05 && pauses.length) {
-    // 到 1.20 还放不下：先按比例压缩气口（最小 0.08s），再允许最后一次轻微变速
+    // 到 1.20 还放不下：先按比例压缩气口（最小 0.08s），再允许最后一次变速。
+    // 3.9.41：第二档上限从 1.35 提到 1.50 —— 译文比原片长 20%~50% 很常见，
+    // 1.35 的封顶一到，后面的 atrim 就把片尾整段语音剪掉（用户听到的「漏读」）。
+    // 1.50 仍可听清，宁可整体略快，也不丢字；只有超过 1.5 倍才真的裁尾。
     const over = total / tempo - duration;
     const gapSum = pauses.reduce((a, b) => a + b, 0);
     const minSum = 0.08 * pauses.length;
@@ -1822,8 +1950,10 @@ async function buildFlowNarration(units, duration, langId, dir, emit, opts = {})
     played = layout(keep, 0);
     starts = played.starts;
     total = played.total;
-    tempo = Math.max(MIN_TEMPO, Math.min(1.35, total / safeDur));
+    tempo = Math.max(MIN_TEMPO, Math.min(1.5, total / safeDur));
   }
+  // 仍然放不下时，记录被裁掉的秒数：结果卡片会提示，避免「静悄悄少一段话」
+  const overflowSec = Math.max(0, total / tempo - duration);
 
   /* 4) 一段一张滤镜：清洁链 + 固定增益 + 限幅 + 首尾微淡入淡出 + 补静音定位 */
   const inputs = [];
@@ -1907,7 +2037,8 @@ async function buildFlowNarration(units, duration, langId, dir, emit, opts = {})
     tempo,
     units: units.length,
     fallbackUsed,
-    truncatedUsed
+    truncatedUsed,
+    overflowSec
   };
 }
 
@@ -2191,7 +2322,11 @@ const BGM_TARGET_LUFS = -26;
 // 停顿噪底只有 -46.5dB、80% 能量在 300Hz 以下，听感就是「一直有嗡嗡声」。
 // 所以 -38 LUFS 以下一律判定为「没有真正的配乐」，直接丢弃（宁可静音，不放噪）。
 // 有旋律的素材实测都在 -30 LUFS 以上，不会被这条门槛误伤。
-const BGM_MIN_LUFS = -38;
+// 3.9.41：门槛从 -38 提到 -31。前几版只挡住了 -41.7 那种明显的空场残渣，
+// 但 -38~-32 之间还有一类「很轻的分离残响」会漏进来：整片听起来就是句间
+// 一直垫着一层沙沙/嗡嗡，正是用户这次反馈的噪音。真正的配乐实测都在 -30 以上，
+// -31 不会误伤；宁可整段静音，也不把残渣抬进成片。
+const BGM_MIN_LUFS = -31;
 // 分离残留的嘶声/气声过一遍限带与轻度、**非自适应**的频域降噪。
 // 3.9.37 把 afftdn 从 nr=20/tn=1 改成 nr=10/tn=0：
 //   tn=1（逐帧跟踪噪声底）用在音乐上会按帧改噪声谱，把伴奏里的宽带成分切成
@@ -2200,7 +2335,9 @@ const BGM_MIN_LUFS = -38;
 //   tn=0 用固定噪声底，增益不随帧跳；nr=10 只压噪底附近 10dB，
 //   对旋律/鼓点这类高于底噪的内容几乎不动，伴奏不会再被削薄或长出噪点。
 // 高通 60 / 低通 13k 保留：分离床的 80Hz 以下低频轰鸣与 13k 以上空带都要去掉。
-const BGM_CLEAN = 'highpass=f=60:poles=2,lowpass=f=13000,afftdn=nr=10:nf=-55:tn=0';
+// 高通从 60 提到 90：分离床里最容易漏出来的就是 60~150Hz 的低频轰鸣/房间残响，
+// 手机外放根本听不到 90Hz 以下的内容，砍掉只会让句间更安静，不会损失配乐。
+const BGM_CLEAN = 'highpass=f=90:poles=2,lowpass=f=13000,afftdn=nr=10:nf=-55:tn=0';
 // 人声一起，伴奏自动后退；人声停，伴奏回来。阈值必须落在配音的实际电平之下：
 // 配音归一后约 -18 LUFS（RMS≈0.125），以前写的 0.16 比语音还高，侧链等于没接，
 // 伴奏（还带着分离残留的原语言人声）一直原音量压在译文下面——这就是「几个人同时说」。
@@ -2220,14 +2357,25 @@ async function separateBgm({ source, win, dur, dir, onProgress, onChild }) {
     '-vn', '-ac', '2', '-ar', '44100', '-c:a', 'pcm_s16le', wav]);
   const res = await audiosep.separate({ input: wav, outdir: dir, onProgress, onChild });
   if (!res.file || !fs.existsSync(res.file)) return null;
-  const lufs = await measureLufs(res.file, BGM_CLEAN);
+  // 降噪/限带只做一次，并把结果落盘：以前是「测量时过一次链、混音时再过一次」，
+  // 两遍 afftdn 会把伴奏压低好几 dB，导致实测 -26 LUFS 的床到了成片里其实更小，
+  // 只剩一层听不出旋律、却一直存在的底噪。现在测得多少，混进去就是多少。
+  const cleanFile = path.join(dir, 'bgm.wav');
+  try {
+    await runFf(['-y', '-i', res.file, '-af', BGM_CLEAN,
+      '-ac', '2', '-ar', '44100', '-c:a', 'pcm_s16le', cleanFile]);
+  } catch (_) {
+    return null;
+  }
+  if (!fs.existsSync(cleanFile)) return null;
+  const lufs = await measureLufs(cleanFile);
   // 原片没有真正的配乐时，分离出来的「伴奏」只是底噪残渣（实测本片 -41.7 LUFS、
   // 93% 能量在 300Hz 以下）。这种床只要混进成片，句间停顿就会漏出一层低频轰鸣，
   // 正是用户反复反馈的「非常明显的噪音」；直接丢弃，停顿就是干净静音。
   if (lufs == null || lufs < BGM_MIN_LUFS) return null;
   // 抬升上限 +6dB（-26 的目标需要更大的提升空间），衰减下限 -8dB 防止伴奏被压没
   const gain = Math.max(-8, Math.min(6, BGM_TARGET_LUFS - lufs));
-  return { file: res.file, lufs, gain, stats: res.stats || null };
+  return { file: cleanFile, lufs, gain, stats: res.stats || null };
 }
 
 /* ---------------- 竖版渲染 + 字幕烧录 ---------------- */
@@ -2298,7 +2446,7 @@ async function renderVertical({ input, dir, win, duration, narration, bgm, srtTe
     const D = duration.toFixed(3);
     aChain = [
       `[1:a]aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=0:${D},asetpts=PTS-STARTPTS[vo]`,
-      `[2:a]aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=0:${D},asetpts=PTS-STARTPTS,${BGM_CLEAN},volume=${bgAudio.gain.toFixed(2)}dB[bg]`,
+      `[2:a]aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=0:${D},asetpts=PTS-STARTPTS,volume=${bgAudio.gain.toFixed(2)}dB[bg]`,
       // 配音轨分成两路：一路当侧链的「触发信号」，一路进最终混音；
       // 伴奏只当主信号（sidechaincompress 的主输入就是它），不用再 split
       '[vo]asplit=2[vm][vk]',
@@ -3277,7 +3425,7 @@ function dubAudioChain({ duration, narration, bgm }) {
   if (bgm) {
     return [
       `[1:a]aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=0:${D},asetpts=PTS-STARTPTS[vo]`,
-      `[2:a]aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=0:${D},asetpts=PTS-STARTPTS,${BGM_CLEAN},volume=${bgm.gain.toFixed(2)}dB[bg]`,
+      `[2:a]aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=0:${D},asetpts=PTS-STARTPTS,volume=${bgm.gain.toFixed(2)}dB[bg]`,
       '[vo]asplit=2[vm][vk]',
       `[bg][vk]${BGM_DUCK}[bd]`,
       `[bd][vm]amix=inputs=2:normalize=0:duration=longest,atrim=0:${D},alimiter=limit=0.95:attack=2:level=false[a]`
@@ -4039,8 +4187,10 @@ async function startTranslate(payload, proxy, emit) {
   const LOCAL_THREADS = Math.max(2, Math.floor(CPU_N / 3));
   const HELPER_THREADS = 2;
   const HELPER_CONC = 2;
-  // flow-matching 采样步数：12 步的波形明显更顺滑，磨掉 8 步残留的颗粒感
-  const LOCAL_STEPS = 12;
+  // flow-matching 采样步数：12 步的波形明显更顺滑，磨掉 8 步残留的颗粒感。
+  // 3.9.41 起 AI 视频翻译用 16 步：这一步只影响声码器收敛，步数越多齿音/气泡音越少，
+  // 成片质量优先（单句耗时约 +30%，其余功能仍用 12 步）。
+  const LOCAL_STEPS = 16;
   const beatBus = { sink: null };
   const concOf = (sess) => {
     const dev = (sess && sess.device) || 'cpu';
@@ -4288,6 +4438,11 @@ async function startTranslate(payload, proxy, emit) {
         narration = built.file;
         if (built.timing && built.timing.length) finalSegs = built.timing;
         if (built.tempo > 1.005) ttsNote = `整体语速已微调 ${built.tempo.toFixed(2)}× 以贴合画面`;
+        if (built.overflowSec > 0.3) {
+          // 译文本就比画面长、1.5× 仍放不下时才裁尾；说明白比静悄悄少一段好
+          ttsNote = [ttsNote, `译文比画面长约 ${built.overflowSec.toFixed(1)} 秒，片尾已裁剪`]
+            .filter(Boolean).join(' · ');
+        }
       } catch (e) {
         checkCanceled();
         ttsError = String((e && e.message) || e || '配音失败').replace(/\s+/g, ' ').slice(0, 120);

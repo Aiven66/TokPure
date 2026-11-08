@@ -672,12 +672,28 @@ test('3.9.37 降噪：谱减换成决策引导维纳，噪声底不再被轻声�
   assert.ok(/prevGamma\[b\] = gamma;/.test(den), '没有保存后验 SNR，决策引导不成立');
 });
 
-test('3.9.37 清晰度：清洁链改为高频补偿，不再四点削中高频', () => {
+test('3.9.41 清晰度：高频补偿按实测收敛，不再把 4.5~9k 抬过头', () => {
   const loc = read('electron/localize.js');
-  assert.ok(/highshelf=f=5200:gain=\+8/.test(loc), '缺少 5.2k 高频补偿（克隆音高频比真人暗 8~12dB）');
-  assert.ok(/highshelf=f=8500:gain=\+4/.test(loc), '缺少 8.5k 高频补偿');
+  assert.ok(/highshelf=f=5200:gain=\+3/.test(loc), '缺少 5.2k 高频补偿（克隆音需轻度提亮）');
+  assert.ok(/highshelf=f=8500:gain=\+0\.5/.test(loc), '缺少 8.5k 轻微补偿');
+  assert.ok(!/highshelf=f=5200:gain=\+8/.test(loc), '仍在用 +8dB 高频补偿（实测会把齿音抬 3~5dB，听感发刺/呲呲）');
   assert.ok(!/equalizer=f=3000:width_type=q:width=1\.1:g=-4\.5/.test(loc), '仍在用旧的四点削中高频');
   assert.ok(/afftdn=nr=10:nf=-55:tn=0/.test(loc), '配乐降噪仍在逐帧跟踪噪声底（会生成呲呲声）');
+});
+
+test('3.9.41 噪音：配乐残渣门槛与单次降噪', () => {
+  const loc = read('electron/localize.js');
+  assert.ok(/const BGM_MIN_LUFS = -31;/.test(loc), '配乐残渣门槛仍是 -38，会漏进 -38~-32 的底噪床');
+  assert.ok(/const BGM_CLEAN = 'highpass=f=90/.test(loc), '配乐高通仍低于 90Hz，低频轰鸣会漏进句间');
+  assert.ok(!/\$\{BGM_CLEAN\},volume=/.test(loc), '混音时仍在二次降噪，实测电平会被压低');
+});
+
+test('3.9.41 漏读：配音回读校验与补读/拆句存在', () => {
+  const loc = read('electron/localize.js');
+  assert.ok(/async function readbackCoverage/.test(loc), '缺少本地 whisper 回读校验');
+  assert.ok(/coverage >= 0\.72/.test(loc), '回读覆盖率阈值缺失');
+  assert.ok(/await concatWav\(files, raws\[i\]\)/.test(loc), '回读不通过时没有拆句重合成');
+  assert.ok(/kwargs\["temperature"\] = VC_TEMP/.test(read('resources/voiceclone/worker.py')), '克隆引擎没有固定采样温度');
 });
 
 test('suppressNoise：语音段原样保留，气口噪声被压掉', () => {
