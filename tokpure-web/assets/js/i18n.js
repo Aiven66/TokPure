@@ -270,8 +270,14 @@
     } catch (e) { /* 老浏览器忽略 */ }
   }
 
+  // 词表版本号：每次改动 assets/i18n/*.json 都要 +1。
+  // 原因：词表是运行时 fetch 的静态 JSON，CDN 与浏览器都会缓存（max-age 1 小时），
+  // 旧词表里没有新增文案的键时，页面会回退成中文——表现为「站内导航是英文，
+  // 新改的首页文案却是中文」。带版本号请求新 URL，并禁用强缓存，确保词表即时生效。
+  var DICT_REV = '20261109';
+
   function fetchDict(lang) {
-    return fetch(i18nBase() + lang + '.json', { cache: 'force-cache' })
+    return fetch(i18nBase() + lang + '.json?v=' + DICT_REV, { cache: 'no-cache' })
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
