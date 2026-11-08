@@ -34,7 +34,13 @@
 
   gtag('config', 'G-3X58L0VT9F');
 </script><meta charset="utf-8"/><link rel="icon" href="assets/img/favicon.ico" sizes="any"/><link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png"/><link rel="icon" type="image/png" sizes="16x16" href="assets/img/favicon-16.png"/><link rel="apple-touch-icon" sizes="180x180" href="assets/img/apple-touch-icon.png"/>
-<title>TokPure · 本地无水印 TikTok 视频下载与 AI 修复工作站</title><meta name="description" content="TokPure 是专为 macOS 打造的桌面端短视频无水印下载与 AI 修复工具。100% 本地算力，零云端中转，零画质压缩。"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><link rel="stylesheet" href="assets/css/fonts.css"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><link rel="stylesheet" href="assets/css/site.css"/><link rel="stylesheet" href="assets/css/tailwind.build.css"/><script defer src="assets/js/i18n.js"></script><script defer src="assets/js/mobile-nav.js"></script><script type="module" src="/src/entries/site-header.tsx"></script>
+<title>TokPure · TikTok 无水印下载与本地 AI 出片</title><meta name="description" content="TokPure 是本地运行的 macOS / Windows 桌面工具：TikTok 无水印原画质直取，再用本地 AI 超分、去水印、翻译配音与字幕，素材不上传。"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><link rel="stylesheet" href="assets/css/fonts.css"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}
+.hero-grid{background-image:linear-gradient(to right,rgba(255,255,255,0.045) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,0.045) 1px,transparent 1px);background-size:64px 64px;background-position:center top;-webkit-mask-image:radial-gradient(ellipse 70% 62% at 50% 26%,#000 18%,transparent 78%);mask-image:radial-gradient(ellipse 70% 62% at 50% 26%,#000 18%,transparent 78%);}
+.hero-rise{animation:heroRise .7s cubic-bezier(.2,.7,.2,1) both;}
+.hero-d1{animation-delay:.05s}.hero-d2{animation-delay:.12s}.hero-d3{animation-delay:.2s}.hero-d4{animation-delay:.28s}
+@keyframes heroRise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.hero-rise{animation:none}}
+</style><link rel="stylesheet" href="assets/css/site.css"/><link rel="stylesheet" href="assets/css/tailwind.build.css"/><script defer src="assets/js/i18n.js"></script><script defer src="assets/js/mobile-nav.js"></script><script type="module" src="/src/entries/site-header.tsx"></script>
 <!-- SEO/GEO: 统一规范化与分享卡片（canonical 用绝对地址，og:image 指向构建期稳定拷贝的 /assets/og/og-cover.jpg） -->
 <link rel="canonical" href="https://tokpure.clipopai.com/"/>
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"/>
@@ -50,16 +56,16 @@
 <meta property="og:locale:alternate" content="pt_PT"/>
 <meta property="og:locale:alternate" content="fr_FR"/>
 <meta property="og:locale:alternate" content="de_DE"/>
-<meta property="og:title" content="TokPure · 本地无水印 TikTok 视频下载与 AI 修复工作站"/>
-<meta property="og:description" content="TokPure 是专为 macOS 打造的桌面端短视频无水印下载与 AI 修复工具。100% 本地算力，零云端中转，零画质压缩。"/>
+<meta property="og:title" content="TokPure · TikTok 无水印下载与本地 AI 出片"/>
+<meta property="og:description" content="TokPure 是本地运行的 macOS / Windows 桌面工具：TikTok 无水印原画质直取，再用本地 AI 超分、去水印、翻译配音与字幕，素材不上传。"/>
 <meta property="og:url" content="https://tokpure.clipopai.com/"/>
 <meta property="og:image" content="https://tokpure.clipopai.com/assets/og/og-cover.jpg"/>
 <meta property="og:image:width" content="1200"/>
 <meta property="og:image:height" content="630"/>
 <meta property="og:image:alt" content="TokPure 本地桌面视频工作站界面"/>
 <meta name="twitter:card" content="summary_large_image"/>
-<meta name="twitter:title" content="TokPure · 本地无水印 TikTok 视频下载与 AI 修复工作站"/>
-<meta name="twitter:description" content="TokPure 是专为 macOS 打造的桌面端短视频无水印下载与 AI 修复工具。100% 本地算力，零云端中转，零画质压缩。"/>
+<meta name="twitter:title" content="TokPure · TikTok 无水印下载与本地 AI 出片"/>
+<meta name="twitter:description" content="TokPure 是本地运行的 macOS / Windows 桌面工具：TikTok 无水印原画质直取，再用本地 AI 超分、去水印、翻译配音与字幕，素材不上传。"/>
 <meta name="twitter:image" content="https://tokpure.clipopai.com/assets/og/og-cover.jpg"/>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://tokpure.clipopai.com/#org","name":"TokPure Studio","url":"https://tokpure.clipopai.com/","logo":{"@type":"ImageObject","url":"https://tokpure.clipopai.com/assets/og/og-cover.jpg","width":1200,"height":630}},{"@type":"WebSite","@id":"https://tokpure.clipopai.com/#website","url":"https://tokpure.clipopai.com/","name":"TokPure","inLanguage":["zh-CN","zh-TW","en","ja","es","pt","fr","de"],"publisher":{"@id":"https://tokpure.clipopai.com/#org"}},{"@type":"SoftwareApplication","@id":"https://tokpure.clipopai.com/#app","name":"TokPure","applicationCategory":"MultimediaApplication","applicationSubCategory":"Video Downloader & AI Video Restore","operatingSystem":"macOS 12+, Windows 10/11 (x64)","url":"https://tokpure.clipopai.com/","downloadUrl":"https://tokpure.clipopai.com/download.html","description":"TokPure 是本地离线运行的 TikTok 无水印下载与 AI 视频修复桌面客户端：本地解析直取、AI 超分插帧、AI 去水印、字幕生成与批量切片，并可上传自己的声音做零样本克隆、把原片人声整条换成「我的声音说目标语言」，全程零云端中转。","featureList":["TikTok 无水印下载（本地解析直取官方 CDN）","AI 超分与插帧修复（本地 Metal 加速）","AI 去水印（OCR 自动检测 + delogo）","Whisper 本地字幕识别与 SRT 导出","AI 批量切片与成片封面","TikTok 梗图贴纸 GIF 生成","AI 视频翻译（上传自己的声音克隆换声，本地离线）","本地媒体库与批量任务队列"],"offers":[{"@type":"Offer","name":"免费下载体验","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Pro 月度订阅","price":"9.9","priceCurrency":"USD"},{"@type":"Offer","name":"Studio 团队月度订阅","price":"29","priceCurrency":"USD"}],"publisher":{"@id":"https://tokpure.clipopai.com/#org"}}]}</script>
 </head><body class="bg-background font-body-md text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container"><header class="fixed top-0 left-0 right-0 z-50 bg-surface/75 backdrop-blur-2xl shadow-[0_1px_16px_rgba(0,0,0,0.45)]"><div class="h-16 max-w-7xl mx-auto px-6 lg:px-12 flex items-center justify-between gap-space-md"><div class="flex items-center gap-space-md"><a class="flex items-center gap-space-sm group" data-path="home" href="index.html"><img alt="TokPure 桌面端本地视频工具 Logo" class="h-8 w-auto object-contain" src="assets/img/logo.webp" width="192" height="192" decoding="async"/><span class="font-headline-lg text-headline-lg tracking-tight text-on-surface font-bold">TokPure</span></a><div class="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-high"><span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span><span class="font-label-sm text-label-sm text-tertiary-fixed">v3.9 macOS / Win</span></div></div><nav class="hidden lg:flex items-center gap-1" data-active-classes="text-on-surface bg-surface-container font-headline-sm rounded-lg shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]"><a aria-current="page" class="px-3 py-1.5 transition-colors text-on-surface bg-surface-container font-headline-sm rounded-lg shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]" data-path="home" href="index.html">首页</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="download" href="download.html">下载客户端</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="pricing" href="pricing.html">价格</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="about-us" href="about.html">关于我们</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="blog" href="blog.html">博客</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="answers" href="answers.html">场景问答</a></nav><div class="flex items-center gap-space-md"><div class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-lowest"><span class="w-2 h-2 rounded-full bg-tertiary"></span><span class="font-label-sm text-label-sm text-on-surface">100% LOCAL COMPUTE</span></div><div id="site-header-auth" class="flex items-center"></div><a class="hidden sm:inline-block font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface transition-colors px-2" data-path="login" href="login.html">登录</a><a class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25)] hover:bg-primary transition-all" data-path="download" href="download.html">免费下载体验</a><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center" data-header-avatar><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-16 bg-background min-h-screen"><div class="flex flex-col w-full selection:bg-primary-container selection:text-on-primary-container">
@@ -69,33 +75,56 @@
 <div class="absolute top-[380px] -left-32 w-[380px] h-[380px] bg-secondary-container/10 blur-[140px] pointer-events-none -z-10"></div>
 <div class="absolute top-[640px] -right-32 w-[420px] h-[420px] bg-primary-container/10 blur-[150px] pointer-events-none -z-10"></div>
 <!-- Section 1: Hero Section -->
-<section class="max-w-7xl mx-auto px-6 lg:px-12 pt-8 pb-20 flex flex-col items-center text-center">
-<!-- Badge Pill -->
-<div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-surface-container-high shadow-sm hover:bg-surface-container-highest transition-all cursor-default">
-<span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span>
-<span class="font-label-sm text-label-sm text-on-surface tracking-wide">macOS 与 Windows 双平台 · 本地离线视频去水印引擎</span>
-<span class="font-label-sm text-label-sm text-secondary-fixed bg-surface-container-low px-1.5 py-0.5 rounded font-bold">Local Engine Ready</span>
+<section class="relative isolate max-w-7xl mx-auto px-6 lg:px-12 pt-10 pb-16">
+<div class="hero-grid pointer-events-none absolute inset-0 z-0" aria-hidden="true"></div>
+<div class="relative z-10 flex flex-col items-center text-center">
+<!-- Eyebrow -->
+<div class="hero-rise inline-flex items-center gap-2.5 px-3 py-1.5 rounded-full border border-outline-variant/50 bg-surface-container-low/80 backdrop-blur">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span>
+<span class="font-label-sm text-label-sm text-on-surface-variant tracking-wide">本地离线引擎 · v3.9.42 · macOS / Windows</span>
 </div>
 <!-- Main Headline -->
-<h1 class="mt-6 max-w-4xl font-headline-xl text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-on-surface leading-[1.15]">
-        纯净无界，极致无损。<br class="hidden sm:inline"/>
-<span class="bg-gradient-to-r from-on-surface via-primary to-secondary bg-clip-text text-transparent">TokPure 桌面端短视频下载</span> 与 AI 修复工作站
-      </h1>
+<h1 class="hero-rise hero-d1 mt-7 max-w-3xl font-headline-xl text-[30px] sm:text-[40px] lg:text-[56px] font-extrabold tracking-tight text-on-surface leading-[1.18]">
+<span class="block">下载无水印原片，</span>
+<span class="block bg-gradient-to-r from-primary via-primary to-secondary bg-clip-text text-transparent">本地 AI 直接出成片</span>
+</h1>
 <!-- Subtitle -->
-<p class="mt-5 max-w-2xl font-body-lg text-body-lg text-on-surface-variant leading-relaxed">
-        完全基于本地离线引擎驱动，macOS 与 Windows 双平台同样强悍。零云端中转、零画质压缩损伤、原生母带直连提取或毫秒级神经补全。
+<p class="hero-rise hero-d2 mt-5 max-w-xl font-body-lg text-body-lg text-on-surface-variant leading-relaxed">
+        粘贴 TikTok 链接导出原画质；超分、去水印、翻译配音与字幕，都在你自己的电脑上完成。
       </p>
 <!-- Action Buttons -->
-<div class="mt-8 flex flex-wrap items-center justify-center gap-4">
-<a class="inline-flex items-center gap-3 px-6 py-3.5 rounded-xl bg-primary-container text-on-primary-container font-headline-sm text-headline-sm shadow-xl hover:bg-primary transition-all group scale-100 hover:scale-[1.01]" data-path="download" href="download.html">
+<div class="hero-rise hero-d3 mt-8 flex flex-wrap items-center justify-center gap-3">
+<a class="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-primary-container text-on-primary-container font-headline-sm text-headline-sm shadow-xl hover:bg-primary transition-all group scale-100 hover:scale-[1.01]" data-path="download" href="download.html">
 <span class="material-symbols-outlined text-[20px] group-hover:translate-y-0.5 transition-transform">download</span>
-<span>免费下载桌面客户端 (macOS / Windows)</span>
+<span>免费下载桌面端</span>
 <span class="px-2 py-0.5 rounded bg-surface-container-lowest/40 font-label-sm text-label-sm text-primary-fixed">v3.9.42</span>
 </a>
-<a class="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-surface-container-high text-on-surface hover:bg-surface-container-highest transition-colors font-headline-sm text-headline-sm" href="#core-capabilities">
-<span>查看功能概览</span>
+<a class="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl border border-outline-variant/50 bg-surface-container-low/60 text-on-surface hover:bg-surface-container-high hover:border-outline-variant transition-colors font-headline-sm text-headline-sm" href="#core-capabilities">
+<span>看它怎么工作</span>
 <span class="material-symbols-outlined text-[18px]">arrow_downward</span>
 </a>
+</div>
+<p class="mt-4 font-label-sm text-label-sm text-on-surface-variant/70">免费版即可无水印下载 · 无需注册</p>
+<!-- Value Band -->
+<div class="hero-rise hero-d4 mt-10 w-full max-w-4xl grid grid-cols-1 sm:grid-cols-3 border-y border-outline-variant/40 divide-y divide-outline-variant/40 sm:divide-y-0 sm:divide-x">
+<div class="px-6 py-6 text-left">
+<span class="font-mono text-[10px] tracking-[0.18em] text-on-surface-variant/50">01 / DOWNLOAD</span>
+<p class="mt-2 font-headline-sm text-headline-sm font-semibold text-on-surface">无水印原画质</p>
+<p class="mt-1 text-[13px] leading-relaxed text-on-surface-variant">1080P / 720P 直取，不转码</p>
+</div>
+<div class="px-6 py-6 text-left">
+<div class="flex items-center gap-2">
+<span class="font-mono text-[10px] tracking-[0.18em] text-on-surface-variant/50">02 / AI FINISH</span>
+<span class="px-1.5 py-0.5 rounded bg-primary-container/15 font-label-sm text-[9px] font-bold tracking-wide text-primary">PRO</span>
+</div>
+<p class="mt-2 font-headline-sm text-headline-sm font-semibold text-on-surface">8 语种克隆配音</p>
+<p class="mt-1 text-[13px] leading-relaxed text-on-surface-variant">用你自己的声音说外语</p>
+</div>
+<div class="px-6 py-6 text-left">
+<span class="font-mono text-[10px] tracking-[0.18em] text-on-surface-variant/50">03 / ON-DEVICE</span>
+<p class="mt-2 font-headline-sm text-headline-sm font-semibold text-on-surface">100% 本地运行</p>
+<p class="mt-1 text-[13px] leading-relaxed text-on-surface-variant">素材不上传，断网可用</p>
+</div>
 </div>
 <!-- System Compatibility & Security Guarantee Strip -->
 <div class="mt-6 flex flex-wrap items-center justify-center gap-6 text-on-surface-variant font-label-sm text-label-sm">
@@ -106,10 +135,6 @@
 <div class="flex items-center gap-1.5">
 <span class="material-symbols-outlined text-secondary text-[16px]">memory</span>
 <span>macOS 12+ · Windows 10 21H2 / 11 x64</span>
-</div>
-<div class="flex items-center gap-1.5">
-<span class="material-symbols-outlined text-primary text-[16px]">lock</span>
-<span>100% 本地运算 · 零遥测上传</span>
 </div>
 </div>
 <!-- Software Showcase: macOS Dual Window Mockup -->
@@ -247,6 +272,7 @@
 <div class="p-2.5 rounded-lg bg-surface-container-lowest">
 <span class="font-label-sm text-[10px] text-on-surface-variant block">GPU/NPU 加速</span>
 <span class="font-headline-md text-headline-md text-primary font-bold tracking-tight">Metal 3 激活</span>
+</div>
 </div>
 </div>
 </div>
