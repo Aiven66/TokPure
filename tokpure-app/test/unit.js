@@ -739,6 +739,44 @@ test('suppressNoise：语音段原样保留，气口噪声被压掉', () => {
   }
 });
 
+/* ---------------- 5.6.1 3.9.42 呲呲声：平稳噪声块整段静音 ---------------- */
+test('3.9.42 平稳噪声块：三判据同时成立才切，语音一个不动', () => {
+  const den = read('electron/denoise.js');
+  assert.ok(/function steadyNoiseSpans/.test(den), '缺少 steadyNoiseSpans');
+  assert.ok(/const STEADY_FLAT_SD = 3\.2;/.test(den), '平稳度阈值不是实测标定的 3.2dB');
+  assert.ok(/const STEADY_SAL_MAX = 0\.42;/.test(den), '自相关峰阈值不是实测标定的 0.42');
+  assert.ok(/const STEADY_DIP_DB = 10;/.test(den), '缺少孤立性判据（会把词间轻声当噪声切掉）');
+  assert.ok(/steadyNoiseSpans\(pcm, rate\)\.forEach/.test(den), 'suppressNoise 没有并入平稳噪声段');
+  assert.ok(!/DENOISE_DEBUG/.test(den), '仍残留调试输出');
+
+  const sr = 44100;
+  let seed = 778899;
+  const rnd = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return (seed / 0x7fffffff) * 2 - 1;
+  };
+  // 0~1.3s 说话（带音节起伏）→ 1.3~1.6s 静音 → 1.6~2.8s 平稳噪声块（比语音低 10dB）
+  // → 2.8~3.1s 静音 → 3.1~4.4s 说话
+  const n = Math.round(4.4 * sr);
+  const pcm = new Float32Array(n);
+  const tone = (i) => 0.3 * Math.sin((2 * Math.PI * 440 * (i / sr))) * (0.35 + 0.65 * Math.abs(Math.sin(Math.PI * 3.1 * (i / sr))));
+  const noiseAmp = 0.116;  // RMS ≈ -20dBFS，比语音低 10dB 左右
+  for (let i = 0; i < n; i += 1) {
+    const t = i / sr;
+    if (t < 1.3 || t >= 3.1) pcm[i] = tone(i) + 0.002 * rnd();
+    else if (t >= 1.6 && t < 2.8) pcm[i] = noiseAmp * rnd();
+    else pcm[i] = 0.0005 * rnd();
+  }
+  const spans = require('../electron/denoise').steadyNoiseSpans(pcm, sr);
+  assert.ok(spans.length >= 1, '平稳噪声块没有被检出');
+  const hit = spans.some(([a, b]) => a <= Math.round(1.7 * sr) && b >= Math.round(2.7 * sr));
+  assert.ok(hit, `检出区间没有覆盖噪声块：${spans.map(([a, b]) => `${(a / sr).toFixed(2)}-${(b / sr).toFixed(2)}`).join(' ')}`);
+  // 语音段不能被任何 span 覆盖
+  const inSpeech = spans.some(([a, b]) => (a < Math.round(1.25 * sr) && b > Math.round(0.1 * sr))
+    || (a < Math.round(4.3 * sr) && b > Math.round(3.2 * sr)));
+  assert.ok(!inSpeech, '检出的噪声段覆盖到了语音区（会吞字）');
+});
+
 /* ---------------- 5.7 3.9.38 付费门禁：授权来源唯一、离线宽限、Pro 功能上锁 ---------- */
 test('3.9.38 授权只认服务端 /api/entitlement，本地只做缓存与宽限', () => {
   const src = read('electron/license.js');

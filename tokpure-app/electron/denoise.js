@@ -168,6 +168,136 @@ function frameGate(over, hiRel, opts = {}) {
   return g;
 }
 
+/* ---------------- 平稳噪声段（3.9.42） ----------------
+   克隆引擎除了「气口 / 句尾低频闷响」，还会在句中、停顿处输出 0.5~2s 的**平稳噪声块**：
+   频谱是一条没有谐波的宽带噪声带（低频偏重），电平只比语音低 6~12dB，
+   于是「低于语音 N dB」的电平门限不拦它，维纳谱减也只当它是一段轻声说话。
+   用户听到的就是「呲呲呲」。实测成片 en.mp4 有 4 段、合计 5.0s：
+   52.4~53.1 / 56.7~58.6 / 94.5~95.4 / 110.0~111.5s（频谱上完全没有谐波条纹）。
+
+   三条判据必须同时成立，每一条单独都不够、但人声不可能三条同时满足：
+   1) 电平平稳：0.4s 滑窗内 20ms 包络的标准差 ≤3.2dB。
+      人声在 0.4s 内必然有音节起伏（实测语音段最小 5dB，1.1s 的长音也有 6dB+）。
+   2) 没有谐波：归一化自相关峰 <0.42（20ms 帧、lag 对应 50~400Hz）。
+      人声哪怕轻声、气声，该值也在 0.50~0.73（实测全片 44 个平稳段，人声最低 0.50）。
+   3) 孤立：紧邻的 0.25s 内有 ≥10dB 的凹陷（停顿/呼吸）。
+      噪声块填的是停顿，而人声词与词之间必然黏着下一个音节，不会孤零零躺在静音里。
+
+   命中后整段拉到数字静音（两端外扩到电平下降 18dB 处，最多 0.4s），
+   由 suppressNoise 统一做 11.6ms 斜坡。这样「呲呲呲」没了，词句一个都不动。
+   ================================================================ */
+const STEADY_ENV_SEC = 0.02;     // 包络帧 20ms
+const STEADY_FLAT_SEC = 0.4;     // 平稳度统计窗
+const STEADY_FLAT_SD = 3.2;      // 窗内包络标准差上限（dB）
+const STEADY_SAL_MAX = 0.42;     // 归一化自相关峰上限（人声实测 ≥0.50）
+const STEADY_MIN_SEC = 0.45;     // 短于此不处理（辅音、气口）
+const STEADY_MAX_SEC = 6;        // 长于此多半是连续轻声说话，不动
+const STEADY_GAP_SEC = 0.08;     // 两个平稳窗之间允许的最大断点
+const STEADY_DIP_SEC = 0.25;     // 孤立性检查的邻域
+const STEADY_DIP_DB = 10;        // 邻域内要比段内电平低这么多
+const STEADY_LEVEL_DROP = 28;    // 比语音低 28dB 以上交给深静音 / 句尾裁剪
+const STEADY_EXTEND_SEC = 0.4;   // 两端各最多外扩 0.4s
+const STEADY_EXTEND_DB = 18;     // 外扩到电平下降 18dB 处（再往下就是静音）
+
+function steadyNoiseSpans(pcm, rate) {
+  const sr = Number(rate) > 0 ? Number(rate) : 44100;
+  const n = pcm.length;
+  if (n < Math.ceil(STEADY_MIN_SEC * sr)) return [];
+  const ef = Math.max(16, Math.round(STEADY_ENV_SEC * sr));
+  const ne = Math.floor(n / ef);
+  if (ne < 40) return [];
+  const db = new Float64Array(ne);
+  for (let k = 0; k < ne; k += 1) {
+    let e = 0;
+    const s = k * ef;
+    for (let i = 0; i < ef; i += 1) { const v = pcm[s + i]; e += v * v; }
+    db[k] = 10 * Math.log10(e / ef + 1e-30);
+  }
+  const sorted = Array.prototype.slice.call(db).sort((x, y) => x - y);
+  const speechRef = quantile(sorted, 0.9);
+  const loLv = speechRef - STEADY_LEVEL_DROP;
+  const hiLv = speechRef + 2;
+  const flatWin = Math.max(4, Math.round(STEADY_FLAT_SEC / STEADY_ENV_SEC));
+  const flag = new Uint8Array(ne);
+  for (let k = 0; k + flatWin <= ne; k += 1) {
+    let m = 0;
+    for (let i = k; i < k + flatWin; i += 1) m += db[i];
+    m /= flatWin;
+    if (m < loLv || m > hiLv) continue;
+    let v = 0;
+    for (let i = k; i < k + flatWin; i += 1) v += (db[i] - m) * (db[i] - m);
+    if (Math.sqrt(v / flatWin) > STEADY_FLAT_SD) continue;
+    for (let i = k; i < k + flatWin; i += 1) flag[i] = 1;
+  }
+  // 归一化自相关峰：人声有基频就有峰；噪声（哪怕低频偏重）没有。
+  const salience = (k) => {
+    const s = k * ef;
+    const w = Math.min(1024, n - s);
+    if (w < 512) return 1;
+    let r0 = 0;
+    for (let i = 0; i < w; i += 1) { const v = pcm[s + i]; r0 += v * v; }
+    if (r0 < 1e-12) return 0;
+    const minLag = Math.max(2, Math.floor(sr / 400));
+    const maxLag = Math.min(w - 2, Math.floor(sr / 50));
+    let best = 0;
+    for (let lag = minLag; lag <= maxLag; lag += 1) {
+      let r = 0;
+      for (let i = 0; i < w - lag; i += 1) r += pcm[s + i] * pcm[s + i + lag];
+      if (r > best) best = r;
+    }
+    return best / r0;
+  };
+  const gapMax = Math.max(0, Math.round(STEADY_GAP_SEC / STEADY_ENV_SEC));
+  const dipPad = Math.max(1, Math.round(STEADY_DIP_SEC / STEADY_ENV_SEC));
+  const extMax = Math.max(1, Math.round(STEADY_EXTEND_SEC / STEADY_ENV_SEC));
+  const spans = [];
+  let a = -1;
+  let b = -1;
+  const flush = () => {
+    if (a < 0) return;
+    const dur = ((b + 1) - a) * ef / sr;
+    if (dur >= STEADY_MIN_SEC && dur <= STEADY_MAX_SEC) {
+      let mean = 0;
+      for (let k = a; k <= b; k += 1) mean += db[k];
+      mean /= (b - a + 1);
+      const sals = [];
+      for (let k = a; k <= b; k += 1) sals.push(salience(k));
+      sals.sort((x, y) => x - y);
+      const sal = sals[Math.floor(0.5 * sals.length)];
+      let dipA = 1e9;
+      let dipB = 1e9;
+      for (let k = Math.max(0, a - dipPad); k < a; k += 1) if (db[k] < dipA) dipA = db[k];
+      for (let k = b + 1; k <= Math.min(ne - 1, b + dipPad); k += 1) if (db[k] < dipB) dipB = db[k];
+      const iso = Math.min(dipA, dipB) <= mean - STEADY_DIP_DB;
+      if (sal < STEADY_SAL_MAX && iso) {
+        // 外扩：噪声块的首尾常被 0.4s 窗「吃掉」一点，按电平往下找真实边界。
+        // 只往「同电平的噪声」方向走：碰到语音（高出段内 8dB）立刻停。
+        let a0 = a;
+        let b0 = b;
+        for (let k = a - 1, lim = Math.max(0, a - extMax); k >= lim; k -= 1) {
+          if (db[k] < mean - STEADY_EXTEND_DB || db[k] > mean + 8) break;
+          a0 = k;
+        }
+        for (let k = b + 1, lim = Math.min(ne - 1, b + extMax); k <= lim; k += 1) {
+          if (db[k] < mean - STEADY_EXTEND_DB || db[k] > mean + 8) break;
+          b0 = k;
+        }
+        spans.push([a0 * ef, Math.min(n, (b0 + 1) * ef)]);
+      }
+    }
+    a = -1;
+    b = -1;
+  };
+  for (let k = 0; k < ne; k += 1) {
+    if (!flag[k]) continue;
+    if (a < 0) { a = k; b = k; continue; }
+    if (k - b <= gapMax) b = k;
+    else { flush(); a = k; b = k; }
+  }
+  flush();
+  return spans;
+}
+
 /**
  * 逐句分析：帧电平、噪声功率谱、句尾切点、深静音段。
  * 只对「电平低于噪声门限」的帧做 FFT，开销约为总帧数的 20~60%。
@@ -341,6 +471,8 @@ function suppressNoise(pcm, rate, opts = {}) {
   if (!frames) {
     return { pcm: new Float32Array(pcm), spans: 0, mutedSec: 0, tailSec: 0, trimmedSec: 0, speechRef: 0, noiseFrames: 0, frames: 0 };
   }
+  // 3.9.42：句内「平稳嘶声」段（克隆引擎的噪声块）并入深静音段，直接清零。
+  steadyNoiseSpans(pcm, rate).forEach((s) => spans.push(s));
   const f = makeFft(NFFT);
   const bins = NFFT / 2 + 1;
   const win = new Float64Array(FRAME);
@@ -596,4 +728,4 @@ function flattenLevel(pcm, rate, opts = {}) {
   return out;
 }
 
-module.exports = { analyzeFrames, suppressNoise, writeWavS16, flattenLevel, FRAME, HOP, NFFT };
+module.exports = { analyzeFrames, suppressNoise, steadyNoiseSpans, writeWavS16, flattenLevel, FRAME, HOP, NFFT };
