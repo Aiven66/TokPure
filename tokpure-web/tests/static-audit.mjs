@@ -12,7 +12,7 @@ const ROOT = resolve(process.argv[2] || 'dist');
 const SITE = 'https://tokpure.clipopai.com';
 
 /** 公开页面（需要出现在 sitemap 里，且必须有完整 SEO 元信息） */
-const PUBLIC_PAGES = ['index.html', 'download.html', 'pricing.html', 'tiktok-stickers.html', 'about.html', 'blog.html'];
+const PUBLIC_PAGES = ['index.html', 'download.html', 'pricing.html', 'tiktok-stickers.html', 'answers.html', 'about.html', 'blog.html'];
 /** 非索引页：只要求 noindex，不要求 og / canonical / h1 / JSON-LD */
 const NOINDEX_PAGES = new Set(['admin.html', 'auth-callback.html', '404.html', 'login.html']);
 /**

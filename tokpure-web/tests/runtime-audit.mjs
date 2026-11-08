@@ -145,6 +145,7 @@ const pages = [
   { path: '/about.html' },
   { path: '/blog.html' },
   { path: '/tiktok-stickers.html' },
+  { path: '/answers.html' },
   { path: '/login.html' },
   // 本地/Vercel 都是直接访问该静态文件，因此返回 200；未知路由的 404 由下面的独立用例覆盖
   { path: '/404.html' }
@@ -233,7 +234,7 @@ for (const p of pages) {
   const page = await ctx.newPage();
   const seen = new Set();
   const broken = [];
-  for (const p of ['/', '/download.html', '/pricing.html', '/about.html', '/blog.html', '/tiktok-stickers.html']) {
+  for (const p of ['/', '/download.html', '/pricing.html', '/about.html', '/blog.html', '/tiktok-stickers.html', '/answers.html']) {
     await page.goto(`${BASE}${p}`, { waitUntil: 'domcontentloaded' });
     const hrefs = await page.evaluate(() => Array.from(document.querySelectorAll('a[href]'))
       .map((a) => a.getAttribute('href')).filter(Boolean));

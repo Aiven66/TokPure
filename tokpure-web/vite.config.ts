@@ -44,6 +44,7 @@ const STATIC_ROUTES: Array<{ path: string; priority: string }> = [
   { path: '/', priority: '1.0' },
   { path: '/download.html', priority: '0.9' },
   { path: '/pricing.html', priority: '0.9' },
+  { path: '/answers.html', priority: '0.8' },
   { path: '/tiktok-stickers.html', priority: '0.8' },
   { path: '/about.html', priority: '0.6' },
   { path: '/blog.html', priority: '0.7' }

@@ -270,18 +270,40 @@
     } catch (e) { /* 老浏览器忽略 */ }
   }
 
-  function load(lang) {
-    if (lang === SOURCE) {
-      dict = {};
-      return Promise.resolve();
-    }
+  function fetchDict(lang) {
     return fetch(i18nBase() + lang + '.json', { cache: 'force-cache' })
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       })
-      .then(function (json) { dict = json || {}; })
-      .catch(function () { dict = {}; });
+      .catch(function () { return {}; });
+  }
+
+  // 英文兜底：非英文语言先取 en.json 作基底，再用当前语言词条覆盖（空值跳过）。
+  // 词表按页增量维护，总有页面先上线、词表后补齐；没有兜底时缺失键会原样留下中文，
+  // 于是西/法/德/日等语言的新页面会大面积露出中文。兜底后最差也是英文，不影响可读性。
+  function load(lang) {
+    if (lang === SOURCE) {
+      dict = {};
+      return Promise.resolve();
+    }
+    if (lang === FALLBACK) {
+      return fetchDict(lang).then(function (json) { dict = json || {}; });
+    }
+    return Promise.all([fetchDict(FALLBACK), fetchDict(lang)]).then(function (pair) {
+      var base = pair[0] || {};
+      var own = pair[1] || {};
+      var out = {};
+      var k;
+      for (k in base) {
+        if (Object.prototype.hasOwnProperty.call(base, k)) out[k] = base[k];
+      }
+      for (k in own) {
+        if (!Object.prototype.hasOwnProperty.call(own, k)) continue;
+        if (typeof own[k] === 'string' && own[k].trim()) out[k] = own[k];
+      }
+      dict = out;
+    });
   }
 
   var menuOpen = false;
