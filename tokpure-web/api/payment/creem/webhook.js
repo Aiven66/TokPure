@@ -12,7 +12,14 @@
 
 const { createHmac, timingSafeEqual } = require('crypto');
 const { configured } = require('../../_lib');
-const { applyPlanPurchase, applySubscriptionLapse } = require('../../_payment');
+const {
+  getPlan,
+  getSubscription,
+  isEntitled,
+  applyPlanPurchase,
+  applySubscriptionLapse,
+} = require('../../_payment');
+const { trackPurchase, trackChurn, resolveClientId } = require('../../_ga4');
 
 /** 读取请求原始字节（不触碰 req.body，保留流）。 */
 async function readRawBody(req) {
@@ -60,6 +67,9 @@ module.exports = async (req, res) => {
   try {
     if (eventType === 'checkout.completed' || eventType === 'subscription.active' || eventType === 'subscription.paid') {
       const orderId = (obj.order && obj.order.id) || obj.last_transaction_id || event.id || `creem_${Date.now()}`;
+      // 续订判定必须在落库前取：落库后订阅一定是 active，分不出新购与续费
+      const prior = metadata.user_id ? await getSubscription(metadata.user_id) : null;
+      const renewal = isEntitled(prior);
       const applied = await applyPlanPurchase({
         userId: metadata.user_id,
         planId: metadata.plan_id,
@@ -69,7 +79,19 @@ module.exports = async (req, res) => {
         console.error('[Creem Webhook] 订阅落库失败，等待重试:', { metadata, orderId });
         return res.status(500).json({ error: 'failed to apply subscription' });
       }
-      console.log('[Creem Webhook] 订阅已激活:', { userId: metadata.user_id, planId: metadata.plan_id, orderId });
+      const plan = getPlan(metadata.plan_id);
+      // 付款事件以服务端为准：GA4 按 transaction_id 去重，webhook 重试不会重复计收入
+      await trackPurchase({
+        clientId: metadata.ga_client_id || resolveClientId(req.headers.cookie, metadata.user_id),
+        userId: metadata.user_id,
+        planId: metadata.plan_id,
+        planName: plan && plan.name,
+        amount: plan && plan.amount,
+        transactionId: orderId,
+        provider: 'creem',
+        renewal,
+      });
+      console.log('[Creem Webhook] 订阅已激活:', { userId: metadata.user_id, planId: metadata.plan_id, orderId, renewal });
       return res.status(200).json({ received: true });
     }
 
@@ -79,11 +101,21 @@ module.exports = async (req, res) => {
         return res.status(200).json({ received: true });
       }
       const reason = eventType === 'subscription.expired' ? 'expired' : 'canceled';
+      const prior = await getSubscription(metadata.user_id);
       const applied = await applySubscriptionLapse({ userId: metadata.user_id, reason });
       if (!applied) {
         console.error('[Creem Webhook] 订阅回收落库失败，等待重试:', { userId: metadata.user_id, reason });
         return res.status(500).json({ error: 'failed to apply lapse' });
       }
+      const plan = getPlan(metadata.plan_id || (prior && prior.plan));
+      await trackChurn({
+        clientId: metadata.ga_client_id || resolveClientId(req.headers.cookie, metadata.user_id),
+        userId: metadata.user_id,
+        planId: plan ? plan.planType : metadata.plan_id,
+        amount: plan && plan.amount,
+        provider: 'creem',
+        reason,
+      });
       console.log('[Creem Webhook] 订阅回收:', { userId: metadata.user_id, reason });
       return res.status(200).json({ received: true });
     }

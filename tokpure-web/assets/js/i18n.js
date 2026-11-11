@@ -227,6 +227,7 @@
   }
 
   function apply(lang) {
+    var prevLang = document.documentElement.getAttribute('data-lang') || '';
     current = lang;
     var table = lang === SOURCE ? null : dict;
 
@@ -268,6 +269,14 @@
     try {
       window.dispatchEvent(new CustomEvent('tokpure:langchange', { detail: { lang: lang } }));
     } catch (e) { /* 老浏览器忽略 */ }
+
+    // 埋点：语言切换。首次加载时 data-lang 已被 <head> 引导脚本写成当前语言，
+    // 因此 prev === lang，不会把「打开页面」误记成一次切换。
+    try {
+      if (prevLang && prevLang !== lang) {
+        document.dispatchEvent(new CustomEvent('tp:lang', { detail: { from: prevLang, to: lang } }));
+      }
+    } catch (e) { /* 忽略 */ }
   }
 
   // 词表版本号：每次改动 assets/i18n/*.json 都要 +1。

@@ -43,7 +43,13 @@ async function handlePost(req, res) {
       buyerIdentity: user.id,
       buyerEmail: user.email,
       successUrl,
-      metadata: { plan_id: planId, user_id: user.id, source: 'tokpure' },
+      metadata: {
+        plan_id: planId,
+        user_id: user.id,
+        source: 'tokpure',
+        // 前端 _ga cookie 里的 client_id，回传后在 webhook 里用于 GA4 归因
+        ...(((req.body || {}).gaClientId && { ga_client_id: String((req.body || {}).gaClientId).slice(0, 64) }) || {}),
+      },
       orderMerchantExternalId: `tokpure:${user.id}:${planId}`.slice(0, 128),
     });
 

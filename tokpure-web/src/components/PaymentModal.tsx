@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@pkg';
 import { onCheckoutRequest, type CheckoutItem } from '@/lib/checkout';
+import { gaClientId, track } from '@/lib/track';
 
 type Channel = 'creem' | 'waffo';
 type Phase = 'select' | 'pending' | 'success' | 'error';
@@ -158,7 +159,12 @@ export function PaymentModal() {
         const res = await fetch(`/api/payment/${ch}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({ planId: item.id, origin: window.location.origin }),
+          body: JSON.stringify({
+            planId: item.id,
+            origin: window.location.origin,
+            // 归因用：服务端把它写进渠道 metadata，webhook 里再带进 GA4 purchase
+            gaClientId: gaClientId(),
+          }),
         });
         const data = await res.json().catch(() => ({}));
 
@@ -183,6 +189,22 @@ export function PaymentModal() {
             ? `/api/payment/creem?session_id=${encodeURIComponent(data.sessionId || '')}`
             : `/api/payment/waffo?user_id=${encodeURIComponent(user.id)}`,
         );
+
+        // 漏斗：收银台已创建 → begin_checkout；purchase 一律等 webhook（服务端上报）
+        track('begin_checkout', {
+          currency: 'USD',
+          value: item.priceUsd,
+          payment_channel: ch,
+          plan: item.id,
+          items: [
+            {
+              item_id: item.id,
+              item_name: item.name,
+              price: item.priceUsd,
+              quantity: 1,
+            },
+          ],
+        });
 
         if (win) win.location.href = url;
         else window.open(url, '_blank', 'noopener,noreferrer');

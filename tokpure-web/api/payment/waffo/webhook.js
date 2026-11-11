@@ -13,11 +13,15 @@
 
 const { configured } = require('../../_lib');
 const {
+  getPlan,
+  getSubscription,
+  isEntitled,
   applyPlanPurchase,
   applySubscriptionLapse,
   applySubscriptionRestore,
 } = require('../../_payment');
 const { sdk } = require('../../_waffo');
+const { trackPurchase, trackChurn, resolveClientId } = require('../../_ga4');
 
 /** 读取请求原始字节（不触碰 req.body，保留流）。 */
 async function readRawBody(req) {
@@ -66,12 +70,26 @@ module.exports = async (req, res) => {
       case WebhookEventType.OrderCompleted:
       case WebhookEventType.SubscriptionActivated:
       case WebhookEventType.SubscriptionPaymentSucceeded: {
+        // 续订判定在落库前取，否则拿到的永远是 active
+        const prior = userId ? await getSubscription(userId) : null;
+        const renewal = isEntitled(prior);
         const applied = await applyPlanPurchase({ userId, planId, email: data.buyerEmail });
         if (!applied) {
           console.error('[Waffo Webhook] 订阅落库失败，等待重试:', { userId, planId, orderId });
           return res.status(500).json({ error: 'failed to apply subscription' });
         }
-        console.log('[Waffo Webhook] 订阅已激活:', { userId, planId, orderId });
+        const plan = getPlan(planId);
+        await trackPurchase({
+          clientId: meta.ga_client_id || resolveClientId(req.headers.cookie, userId),
+          userId,
+          planId,
+          planName: plan && plan.name,
+          amount: plan && plan.amount,
+          transactionId: orderId,
+          provider: 'waffo',
+          renewal,
+        });
+        console.log('[Waffo Webhook] 订阅已激活:', { userId, planId, orderId, renewal });
         return res.status(200).json({ received: true });
       }
 
@@ -80,6 +98,14 @@ module.exports = async (req, res) => {
         if (!userId) break;
         const applied = await applySubscriptionLapse({ userId, reason: 'canceled' });
         if (!applied) return res.status(500).json({ error: 'failed to apply lapse' });
+        await trackChurn({
+          clientId: meta.ga_client_id || resolveClientId(req.headers.cookie, userId),
+          userId,
+          planId,
+          amount: (getPlan(planId) || {}).amount,
+          provider: 'waffo',
+          reason: 'canceled',
+        });
         console.log('[Waffo Webhook] 订阅停止续订:', { userId, orderId });
         return res.status(200).json({ received: true });
       }
@@ -89,6 +115,14 @@ module.exports = async (req, res) => {
         if (!userId) break;
         const applied = await applySubscriptionLapse({ userId, reason: 'expired' });
         if (!applied) return res.status(500).json({ error: 'failed to apply lapse' });
+        await trackChurn({
+          clientId: meta.ga_client_id || resolveClientId(req.headers.cookie, userId),
+          userId,
+          planId,
+          amount: (getPlan(planId) || {}).amount,
+          provider: 'waffo',
+          reason: 'expired',
+        });
         console.log('[Waffo Webhook] 订阅已回收:', { userId, orderId });
         return res.status(200).json({ received: true });
       }

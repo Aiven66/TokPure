@@ -78,6 +78,8 @@ async function handlePost(req, res) {
       plan_id: planId,
       user_id: user.id,
       source: 'tokpure',
+      // 前端 _ga cookie 里的 client_id，回传后在 webhook 里用于 GA4 归因
+      ...(((req.body || {}).gaClientId && { ga_client_id: String((req.body || {}).gaClientId).slice(0, 64) }) || {}),
     },
     request_id: `tokpure_${user.id}_${Date.now()}`,
   };
