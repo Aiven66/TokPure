@@ -57,7 +57,7 @@
 </script>
 <script defer src="assets/js/ga4.js?v=20261111"></script><meta charset="utf-8"/><link rel="icon" href="assets/img/favicon.ico" sizes="any"/><link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png"/><link rel="icon" type="image/png" sizes="16x16" href="assets/img/favicon-16.png"/><link rel="apple-touch-icon" sizes="180x180" href="assets/img/apple-touch-icon.png"/>
 <title>TokPure · TikTok 无水印下载与本地 AI 出片</title><meta name="description" content="TokPure 是本地运行的 macOS / Windows 桌面工具：TikTok 无水印原画质直取，再用本地 AI 超分、去水印、翻译配音与字幕，素材不上传。"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><link rel="stylesheet" href="assets/css/fonts.css"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}
-.hero-grid{background-image:linear-gradient(to right,rgba(255,255,255,0.045) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,0.045) 1px,transparent 1px);background-size:64px 64px;background-position:center top;-webkit-mask-image:radial-gradient(ellipse 70% 62% at 50% 26%,#000 18%,transparent 78%);mask-image:radial-gradient(ellipse 70% 62% at 50% 26%,#000 18%,transparent 78%);}
+.hero-grid{background-image:linear-gradient(to right,rgba(255,255,255,0.055) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,0.055) 1px,transparent 1px);background-size:64px 64px;background-position:center top;-webkit-mask-image:radial-gradient(ellipse 70% 62% at 50% 26%,#000 18%,transparent 78%);mask-image:radial-gradient(ellipse 70% 62% at 50% 26%,#000 18%,transparent 78%);}
 .hero-rise{animation:heroRise .7s cubic-bezier(.2,.7,.2,1) both;}
 .hero-d1{animation-delay:.05s}.hero-d2{animation-delay:.12s}.hero-d3{animation-delay:.2s}.hero-d4{animation-delay:.28s}
 @keyframes heroRise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
@@ -71,6 +71,82 @@
 @keyframes tpFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .tp-checker{background-color:#15171b;background-image:linear-gradient(45deg,rgba(255,255,255,.045) 25%,transparent 25%,transparent 75%,rgba(255,255,255,.045) 75%),linear-gradient(45deg,rgba(255,255,255,.045) 25%,transparent 25%,transparent 75%,rgba(255,255,255,.045) 75%);background-size:16px 16px;background-position:0 0,8px 8px;}
 @media (prefers-reduced-motion:reduce){.tp-feat-panel{animation:none}}
+/* ---------- 视觉升级：深夜实验室 ---------- */
+/* 极光：三团低速漂移的柔光，只做位移/缩放，避免重绘 */
+.hero-aurora{position:absolute;left:-10%;right:-10%;top:-140px;height:860px;z-index:0;pointer-events:none;overflow:hidden;
+-webkit-mask-image:radial-gradient(ellipse 76% 60% at 50% 34%,#000 26%,transparent 76%);mask-image:radial-gradient(ellipse 76% 60% at 50% 34%,#000 26%,transparent 76%)}
+.hero-aurora i{position:absolute;display:block;border-radius:9999px;filter:blur(84px);will-change:transform}
+.h-a1{width:720px;height:430px;left:50%;top:-60px;margin-left:-360px;background:radial-gradient(circle at 50% 44%,rgba(255,81,104,.68),transparent 64%);animation:auroraA 26s ease-in-out infinite alternate}
+.h-a2{width:520px;height:360px;right:-6%;top:120px;background:radial-gradient(circle at 64% 40%,rgba(78,226,163,.14),transparent 68%);animation:auroraB 33s ease-in-out infinite alternate}
+.h-a3{width:760px;height:300px;left:20%;top:210px;background:radial-gradient(circle,rgba(255,170,110,.12),transparent 72%);animation:auroraC 39s ease-in-out infinite alternate}
+@keyframes auroraA{to{transform:translate3d(0,34px,0) scale(1.1)}}
+@keyframes auroraB{to{transform:translate3d(-64px,58px,0) scale(1.1)}}
+@keyframes auroraC{to{transform:translate3d(48px,-38px,0) scale(1.08)}}
+/* 光标聚光：只在有精确指针的设备上生效 */
+.hero-spot{position:absolute;inset:0;z-index:1;pointer-events:none;opacity:0;transition:opacity .45s ease;
+background:radial-gradient(440px circle at var(--mx,50%) var(--my,24%),rgba(255,255,255,.06),transparent 62%)}
+.hero-hot:hover .hero-spot{opacity:1}
+/* 细噪点：一层极淡的颗粒，让大面积深色不发闷 */
+.hero-noise{position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.05;mix-blend-mode:overlay;background-size:180px 180px;
+background-image:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E")}
+/* 静态光束：标题背后一条竖直冷光，给首屏一个稳定的光源 */
+.hero-beam{position:absolute;left:50%;top:-220px;width:1080px;height:680px;transform:translateX(-50%);z-index:0;pointer-events:none;
+background:radial-gradient(ellipse 44% 50% at 50% 46%,rgba(255,81,104,.34),rgba(255,81,104,.1) 46%,transparent 74%);filter:blur(30px);
+animation:beamPulse 14s ease-in-out infinite}
+@keyframes beamPulse{0%,100%{opacity:.72;transform:translateX(-50%) scale(1)}50%{opacity:1;transform:translateX(-50%) scale(1.05)}}
+/* 轨道弧：一条极淡的大圆弧，制造纵深 */
+.hero-arc{position:absolute;left:50%;top:-540px;width:1500px;height:1500px;transform:translateX(-50%);z-index:0;pointer-events:none;
+border-radius:9999px;border:1px solid rgba(255,255,255,.055);
+-webkit-mask-image:linear-gradient(180deg,#000 0%,#000 34%,transparent 52%);mask-image:linear-gradient(180deg,#000 0%,#000 34%,transparent 52%)}
+.hero-arc::after{content:"";position:absolute;inset:86px;border-radius:9999px;border:1px solid rgba(255,255,255,.035);
+-webkit-mask-image:linear-gradient(180deg,#000 0%,#000 26%,transparent 44%);mask-image:linear-gradient(180deg,#000 0%,#000 26%,transparent 44%)}
+/* 价值带：每格一层极淡的顶光，hover 时微微提亮 */
+.band-cell{background-image:linear-gradient(180deg,rgba(255,255,255,.028),transparent 68%);transition:background-color .35s ease}
+.band-cell:hover{background-color:rgba(255,255,255,.02)}
+/* 产品截图：脚下红色柔光 + 顶边高光 */
+.product-glow::before{content:"";position:absolute;left:8%;right:8%;bottom:-46px;height:120px;z-index:-1;
+background:radial-gradient(ellipse at 50% 0,rgba(255,81,104,.28),transparent 70%);filter:blur(28px)}
+.product-glow::after{content:"";position:absolute;inset:0;border-radius:1rem;pointer-events:none;
+box-shadow:inset 0 1px 0 rgba(255,255,255,.09),0 40px 80px -40px rgba(0,0,0,.9)}
+/* 暗角：把光收在标题附近，四周回到近黑，避免整屏泛粉 */
+.hero-vignette{position:absolute;inset:-1px;z-index:0;pointer-events:none;
+background:radial-gradient(ellipse 76% 58% at 50% 20%,transparent 38%,rgba(17,19,23,.38) 72%,rgba(17,19,23,.82) 100%)}
+/* 旋转扫光：一条 60s 一圈的锥形光带，制造「光在流动」的错觉 */
+.hero-sweep{position:absolute;left:50%;top:-620px;width:1600px;height:1600px;transform:translateX(-50%);z-index:0;pointer-events:none;opacity:.34;
+background:conic-gradient(from 0deg,transparent 0deg,rgba(255,81,104,.16) 26deg,transparent 64deg,transparent 180deg,rgba(255,255,255,.05) 208deg,transparent 240deg);
+border-radius:9999px;filter:blur(26px);animation:sweep 64s linear infinite;
+-webkit-mask-image:radial-gradient(circle at 50% 50%,transparent 30%,#000 52%,transparent 72%);mask-image:radial-gradient(circle at 50% 50%,transparent 30%,#000 52%,transparent 72%)}
+@keyframes sweep{to{transform:translateX(-50%) rotate(360deg)}}
+/* 顶部一线光：顶部边缘一条极淡的高光线 */
+.hero-topline{position:absolute;left:12%;right:12%;top:0;height:1px;z-index:1;pointer-events:none;
+background:linear-gradient(90deg,transparent,rgba(255,255,255,.22) 50%,transparent)}
+/* 内容区排版：英文问答区块更像「编辑排版」而不是文档 */
+#tokpure-in-english h2{font-size:clamp(20px,2.1vw,26px);letter-spacing:-.02em;line-height:1.3}
+#tokpure-in-english h2::before{content:"";display:block;width:26px;height:2px;margin-bottom:14px;border-radius:2px;background:linear-gradient(90deg,#ff5168,transparent)}
+#tokpure-in-english p{max-width:70ch;line-height:1.75}
+#tokpure-in-english>div+div{margin-top:38px}
+#tokpure-in-english table{border-radius:14px;overflow:hidden}
+#tokpure-in-english thead th{background:rgba(255,255,255,.035);font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:rgba(230,232,235,.62)}
+#tokpure-in-english tbody tr:hover{background:rgba(255,255,255,.022)}
+/* 渐变标题流光 */
+.text-sheen{background-size:230% 100%;animation:sheen 8s ease-in-out infinite}
+@keyframes sheen{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+/* 主按钮：hover 时一道高光扫过 */
+.btn-glow{position:relative;overflow:hidden;isolation:isolate}
+.btn-glow::after{content:"";position:absolute;inset:-1px;z-index:1;pointer-events:none;
+background:linear-gradient(112deg,transparent 24%,rgba(255,255,255,.42) 46%,transparent 64%);transform:translateX(-130%);transition:transform .75s cubic-bezier(.2,.7,.2,1)}
+.btn-glow:hover::after{transform:translateX(130%)}
+/* 卡片：轻微上浮 + 内高光边 */
+.lift{transition:transform .35s cubic-bezier(.2,.7,.2,1),box-shadow .35s ease,border-color .35s ease,background-color .35s ease}
+.lift:hover{transform:translateY(-3px);box-shadow:0 22px 54px -30px rgba(0,0,0,.9);border-color:rgba(255,255,255,.16)}
+/* 滚动揭示：必须由 JS 打上 reveal-on 才隐藏，脚本失效时内容照常可见 */
+html.reveal-on [data-reveal]{opacity:0;transform:translateY(20px);transition:opacity .75s cubic-bezier(.2,.7,.2,1),transform .75s cubic-bezier(.2,.7,.2,1)}
+html.reveal-on [data-reveal].is-in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){
+.hero-aurora i{animation:none}.text-sheen{animation:none}
+html.reveal-on [data-reveal]{opacity:1;transform:none;transition:none}
+.hero-spot{display:none}
+}
 </style><link rel="stylesheet" href="assets/css/site.css"/><link rel="stylesheet" href="assets/css/tailwind.build.css"/><script defer src="assets/js/i18n.js?v=20261114"></script><script defer src="assets/js/mobile-nav.js"></script><script type="module" src="/src/entries/site-header.tsx"></script>
 <!-- SEO/GEO: 统一规范化与分享卡片（canonical 用绝对地址，og:image 指向构建期稳定拷贝的 /assets/og/og-cover.jpg） -->
 <link rel="canonical" href="https://tokpure.clipopai.com/"/>
@@ -146,18 +222,26 @@
 <div class="absolute top-[380px] -left-32 w-[380px] h-[380px] bg-secondary-container/10 blur-[140px] pointer-events-none -z-10"></div>
 <div class="absolute top-[640px] -right-32 w-[420px] h-[420px] bg-primary-container/10 blur-[150px] pointer-events-none -z-10"></div>
 <!-- Section 1: Hero Section -->
-<section class="relative isolate max-w-7xl mx-auto px-6 lg:px-12 pt-10 pb-16">
+<section class="hero-hot relative isolate max-w-7xl mx-auto px-6 lg:px-12 pt-10 pb-16">
 <div class="hero-grid pointer-events-none absolute inset-0 z-0" aria-hidden="true"></div>
+<div class="hero-aurora" aria-hidden="true"><i class="h-a1"></i><i class="h-a2"></i><i class="h-a3"></i></div>
+<div class="hero-sweep" aria-hidden="true"></div>
+<div class="hero-beam" aria-hidden="true"></div>
+<div class="hero-arc" aria-hidden="true"></div>
+<div class="hero-topline" aria-hidden="true"></div>
+<div class="hero-vignette" aria-hidden="true"></div>
+<div class="hero-noise" aria-hidden="true"></div>
+<div class="hero-spot" aria-hidden="true"></div>
 <div class="relative z-10 flex flex-col items-center text-center">
 <!-- Eyebrow -->
-<div class="hero-rise inline-flex items-center gap-2.5 px-3 py-1.5 rounded-full border border-outline-variant/50 bg-surface-container-low/80 backdrop-blur">
+<div class="hero-rise inline-flex items-center gap-2.5 px-3 py-1.5 rounded-full border border-outline-variant/50 bg-surface-container-low/70 backdrop-blur shadow-[inset_0_1px_0_rgba(255,255,255,.07)]">
 <span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span>
 <span class="font-label-sm text-label-sm text-on-surface-variant tracking-wide">本地离线引擎 · v3.9.42 · macOS / Windows</span>
 </div>
 <!-- Main Headline -->
-<h1 class="hero-rise hero-d1 mt-7 max-w-3xl font-headline-xl text-[30px] sm:text-[40px] lg:text-[56px] font-extrabold tracking-tight text-on-surface leading-[1.18]">
+<h1 class="hero-rise hero-d1 mt-7 max-w-[880px] font-headline-xl text-[30px] sm:text-[40px] lg:text-[54px] font-extrabold tracking-[-0.035em] text-white leading-[1.14]">
 <span class="block">下载无水印原片，</span>
-<span class="block bg-gradient-to-r from-primary via-primary to-secondary bg-clip-text text-transparent">本地 AI 直接出成片</span>
+<span class="block bg-gradient-to-r from-primary via-[#ff8f6b] to-primary bg-clip-text text-transparent text-sheen">本地 AI 直接出成片</span>
 </h1>
 <!-- Subtitle -->
 <p class="hero-rise hero-d2 mt-5 max-w-xl font-body-lg text-body-lg text-on-surface-variant leading-relaxed">
@@ -165,25 +249,25 @@
       </p>
 <!-- Action Buttons -->
 <div class="hero-rise hero-d3 mt-8 flex flex-wrap items-center justify-center gap-3">
-<a class="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-primary-container text-on-primary-container font-headline-sm text-headline-sm shadow-xl hover:bg-primary transition-all group scale-100 hover:scale-[1.01]" data-path="download" href="download.html">
+<a class="btn-glow inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-primary-container text-on-primary-container font-headline-sm text-headline-sm shadow-[0_14px_34px_-14px_rgba(255,81,104,.85),inset_0_1px_0_rgba(255,255,255,.28)] hover:bg-primary hover:shadow-[0_18px_44px_-14px_rgba(255,81,104,1),inset_0_1px_0_rgba(255,255,255,.34)] transition-all group scale-100 hover:scale-[1.01]" data-path="download" href="download.html">
 <span class="material-symbols-outlined text-[20px] group-hover:translate-y-0.5 transition-transform">download</span>
 <span>免费下载桌面端</span>
 <span class="px-2 py-0.5 rounded bg-surface-container-lowest/40 font-label-sm text-label-sm text-primary-fixed">v3.9.42</span>
 </a>
-<a class="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl border border-outline-variant/50 bg-surface-container-low/60 text-on-surface hover:bg-surface-container-high hover:border-outline-variant transition-colors font-headline-sm text-headline-sm" href="#core-capabilities">
+<a class="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl border border-outline-variant/50 bg-surface-container-low/50 backdrop-blur text-on-surface hover:bg-surface-container-high/80 hover:border-outline-variant transition-colors font-headline-sm text-headline-sm" href="#core-capabilities">
 <span>看它怎么工作</span>
 <span class="material-symbols-outlined text-[18px]">arrow_downward</span>
 </a>
 </div>
 <p class="mt-4 font-label-sm text-label-sm text-on-surface-variant/70">免费版即可无水印下载 · 无需注册</p>
 <!-- Value Band -->
-<div class="hero-rise hero-d4 mt-10 w-full max-w-4xl grid grid-cols-1 sm:grid-cols-3 border-y border-outline-variant/40 divide-y divide-outline-variant/40 sm:divide-y-0 sm:divide-x">
-<div class="px-6 py-6 text-left">
+<div class="hero-rise hero-d4 mt-12 w-full max-w-4xl grid grid-cols-1 sm:grid-cols-3 gap-3">
+<div class="band-cell rounded-xl border border-outline-variant/40 bg-surface-container-low/40 px-6 py-5 text-left">
 <span class="font-mono text-[10px] tracking-[0.18em] text-on-surface-variant/50">01 / DOWNLOAD</span>
 <p class="mt-2 font-headline-sm text-headline-sm font-semibold text-on-surface">无水印原画质</p>
 <p class="mt-1 text-[13px] leading-relaxed text-on-surface-variant">1080P / 720P 直取，不转码</p>
 </div>
-<div class="px-6 py-6 text-left">
+<div class="band-cell rounded-xl border border-outline-variant/40 bg-surface-container-low/40 px-6 py-5 text-left">
 <div class="flex items-center gap-2">
 <span class="font-mono text-[10px] tracking-[0.18em] text-on-surface-variant/50">02 / AI FINISH</span>
 <span class="px-1.5 py-0.5 rounded bg-primary-container/15 font-label-sm text-[9px] font-bold tracking-wide text-primary">PRO</span>
@@ -191,7 +275,7 @@
 <p class="mt-2 font-headline-sm text-headline-sm font-semibold text-on-surface">8 语种克隆配音</p>
 <p class="mt-1 text-[13px] leading-relaxed text-on-surface-variant">用你自己的声音说外语</p>
 </div>
-<div class="px-6 py-6 text-left">
+<div class="band-cell rounded-xl border border-outline-variant/40 bg-surface-container-low/40 px-6 py-5 text-left">
 <span class="font-mono text-[10px] tracking-[0.18em] text-on-surface-variant/50">03 / ON-DEVICE</span>
 <p class="mt-2 font-headline-sm text-headline-sm font-semibold text-on-surface">100% 本地运行</p>
 <p class="mt-1 text-[13px] leading-relaxed text-on-surface-variant">素材不上传，断网可用</p>
@@ -209,7 +293,7 @@
 </div>
 </div>
 <!-- Software Showcase: macOS Dual Window Mockup -->
-<div class="mt-14 w-full max-w-5xl rounded-2xl bg-surface-container-low shadow-2xl p-2 sm:p-3 relative group">
+<div class="product-glow mt-14 w-full max-w-5xl rounded-2xl bg-surface-container-low shadow-2xl p-2 sm:p-3 relative group">
 <!-- Window Chrome / Toolbar -->
 <div class="w-full h-11 px-4 rounded-xl bg-surface-container-lowest flex items-center justify-between">
 <!-- Traffic Lights -->
@@ -483,7 +567,7 @@ No. Download and repair both run locally, there is no cloud step and no telemetr
 </section>
 
 <!-- Section 2: Desktop Client Feature Explorer -->
-<section class="max-w-7xl mx-auto px-6 lg:px-12 py-20" id="core-capabilities">
+<section class="max-w-7xl mx-auto px-6 lg:px-12 py-20" id="core-capabilities" data-reveal>
 <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
 <div class="max-w-2xl">
 <div class="inline-flex items-center gap-1.5 text-primary font-label-sm text-label-sm font-semibold tracking-wider uppercase mb-2">
@@ -892,7 +976,7 @@ No. Download and repair both run locally, there is no cloud step and no telemetr
 </script>
 
 <!-- Section 3: Technical Comparison & Benchmarks -->
-<section class="max-w-7xl mx-auto px-6 lg:px-12 py-16">
+<section class="max-w-7xl mx-auto px-6 lg:px-12 py-16" data-reveal>
 <div class="p-8 sm:p-12 rounded-3xl bg-surface-container-low shadow-xl">
 <div class="max-w-3xl mb-10">
 <span class="font-label-sm text-label-sm text-secondary uppercase tracking-widest font-semibold">// BENCHMARK ANALYSIS</span>
@@ -1001,7 +1085,7 @@ No. Download and repair both run locally, there is no cloud step and no telemetr
 </div>
 </section>
 <!-- Section 4: Final Call To Action Banner -->
-<section class="max-w-7xl mx-auto px-6 lg:px-12 pt-8 pb-24 w-full">
+<section class="max-w-7xl mx-auto px-6 lg:px-12 pt-8 pb-24 w-full" data-reveal>
 <div class="relative rounded-3xl overflow-hidden bg-gradient-to-br from-surface-container-high via-surface-container to-surface-container-lowest p-8 sm:p-14 text-center flex flex-col items-center">
 <!-- Background Decorative Neon Flare -->
 <div class="absolute -top-24 right-1/4 w-96 h-96 bg-primary-container/20 rounded-full blur-[100px] pointer-events-none"></div>
@@ -1042,4 +1126,42 @@ No. Download and repair both run locally, there is no cloud step and no telemetr
 </div>
 </section>
 </div>
-</div></main><footer class="w-full bg-surface-container-lowest"><div class="max-w-7xl mx-auto px-6 lg:px-12 pt-16 pb-12"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-space-xl mb-12"><div class="lg:col-span-2 space-y-space-md"><div class="flex items-center gap-space-sm"><img alt="TokPure 桌面端本地视频工具 Logo" class="h-8 w-auto object-contain" src="assets/img/logo.webp" width="192" height="192" loading="lazy" decoding="async"/><span class="font-headline-lg text-headline-lg text-on-surface font-bold">TokPure</span></div><p class="font-body-md text-body-md text-on-surface-variant max-w-sm">基于本地离线引擎的下一代 macOS / Windows 桌面极速无水印视频下载与 AI 超分无损重构套件。零云端留存，零隐私泄露风险。</p><div class="flex items-center gap-2 p-2.5 rounded-lg bg-surface-container-low"><span class="material-symbols-outlined text-tertiary text-lg">verified_user</span><div class="font-label-sm text-label-sm text-on-surface-variant"><span class="text-tertiary font-bold">Zero-Cloud-Leak:</span> 本地离线执行智能修复</div></div></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">产品矩阵</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="home" href="index.html">核心架构</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">macOS / Windows 客户端</a></li><li><a class="hover:text-on-surface transition-colors" data-path="stickers" href="tiktok-stickers.html">TikTok 贴纸</a></li><li><a class="hover:text-on-surface transition-colors" data-path="pricing" href="pricing.html">价格与订阅</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">更新日志 (v3.9)</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">开发者 &amp; 支持</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">文档中心</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">CLI 命令行工具</a></li><li><a class="hover:text-on-surface transition-colors" data-path="about-us" href="about.html">关于团队</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私审计报告</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">运行状态</h4><div class="p-3 rounded-lg bg-surface-container-low space-y-2"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span><span class="font-label-sm text-label-sm text-on-surface">全线引擎正常运行</span></div><p class="font-body-sm text-body-sm text-on-surface-variant">Local Offline Engine v4.2 Ready</p></div><div class="mt-4"><div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant font-label-sm text-label-sm"><span class="material-symbols-outlined text-[16px]">language</span><span>简体中文 (中国)</span></div></div></div></div><div class="pt-8 space-y-4"><p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed text-center lg:text-left">免责声明：TokPure 属于独立研发的高性能本地音视频分析工程软件，与 TikTok、ByteDance 或任何第三方社交网络服务无关且未获得其官方赞助或背书。请在遵守当地版权法律与合理使用协议的前提下处理属于您个人所有的创作内容。</p><div class="flex flex-col sm:flex-row items-center justify-between gap-4 font-body-sm text-body-sm text-on-surface-variant"><div>© 2024 TokPure Studio Inc. 专为 macOS 与 Windows 打造。保留所有权利。</div><div class="flex items-center gap-6 font-label-sm text-label-sm"><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">服务条款</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私政策</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">安全白皮书</a></div></div></div></div></footer></body></html>
+</div></main><footer class="w-full bg-surface-container-lowest"><div class="max-w-7xl mx-auto px-6 lg:px-12 pt-16 pb-12"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-space-xl mb-12"><div class="lg:col-span-2 space-y-space-md"><div class="flex items-center gap-space-sm"><img alt="TokPure 桌面端本地视频工具 Logo" class="h-8 w-auto object-contain" src="assets/img/logo.webp" width="192" height="192" loading="lazy" decoding="async"/><span class="font-headline-lg text-headline-lg text-on-surface font-bold">TokPure</span></div><p class="font-body-md text-body-md text-on-surface-variant max-w-sm">基于本地离线引擎的下一代 macOS / Windows 桌面极速无水印视频下载与 AI 超分无损重构套件。零云端留存，零隐私泄露风险。</p><div class="flex items-center gap-2 p-2.5 rounded-lg bg-surface-container-low"><span class="material-symbols-outlined text-tertiary text-lg">verified_user</span><div class="font-label-sm text-label-sm text-on-surface-variant"><span class="text-tertiary font-bold">Zero-Cloud-Leak:</span> 本地离线执行智能修复</div></div></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">产品矩阵</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="home" href="index.html">核心架构</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">macOS / Windows 客户端</a></li><li><a class="hover:text-on-surface transition-colors" data-path="stickers" href="tiktok-stickers.html">TikTok 贴纸</a></li><li><a class="hover:text-on-surface transition-colors" data-path="pricing" href="pricing.html">价格与订阅</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">更新日志 (v3.9)</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">开发者 &amp; 支持</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">文档中心</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">CLI 命令行工具</a></li><li><a class="hover:text-on-surface transition-colors" data-path="about-us" href="about.html">关于团队</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私审计报告</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">运行状态</h4><div class="p-3 rounded-lg bg-surface-container-low space-y-2"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span><span class="font-label-sm text-label-sm text-on-surface">全线引擎正常运行</span></div><p class="font-body-sm text-body-sm text-on-surface-variant">Local Offline Engine v4.2 Ready</p></div><div class="mt-4"><div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant font-label-sm text-label-sm"><span class="material-symbols-outlined text-[16px]">language</span><span>简体中文 (中国)</span></div></div></div></div><div class="pt-8 space-y-4"><p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed text-center lg:text-left">免责声明：TokPure 属于独立研发的高性能本地音视频分析工程软件，与 TikTok、ByteDance 或任何第三方社交网络服务无关且未获得其官方赞助或背书。请在遵守当地版权法律与合理使用协议的前提下处理属于您个人所有的创作内容。</p><div class="flex flex-col sm:flex-row items-center justify-between gap-4 font-body-sm text-body-sm text-on-surface-variant"><div>© 2024 TokPure Studio Inc. 专为 macOS 与 Windows 打造。保留所有权利。</div><div class="flex items-center gap-6 font-label-sm text-label-sm"><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">服务条款</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私政策</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">安全白皮书</a></div></div></div></div></footer><script>
+(function () {
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /* 滚动揭示：JS 可用时才隐藏内容，脚本失效或观察器报错时页面照常可见 */
+  var items = [].slice.call(document.querySelectorAll('[data-reveal]'));
+  if (!reduce && 'IntersectionObserver' in window && items.length) {
+    document.documentElement.classList.add('reveal-on');
+    var fired = false;
+    var io = new IntersectionObserver(function (entries) {
+      fired = true;
+      for (var i = 0; i < entries.length; i++) {
+        if (!entries[i].isIntersecting) continue;
+        entries[i].target.classList.add('is-in');
+        io.unobserve(entries[i].target);
+      }
+    }, { rootMargin: '0px 0px -6% 0px', threshold: 0.06 });
+    items.forEach(function (el) { io.observe(el); });
+    /* 兜底：观察器从未回调（浏览器异常）时才全部显示，不影响正常的滚动揭示 */
+    setTimeout(function () { if (!fired) items.forEach(function (el) { el.classList.add('is-in'); }); }, 2200);
+  }
+  /* 首屏聚光：仅精确指针设备，且尊重「减少动效」 */
+  var hero = document.querySelector('.hero-hot');
+  if (hero && !reduce && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    var raf = 0, mx = 0, my = 0;
+    var paint = function () {
+      raf = 0;
+      hero.style.setProperty('--mx', mx + 'px');
+      hero.style.setProperty('--my', my + 'px');
+    };
+    hero.addEventListener('pointermove', function (e) {
+      var r = hero.getBoundingClientRect();
+      mx = e.clientX - r.left;
+      my = e.clientY - r.top;
+      if (!raf) raf = requestAnimationFrame(paint);
+    }, { passive: true });
+  }
+})();
+</script>
+</body></html>

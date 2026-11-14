@@ -357,3 +357,34 @@ code,
     padding-bottom: 48px !important;
   }
 }
+/* ---------- 视觉升级：全局细节 ---------- */
+/* 顶栏底部一条渐变细线，替代生硬的 1px 边框 */
+header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 81, 104, 0.35) 22%, rgba(255, 255, 255, 0.16) 50%, rgba(78, 226, 163, 0.28) 78%, transparent);
+  opacity: 0.7;
+}
+
+/* 锚点跳转留出固定顶栏高度，避免标题被遮挡 */
+[id] { scroll-margin-top: 88px; }
+
+/* 键盘可见焦点：只在键盘操作时出现，鼠标点击不打扰 */
+:focus-visible {
+  outline: 2px solid rgba(255, 81, 104, 0.75);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* 页面切换的入场：给主内容一个极轻的淡入，减少白屏突现 */
+main { animation: pageIn 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes pageIn { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  main { animation: none; }
+}
