@@ -19,20 +19,41 @@ export function siteLangToPkg(code: string): Locale {
 /** 站点支持的语言代码（与 assets/js/i18n.js 的 LANGS 一致）。 */
 export const SITE_LANGS = ['en', 'zh-CN', 'zh-TW', 'es', 'pt', 'fr', 'de', 'ja'] as const;
 
+/** 把任意 BCP-47 语言标签归一到站点 8 种语言；认不出返回空串。 */
+function normalizeSiteLang(tag?: string | null): string {
+  const t = String(tag || '').toLowerCase();
+  if (!t) return '';
+  if (t === 'zh' || t === 'zh-hans' || t === 'zh-cn' || t === 'zh-sg') return 'zh-CN';
+  if (t === 'zh-tw' || t === 'zh-hk' || t === 'zh-mo' || t === 'zh-hant') return 'zh-TW';
+  const base = t.split('-')[0];
+  return (SITE_LANGS as readonly string[]).includes(base) ? base : '';
+}
+
 /**
  * 读取官网当前语言代码（8 种之一）。
  *
- * 唯一真源是 assets/js/i18n.js 写入的 localStorage `tokpure.lang`，且必须带
- * `tokpure.lang.manual=1` 标记才算「用户主动选择」；否则按站点默认英文处理
- * （与 i18n.js 的 detect() 完全同一套规则）。
+ * 规则与 assets/js/i18n.js 的 detect() 保持一致，否则岛屿挂载后会调用
+ * syncHtmlLang() 把 i18n.js 写好的 lang 覆盖掉：
+ *   ?lang= 显式指定 > 用户手动切换过的偏好 > 浏览器语言 > 英文兜底。
  */
 export function readSiteLang(): string {
   try {
-    const manual = localStorage.getItem('tokpure.lang.manual');
-    const saved = (localStorage.getItem('tokpure.lang') || '').trim();
-    if (manual === '1' && (SITE_LANGS as readonly string[]).includes(saved)) return saved;
+    const byQuery = normalizeSiteLang(new URLSearchParams(window.location.search).get('lang'));
+    if (byQuery) return byQuery;
   } catch {
-    /* 存储不可用时按站点默认（en）处理 */
+    /* URL 解析失败时继续往后判断 */
+  }
+  try {
+    const manual = localStorage.getItem('tokpure.lang.manual');
+    const saved = normalizeSiteLang(localStorage.getItem('tokpure.lang'));
+    if (manual === '1' && saved) return saved;
+  } catch {
+    /* 存储不可用：走浏览器语言 */
+  }
+  const list = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language];
+  for (const tag of list) {
+    const hit = normalizeSiteLang(tag);
+    if (hit) return hit;
   }
   return 'en';
 }

@@ -7,13 +7,34 @@
      并隐藏正文，等 i18n.js 完成覆盖后再显示（i18n.js 会在 apply() 内移除 data-tp-pending）。 */
   (function () {
     var d = document.documentElement;
-    var lang = 'en';
-    try {
-      if (window.localStorage.getItem('tokpure.lang.manual') === '1') {
-        var saved = window.localStorage.getItem('tokpure.lang') || '';
-        if (/^(en|zh-CN|zh-TW|es|pt|fr|de|ja)$/.test(saved)) lang = saved;
+    /* 优先级：?lang= 显式指定 > 手动切换过的偏好 > 浏览器语言 > 英文兜底 */
+    function normalize(tag) {
+      var t = String(tag || '').toLowerCase();
+      if (!t) return '';
+      if (t === 'zh' || t === 'zh-hans' || t === 'zh-cn' || t === 'zh-sg') return 'zh-CN';
+      if (t === 'zh-tw' || t === 'zh-hk' || t === 'zh-mo' || t === 'zh-hant') return 'zh-TW';
+      if (/^(en|ja|es|pt|fr|de)$/.test(t.split('-')[0])) return t.split('-')[0];
+      return '';
+    }
+    function detectLang() {
+      var q = '';
+      try { q = new URLSearchParams(window.location.search).get('lang') || ''; } catch (e) { q = ''; }
+      var byQuery = normalize(q);
+      if (byQuery) return byQuery;
+      try {
+        if (window.localStorage.getItem('tokpure.lang.manual') === '1') {
+          var saved = window.localStorage.getItem('tokpure.lang') || '';
+          if (normalize(saved)) return normalize(saved);
+        }
+      } catch (e) { /* 隐私模式：直接走浏览器语言 */ }
+      var list = (navigator.languages && navigator.languages.length) ? navigator.languages : [navigator.language || ''];
+      for (var i = 0; i < list.length; i++) {
+        var hit = normalize(list[i]);
+        if (hit) return hit;
       }
-    } catch (e) { /* 存储不可用（隐私模式）时按默认英文 */ }
+      return 'en';
+    }
+    var lang = detectLang();
     d.setAttribute('lang', lang);
     d.setAttribute('data-lang', lang);
     if (lang === 'zh-CN') return; /* 简体中文即源码本身，无需遮罩 */
@@ -35,7 +56,7 @@
   gtag('config', 'G-3X58L0VT9F');
 </script>
 <script defer src="assets/js/ga4.js?v=20261111"></script><meta charset="utf-8"/><link rel="icon" href="assets/img/favicon.ico" sizes="any"/><link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png"/><link rel="icon" type="image/png" sizes="16x16" href="assets/img/favicon-16.png"/><link rel="apple-touch-icon" sizes="180x180" href="assets/img/apple-touch-icon.png"/>
-<title>登录 · TokPure 创作者中心</title><meta name="description" content="登录 TokPure 创作者中心，管理设备授权、订阅许可与 CloudSync 预设。账号仅用于授权校验，视频文件始终留在本地。"/><meta name="robots" content="noindex,follow"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_blank" name="shell-type"/><link rel="stylesheet" href="assets/css/fonts.css"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><link rel="stylesheet" href="assets/css/site.css"/><link rel="stylesheet" href="assets/css/tailwind.build.css"/><script defer src="assets/js/i18n.js?v=20261111"></script><script defer src="assets/js/mobile-nav.js"></script><script type="module" src="/src/entries/auth.tsx"></script></head><body class="bg-background font-body-md text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container"><main class="w-full bg-background min-h-screen flex flex-col justify-center items-center"><div class="flex flex-col w-full items-center justify-center py-10 px-4 min-h-[92vh] relative overflow-hidden select-none">
+<title>登录 · TokPure 创作者中心</title><meta name="description" content="登录 TokPure 创作者中心，管理设备授权、订阅许可与 CloudSync 预设。账号仅用于授权校验，视频文件始终留在本地。"/><meta name="robots" content="noindex,follow"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_blank" name="shell-type"/><link rel="stylesheet" href="assets/css/fonts.css"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><link rel="stylesheet" href="assets/css/site.css"/><link rel="stylesheet" href="assets/css/tailwind.build.css"/><script defer src="assets/js/i18n.js?v=20261114"></script><script defer src="assets/js/mobile-nav.js"></script><script type="module" src="/src/entries/auth.tsx"></script></head><body class="bg-background font-body-md text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container"><main class="w-full bg-background min-h-screen flex flex-col justify-center items-center"><div class="flex flex-col w-full items-center justify-center py-10 px-4 min-h-[92vh] relative overflow-hidden select-none">
 <!-- Subtle Ambient Glow Orbs -->
 <div class="absolute top-1/4 -left-32 w-96 h-96 rounded-full bg-primary/10 blur-[120px] pointer-events-none"></div>
 <div class="absolute bottom-1/4 -right-32 w-96 h-96 rounded-full bg-secondary-fixed/10 blur-[130px] pointer-events-none"></div>

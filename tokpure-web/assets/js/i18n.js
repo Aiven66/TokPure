@@ -53,11 +53,47 @@
     return (idx >= 0 ? src.slice(0, idx) + '/assets/' : 'assets/') + 'i18n/';
   }
 
-  // 默认语言固定为英文：仅当用户「手动切换过」时才沿用其偏好，不再依据浏览器语言
-  // 自动判定，避免中文浏览器首次访问直接落到简体中文。
-  // 同时清理旧版残留：早期版本会把自动判定的结果写进 STORE_KEY，没有 MANUAL_KEY，
-  // 若不清理，受影响的用户（含曾访问过的中文浏览器）会一直停在简体中文。
+  // 语言优先级：?lang= 显式指定 > 用户手动切换过的偏好 > 浏览器语言 > 英文兜底。
+  // 英文仍是「认不出浏览器语言」时的默认值，避免任何语种落到简体中文。
+  // 旧版会把自动判定的结果写进 STORE_KEY 且没有 MANUAL_KEY，这类残留必须清理，
+  // 否则受影响的用户（含中文浏览器）会被永久锁死在简体中文。
+  function fromQuery() {
+    var raw = '';
+    try {
+      raw = new URLSearchParams(window.location.search).get('lang') || '';
+    } catch (e) { raw = ''; }
+    var q = String(raw).toLowerCase();
+    if (!q) return '';
+    if (q === 'zh' || q === 'zh-hans' || q === 'zh-cn' || q === 'zh-sg') return 'zh-CN';
+    if (q === 'zh-tw' || q === 'zh-hk' || q === 'zh-mo' || q === 'zh-hant') return 'zh-TW';
+    for (var i = 0; i < LANGS.length; i++) {
+      if (LANGS[i].code.toLowerCase() === q) return LANGS[i].code;
+    }
+    return '';
+  }
+
+  /** 浏览器语言 → 站点支持的 8 种之一；认不出则英文。 */
+  function fromBrowser() {
+    var list = (navigator.languages && navigator.languages.length)
+      ? navigator.languages
+      : [navigator.language || ''];
+    for (var i = 0; i < list.length; i++) {
+      var tag = String(list[i] || '').toLowerCase();
+      if (!tag) continue;
+      if (tag.indexOf('zh') === 0) return /(tw|hk|mo|hant)/.test(tag) ? 'zh-TW' : 'zh-CN';
+      if (tag.indexOf('ja') === 0) return 'ja';
+      if (tag.indexOf('es') === 0) return 'es';
+      if (tag.indexOf('pt') === 0) return 'pt';
+      if (tag.indexOf('fr') === 0) return 'fr';
+      if (tag.indexOf('de') === 0) return 'de';
+      if (tag.indexOf('en') === 0) return 'en';
+    }
+    return FALLBACK;
+  }
+
   function detect() {
+    var byQuery = fromQuery();
+    if (byQuery) return byQuery;
     var saved = null;
     var manual = null;
     try {
@@ -75,7 +111,7 @@
         window.localStorage.removeItem(MANUAL_KEY);
       } catch (e) { /* ignore */ }
     }
-    return FALLBACK;
+    return fromBrowser();
   }
 
   function collectTextNodes() {
