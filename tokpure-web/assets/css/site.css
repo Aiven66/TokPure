@@ -388,3 +388,94 @@ main { animation: pageIn 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 @media (prefers-reduced-motion: reduce) {
   main { animation: none; }
 }
+
+/* ---------- 视觉升级：全站统一语言（2026-11） ---------- */
+/* 每个页面顶部的环境光：一层暖光 + 一层淡网格，让内页也有首页的「空气感」 */
+main { position: relative; isolation: isolate; overflow-x: clip; }
+main::before {
+  content: "";
+  position: absolute;
+  top: -140px;
+  left: 50%;
+  width: min(1180px, 130vw);
+  height: 560px;
+  transform: translateX(-50%);
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 34%, rgba(255, 81, 104, 0.17), rgba(255, 81, 104, 0.05) 46%, transparent 70%);
+}
+main::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 460px;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.55;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 64px 64px;
+  background-position: center top;
+  -webkit-mask-image: radial-gradient(ellipse 64% 100% at 50% 0, #000 12%, transparent 74%);
+  mask-image: radial-gradient(ellipse 64% 100% at 50% 0, #000 12%, transparent 74%);
+}
+/* 首页首屏已有六层动效，关掉通用环境光避免叠加过量 */
+body:has(.hero-hot) main::before,
+body:has(.hero-hot) main::after { display: none; }
+
+/* 内页标题：字距收紧，提升「排版感」 */
+main h1 { letter-spacing: -0.028em; }
+main h2 { letter-spacing: -0.02em; }
+
+/* 卡片：统一 hover 质感（不位移，避免密集网格抖动） */
+main .rounded-xl.border,
+main .rounded-2xl.border,
+main .rounded-lg.border {
+  transition: border-color 0.3s ease, box-shadow 0.35s ease, background-color 0.3s ease;
+}
+main .rounded-xl.border:hover,
+main .rounded-2xl.border:hover,
+main .rounded-lg.border:hover {
+  border-color: rgba(255, 255, 255, 0.17);
+  box-shadow: 0 18px 44px -30px rgba(0, 0, 0, 0.92);
+}
+
+/* 表格：表头小字大写字母，行悬停微亮 */
+main table thead th {
+  font-size: 12px;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  color: rgba(230, 232, 235, 0.6);
+}
+main table tbody tr { transition: background-color 0.25s ease; }
+main table tbody tr:hover { background: rgba(255, 255, 255, 0.022); }
+
+/* 折叠问答：去掉浏览器默认三角，边框更克制 */
+main details { border-top: 1px solid rgba(255, 255, 255, 0.07); }
+main details summary { cursor: pointer; list-style: none; }
+main details summary::-webkit-details-marker { display: none; }
+
+/* 滚动揭示（由 assets/js/site-fx.js 打上 reveal-on 才生效） */
+html.reveal-on [data-reveal] {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+html.reveal-on [data-reveal].is-in { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  html.reveal-on [data-reveal] { opacity: 1; transform: none; transition: none; }
+}
+
+/* 价格页套餐卡：默认一层极淡顶光，hover 时边界提亮 */
+.tier-card {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 46%);
+  backdrop-filter: blur(6px);
+}
+.tier-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 26px 60px -34px rgba(0, 0, 0, 0.95);
+}
