@@ -56,7 +56,7 @@
   gtag('config', 'G-3X58L0VT9F');
 </script>
 <script defer src="assets/js/ga4.js?v=20261111"></script><meta charset="utf-8"/><link rel="icon" href="assets/img/favicon.ico" sizes="any"/><link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png"/><link rel="icon" type="image/png" sizes="16x16" href="assets/img/favicon-16.png"/><link rel="apple-touch-icon" sizes="180x180" href="assets/img/apple-touch-icon.png"/>
-<title>下载客户端 · TokPure for macOS &amp; Windows (Apple Silicon / Intel / x64)</title><meta name="description" content="下载 TokPure 桌面客户端：macOS 提供 Universal 双架构原生支持，Windows 11 / 10 提供 x64 原生安装包，内置离线引擎，本地极速重构。"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><link rel="stylesheet" href="assets/css/fonts.css"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><link rel="stylesheet" href="assets/css/site.css"/><link rel="stylesheet" href="assets/css/tailwind.build.css"/><script defer src="assets/js/i18n.js?v=20261118-2"></script><script defer src="assets/js/mobile-nav.js"></script><script type="module" src="/src/entries/site-header.tsx"></script>
+<title>下载客户端 · TokPure for macOS &amp; Windows (Apple Silicon / Intel / x64)</title><meta name="description" content="下载 TokPure 桌面客户端：macOS 提供 Universal 双架构原生支持，Windows 11 / 10 提供 x64 原生安装包，内置离线引擎，本地极速重构。"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><link rel="stylesheet" href="assets/css/fonts.css"/><link rel="preload" as="font" type="font/woff2" href="assets/fonts/plus-jakarta-sans-latin.woff2" crossorigin/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><link rel="stylesheet" href="assets/css/site.css"/><link rel="stylesheet" href="assets/css/tailwind.build.css"/><script defer src="assets/js/i18n.js?v=20261118-3"></script><script defer src="assets/js/mobile-nav.js"></script><script type="module" src="/src/entries/site-header.tsx"></script>
 <link rel="canonical" href="https://tokpure.clipopai.com/download.html"/>
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"/>
 <meta name="theme-color" content="#111317"/>
@@ -409,6 +409,29 @@
 </div>
 </div>
 </div>
+<!-- System Requirements & Verification -->
+<div class="max-w-7xl mx-auto px-6 lg:px-12 pb-20">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+<div class="rounded-xl border border-outline-variant/40 bg-surface-container-low/50 px-6 py-6">
+<h3 class="font-headline-sm text-headline-sm text-on-surface font-semibold mb-4">系统要求</h3>
+<div class="space-y-2 font-body-sm text-body-sm text-on-surface-variant">
+<div class="flex justify-between gap-4 border-b border-outline-variant/20 pb-2"><span class="text-on-surface-variant">macOS</span><span class="text-on-surface">macOS 12 Monterey 及以上，Apple Silicon 或 Intel</span></div>
+<div class="flex justify-between gap-4 border-b border-outline-variant/20 pb-2"><span class="text-on-surface-variant">Windows</span><span class="text-on-surface">Windows 10 21H2 / Windows 11，x64</span></div>
+<div class="flex justify-between gap-4 border-b border-outline-variant/20 pb-2"><span class="text-on-surface-variant">磁盘</span><span class="text-on-surface">安装约 300 MB；AI 模型按需下载</span></div>
+<div class="flex justify-between gap-4"><span class="text-on-surface-variant">网络</span><span class="text-on-surface">仅下载安装包与模型时需要，处理全程离线</span></div>
+</div>
+</div>
+<div class="rounded-xl border border-outline-variant/40 bg-surface-container-low/50 px-6 py-6">
+<h3 class="font-headline-sm text-headline-sm text-on-surface font-semibold mb-4">安装包校验</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">每个版本都在 GitHub Releases 公开，页面附 SHA-256 校验值。下载后可自行比对，确认文件未被篡改再安装。</p>
+<div class="mt-4 space-y-2 font-body-sm text-body-sm text-on-surface-variant">
+<div class="flex items-start gap-2"><span class="material-symbols-outlined text-tertiary text-[18px] shrink-0 mt-0.5">check_circle</span><span>macOS 首次打开若被拦截：系统设置 &gt; 隐私与安全性 &gt; 仍要打开</span></div>
+<div class="flex items-start gap-2"><span class="material-symbols-outlined text-tertiary text-[18px] shrink-0 mt-0.5">check_circle</span><span>Windows 若出现 SmartScreen 提示：更多信息 &gt; 仍要运行</span></div>
+</div>
+<a class="mt-4 inline-flex items-center gap-1.5 font-label-md text-label-md text-primary hover:underline" href="https://github.com/Aiven66/TokPure/releases/tag/v3.9.42">查看本版本校验值<span class="material-symbols-outlined text-[16px]">arrow_forward</span></a>
+</div>
+</div>
+</div>
 <!-- Visual Divider & Release Notes Section -->
 <div class="max-w-7xl mx-auto px-6 lg:px-12 pb-24">
 <div class="flex items-center justify-between mb-8 pb-4">
@@ -420,8 +443,7 @@
           Release Channel: Stable
         </span>
 </div>
-<div class="space-y-6">
-<!-- Version 3.9.42 -->
+<div class="space-y-6"><!-- Version 3.9.42 -->
 <div class="p-6 rounded-xl bg-surface-container shadow-md">
 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
 <div class="flex items-center gap-3">
@@ -432,19 +454,20 @@
 </div>
 <ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
 <li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">noise_control_off</span>
+<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">auto_fix_high</span>
 <span><strong>彻底清除「呲呲呲」噪音块：</strong> 逐帧比对成片与频谱后确认，残留噪音不是整片底噪，而是克隆引擎在停顿处吐出的 0.5~2 秒「平稳噪声块」——频谱是一条没有谐波的宽带噪声带，电平只比说话低 6~12dB，所以按电平设的降噪门限全部放行。现在改为三条判据同时成立才处理：0.4 秒内电平波动小于 3.2dB、归一化自相关峰低于 0.42（人声实测不低于 0.50）、且前后 0.25 秒内存在 10dB 以上的停顿凹陷。命中时长整段拉到数字静音并做 11.6ms 斜坡。以问题成片为例，4 段共 5.1 秒噪音被精确清除，而全部语音帧逐样本保持不变（已验证非噪音区能量变化 0.0000dB）。</span>
 </li>
 <li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">graphic_eq</span>
+<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">album</span>
 <span><strong>配音纯粹度复核：</strong> 重新测量成片的词间底噪，实测已全部为数字静音（20 分位 -300dB），比真人参考音（-36dB）更干净；4.5k~9k 频段与真人参考的差异仍在 ±1.5dB 内，因此本次不再改动任何 EQ 与压缩参数，避免为了「听起来亮」而再次引入齿音。</span>
 </li>
 <li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">fact_check</span>
+<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">article</span>
 <span><strong>回归测试：</strong> 新增平稳噪声块检测的单元测试（合成「语音 + 静音 + 噪声块 + 静音 + 语音」信号，断言噪声块被整段检出、语音区零覆盖），并校验三条判据的标定值不可被误改。</span>
 </li>
 </ul>
 </div>
+
 
 <!-- Version 3.9.41 -->
 <div class="p-6 rounded-xl bg-surface-container shadow-md">
@@ -456,15 +479,15 @@
 </div>
 <ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
 <li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">noise_control_off</span>
+<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">auto_fix_high</span>
 <span><strong>消除句间「呲呲」底噪：</strong> 定位到噪音并非来自配音引擎，而是人声分离后残留的立体声伴奏床被混进成片（停顿处实测约 -44~-47dB，且侧声道非零）。现在分离结果只做一次降噪并落盘复用，混音阶段不再二次处理；伴奏残渣的电平门槛从 -38 LUFS 收紧到 -31 LUFS，低于该值的分离结果直接判定为噪音并丢弃；伴奏高通从 60Hz 提到 90Hz，去掉最容易听成「嗡嗡+呲呲」的低频残渣。纯净配音链路的底噪实测已在 -60dB 以下。</span>
 </li>
 <li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">graphic_eq</span>
+<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">album</span>
 <span><strong>配音清晰度与真人感对齐：</strong> 用真实用户音色做 1/3 倍频带对比后发现，克隆原声的高频已与真人基本齐平，旧版 +8dB / +4dB 的高频补偿会把 4.5k~9k 抬升 3~5dB，听感上就是「刺、呲、齿音重」。现改为 6.2kHz 轻度衰减 + 5.2kHz +3dB / 8.5kHz +0.5dB，各频段与真人差异收敛到 ±1.5dB 内；同时把克隆合成的采样温度固定为 0.7，降低逐句音色与气口的漂移，整片更像同一个人连续说话。</span>
 </li>
 <li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">record_voice_over</span>
+<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">forum</span>
 <span><strong>修复偶发漏读文本：</strong> 配音引擎有时会在句子没读完时提前收尾，而时长看起来正常，旧版无法察觉；另一种情况是译文过长、语速已到上限后被画面时长静默裁掉句尾。现在每段合成完都会用本地识别引擎回读校验，字词覆盖率低于 72% 时先按更长的 token 预算重合成，仍不足则按标点拆句逐句重合成再拼接；语速上限从 1.35 提到 1.5，若译文仍超出画面长度会在任务里明确提示「片尾已裁剪」，不再无声丢内容。</span>
 </li>
 <li class="flex items-start gap-2">
@@ -474,529 +497,9 @@
 </ul>
 </div>
 
-<!-- Version 3.9.40 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.9.40 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 11 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">workspace_premium</span>
-<span><strong>付费弹窗补齐八种语言：</strong> 客户端界面已是英文，但点击 Pro 功能弹出的付费墙仍整块显示中文。现在弹窗标题、能力清单、价格单位、退款说明、升级按钮、「已付费？刷新授权」「继续使用免费版」以及底部免费功能说明全部走词表；标题改为按当前功能动态注入，切到 Deutsch / 日本語 等语言也能整句正确显示，不再残留中文或半角括号。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">fact_check</span>
-<span><strong>全站逐页排查语言适配：</strong> 不再只查两个 AI 页面。下载、去水印、AI 字幕、梗图贴纸、队列、媒体库、引擎中心、设置、账号菜单、付费墙等全部视图，以及引擎/模型的名称、简介与状态说明，逐条核对词条；Pro 提示气泡的功能名与侧边栏文案逐字对齐，避免因大小写或空格差异导致翻译不命中。macOS 原生菜单栏（编辑 / 窗口）也改为跟随界面语言，不再是写死的中文。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">devices</span>
-<span><strong>引擎状态不再中英混排：</strong> 「Local engine ready：离线可用 · 23 语种 · 占用 2.9GB」这类拼接文案改为由主进程回结构化字段、渲染层按当前语言拼装，八种语言下语序与标点都正确。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">integration_instructions</span>
-<span><strong>回归测试覆盖全站：</strong> 单元测试从「两个视图」扩展到 index.html 全部视图与引擎中心展示字段，并校验四个渲染脚本里所有动态文案 key 都在词表内，词表 key 与占位符保持七语言一致。</span>
-</li>
-</ul>
-</div>
 
-<!-- Version 3.9.39 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.9.39 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 11 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">translate</span>
-<span><strong>AI 视频翻译 / AI 多语口播补齐八种语言：</strong> 这两个页面此前把文案写死在代码里，切到 English 后仍显示中文。现在页面标题、说明、流程节点、引擎状态、产出队列、预计耗时、确认弹窗与 Toast 提示全部走多语言词表，简体中文、English、繁體中文、Español、Português、Français、Deutsch、日本語 全部覆盖，切换后不再残留中文。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">badge</span>
-<span><strong>侧边栏两个入口同步翻译：</strong>「AI 多语口播」「AI 视频翻译」导航项与 Pro 提示气泡也进入词表，不再是全站仅存的两处中文。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">public</span>
-<span><strong>默认英文保持不变：</strong> 首次安装仍是英文界面，只有手动切换过语言才沿用上次选择；新增的动态文案（原片时长 × 语种数估算、剩余时间、成片数量等）改为占位符方案，句序可以随语言调整。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">fact_check</span>
-<span><strong>新增回归测试：</strong> 单元测试会校验七份词表 key 完全一致、占位符一一对应、两个视图的每条中文静态文案都有词条，并断言默认语言为英文，避免以后再漏翻。</span>
-</li>
-</ul>
-</div>
-
-<!-- Version 3.9.38 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.9.38 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 11 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">workspace_premium</span>
-<span><strong>Pro 订阅正式上线（macOS 与 Windows 同版本）：</strong> AI 视频翻译、AI 多语切片、AI 多语口播、AI 批量切片、AI 画质增强五项能力改为 Pro 专属，付费账号（Pro / Studio）登录后自动解锁；视频下载、去水印、AI 字幕、梗图贴纸等免费功能不受任何影响。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">lock_open</span>
-<span><strong>授权以账号为准，本地改不动：</strong> 客户端只向官网服务端校验订阅状态，本地仅缓存结果；断网或出差时最长保留 7 天已付费权益，联网后 6 小时内自动同步，既不误锁付费用户，也无法靠改本地文件永久解锁。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">verified_user</span>
-<span><strong>付费墙不打断工作流：</strong> 侧边栏的 Pro 功能提前显示 PRO 角标，点击后才弹出说明卡片；写明能力清单与价格，可直接打开官网升级，也可以用「已付费？刷新授权」当场同步，关掉卡片即可继续用免费功能。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">account_circle</span>
-<span><strong>账号区显示套餐：</strong> 账号按钮上会标出当前的 PRO / STUDIO 状态，下拉菜单新增「升级到 Pro」，不用再翻官网找入口。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">link</span>
-<span><strong>官网同步修复：</strong> 修复博客详情页面包屑「博客」点击后 404；移除点击无反应的「文档/API」导航项；顶部「价格方案」统一改为「价格」。</span>
-</li>
-</ul>
-</div>
-
-<!-- Version 3.9.37 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.9.37 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 11 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">graphic_eq</span>
-<span><strong>彻底消除「呲呲呲」嘶声：</strong> 旧版降噪用的是谱减法，低信噪比频点的增益会在「全通」和「-40dB 」之间随机跳，噪声其实是降噪器自己造出来的（实测同一句克隆音，4.8~11k 的逐帧能量抖动被抬高了 24%）。现在整段换成决策引导维纳增益，增益曲线连续、不再有随机尖峰，实测抖动回到与原始合成音同一水平。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">spatial_audio</span>
-<span><strong>噪声统计不再误伤轻声字：</strong> 旧版把「比语音低 12dB」的帧都当噪声，可克隆引擎的气口在 -66dBFS，这条线把大量轻声的字也统计进了噪声谱，结果整句被再削 3.6dB。现在加了一道「噪底闸」：候选帧必须落在真实噪底 +8dB 以内，只统计真正的气口。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">record_voice_over</span>
-<span><strong>清晰度提升一个档次：</strong> 实测克隆音 4.8~11k 比真人参考音暗 8~12dB，旧版还在这段再削 8~9dB，等于把清晰度所在的频段连削两次。现在改为按真人频谱做高频补偿（5.2k +8dB、8.5k +4dB），并只保留一个 2dB 的去齿音窄带，成片的齿音、气声、字尾都回来了，听感更接近真人。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">hearing</span>
-<span><strong>不再吞字：</strong> 整帧电平斜坡的起点从「低于语音 8dB」抬到 14dB。正常说话的句内动态就有 12~18dB，旧阈值把轻声的字按噪声一起压掉（实测中位帧被压约 9dB）；现在只压真正的气口与噪声。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">music_note</span>
-<span><strong>伴奏不再有噪点：</strong> 配乐的频域降噪从「逐帧跟踪噪声底」改成固定噪声底（tn=0），不再按帧改噪声谱、把伴奏切成一段段残渣；3.9.36 抬亮伴奏后第一次被听到的那层「呲呲」残响随之消失。</span>
-</li>
-</ul>
-</div>
-
-<!-- Version 3.9.36 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.9.36 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 11 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">graphic_eq</span>
-<span><strong>修好背景音乐：</strong> 以前人声一起，伴奏会被侧链压掉 30dB 以上——等于「朗读时背景音乐消失」，句间又整块回来，整片听着就是音量忽大忽小。现在按实测电平重新标定为只后退约 7.7dB，句间完全不压：人声让位、配乐始终清楚可闻。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">graphic_eq</span>
-<span><strong>伴奏不再低到听不见：</strong> 伴奏归一目标从 -31 LUFS 抬到 -26 LUFS（旧值比人声低 13 LUFS，本身就已经很轻），并放宽了提亮上限，分离出来偏轻的音乐床也能听清。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">record_voice_over</span>
-<span><strong>音量不再忽大忽小：</strong> 句内自动增益的平滑时间从 0.1 秒放慢到 0.28 秒，不再追着每个音节来回加减；句与句之间仍统一到同一语音电平，整片响度稳定。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">translate</span>
-<span><strong>AI 不再读错：</strong> 中文里的 AI 以前展开成「诶艾」，可「诶」是多音字（éi/èi/ǎi），克隆音经常读成「哎」。现在整词命中时直接读「人工智能」，语义更清楚也不会读错；AIGC、OpenAI 这类不会被误替换。</span>
-</li>
-</ul>
-</div>
-
-<!-- Version 3.9.35 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.9.35 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 11 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">bolt</span>
-<span><strong>配音生成更快：</strong> 起一个纯 CPU 的副引擎，和 Metal(GPU) 主引擎同时各跑一半句子。GPU 逐 token 解码时 CPU 核其实是空着的，这份算力现在被用起来了。实测稳态吞吐提升 30%~60%，模型、采样参数、声码器步数全部不变，音质无差。空闲内存不足 5GB 时会自动只跑单路，避免换页把速度又拖回去。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">bolt</span>
-<span><strong>每一句出结果更快：</strong> 原先一台引擎同时压 5 句，总吞吐没变却让单句延迟翻了三倍——第一句要等两分多钟才出来，进度条看着像卡死。现在并发收到 2 句，同样的总时长里每句更快落地，进度能连续推进。实测 1/3/5 路并发的总吞吐在误差范围内一样，所以这一步只提升手感，不牺牲速度。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">bolt</span>
-<span><strong>副引擎起不来不影响出片：</strong> 内存不够或加载失败时自动回落到单引擎，任务照常跑完，只在日志里留一行原因。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">bolt</span>
-<span><strong>三个入口同步：</strong> AI 视频翻译、AI 多语切片、AI 多语口播共用同一套并发与引擎调度，Windows 与 macOS 行为一致。</span>
-</li>
-</ul>
-</div>
-
-<!-- Version 3.9.34 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.9.34 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 11 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>不再误报「已有任务进行中」：</strong> 任务锁现在带心跳与看门狗。旧版只在任务 finally 里清锁，一旦引擎进程失联、模型下载卡住或界面重载丢了进度，锁会一直挂着——界面明明空闲，点「开始」却被拒绝。新版每个进度回调都会刷新心跳，连续 10 分钟没有任何进度就自动判定陈旧锁并强制释放；点「停止」后 4 秒内没正常收尾也会强制放锁，可以立刻重新开始。真被占用时提示会写明是哪条任务、哪个阶段。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>波形更顺滑、更清晰：</strong> 声码器 flow-matching 采样步数从 8 提到 12，磨掉 8 步残留的颗粒感与沙沙底噪，人声明显更干净连贯；试听与成片一致使用 12 步，听到什么就是出片效果。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>换气更自然、不再一顿一顿：</strong> 句内气口折叠的门限从「低 26dB / 连续 0.26 秒折到 0.15 秒」改成「低 30dB / 连续 0.45 秒才折，且保留 0.30 秒」。0.2~0.4 秒的正常逗号停顿原样保留，轻声辅音也不会被当成气口吃掉，朗读不再又赶又平。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>半句不再读成上扬未收尾：</strong> 字幕常停在逗号、冒号甚至没有标点，克隆模型靠句末标点判断收尾降调；合成前统一补齐句号（只补标点，不改文字），句尾收得干净。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>译文更贴近口语时长：</strong> 翻译提示新增「时长贴近原文、宁短勿长」，避免译文过长把成片配音整体加速，听起来更从容。Windows 版同步。</span>
-</li>
-</ul>
-</div>
-
-<!-- Version 3.9.33 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.9.33 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 11 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>英语不再带口音：</strong> 克隆配音的参考音是原片说话人（多为中文），CFG 引导会把参考音的发音习惯一起搬进目标语言——这就是成片英语「像印度口音」的根因。跨语言配音现在把 CFG 从 0.5 压低到 0.3，参考句对目标语言发音的牵引明显减弱；同语言配音仍保留 0.5，音色与原声贴合度不变。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>译文按目标语言定制：</strong> 英语要求地道、口语化的美式英语（General American），使用常见缩略形式，不要书面腔和逐字直译；日语（东京腔）、韩语（首尔腔）、西班牙语（中性通用）、葡萄牙语（通用巴西）、法语、德语各加了一条标准口语约束，避免译文本身带直译腔。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>每句独立生效：</strong> cfg 值按句传给引擎，多句并发时各句互不影响；旧版本没有这个字段，引擎会自动回落到默认 0.5。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>Windows 版同步：</strong> 配音链路与翻译提示在跨平台主进程里，Windows 与 macOS 行为完全一致。</span>
-</li>
-</ul>
-</div>
-<!-- Version 3.9.32 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.9.32 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 11 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>AI 多语口播取消 120 秒片长限制：</strong> 上传口播视频不再按 120 秒拒绝，也不再静默截断到 120 秒——整片按实际时长做识别、翻译、克隆配音与口型重绘，多长的片子都能出完整成片。口型按帧重绘，片越长耗时越久，进度条会如实推进。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>上传提示同步更新：</strong> 去掉了「最长 2 分钟」的字样，改为「片长不限（口型按帧重绘，片越长耗时越久）」，避免提示与行为不一致。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>Windows 版同步：</strong> 限制逻辑在跨平台主进程里，Windows 与 macOS 使用同一份实现，两端行为完全一致。</span>
-</li>
-</ul>
-</div>
-<!-- Version 3.9.31 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.9.31 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 11 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>句内音量不再一个字一个字地变：</strong> 克隆引擎同一句里会「前半句响、后半句突然轻」，逐句固定增益只能对齐整句水位。现在按 20ms 帧量电平、用 450ms 长窗求慢包络，把几百毫秒级的整段偏轻/偏响拉回去（±9dB 内），音节重音与句尾降调都保留；气口帧不动，不会被抬出噪声。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>断断续续真正修掉：</strong> 旧版只折「数字静音」的死气口，带一点残余噪声的中等停顿（-50~-40dBFS）全漏过去，句子中间照样空一拍。现在按「本句语音电平以下 26dB、持续 ≥0.26s」判定，统一压到 0.15s，语音样本一个不动。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>有字幕没声音的情况被兜住：</strong> 某一句撞上生成上限、或时长明显短于「这段话最快也要说多久」，自动带 1.8 倍上限重生成一次；语段合并上限同时收到 60 字，字幕按字位摊到语段里的漂移更小，不再出现「字幕在、声音没跟上」。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>语速不再被硬放慢：</strong> 配音比片子短时，先把富余时长摊进语段间的呼吸口（每个最多 0.55s），语速保持原样；摊不下才允许极轻微放慢（最低 0.94×，旧版是 0.90×）。片尾也不再挂一大段静音。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>实测（18s 片子、3 段中文、真实声音档案）：</strong> 句间电平差 <strong>0.2dB</strong>、整片变速 <strong>1.001×</strong>（没有放慢）、语音区间内 <strong>0 段 ≥0.6s 静音洞</strong>、片尾静音 <strong>0s</strong>；全部指标达标。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>Windows 版同步：</strong> 全部改动都在跨平台配音链路上，Windows 安装包与 macOS 使用同一份实现；Windows 侧本地克隆引擎以 CPU 运行，降噪、响度拉平、气口折叠与字母名展开完全一致。</span>
-</li>
-</ul>
-</div>
-<!-- Version 3.9.30 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.9.30 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 11 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>成片噪音彻底消除：</strong> 克隆引擎在句尾会吐一段 100~300Hz 的低频闷响，旧版按电平判断切点会被它一路推到最后。现在改用「电平 + 高通能量」双判据，实测 5.68s 的合成尾被裁到 2.35s，成片不再有嗡嗡声。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>音量不再忽大忽小（第一版）：</strong> 短句只有十几帧，旧版取噪底时误判成 -29dB，噪声封顶把整句砍轻 11dB。改为按「低于语音 12dB 的帧的中位数」取噪底，并去掉 ±3dB 的跨句台阶。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>中文里的 AI 读对了：</strong> 指定中文音色时，模型会把独立出现的拉丁缩写按拼音念成「ai」。现在中文/日文/韩文里先按字母名展开再合成（AI → 诶艾），字幕仍保留原文；OpenAI、iPhone 这类混成词与英文语种不受影响。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>朗读真正连起来了（第一版）：</strong> 句间气口收紧到 0.12~0.5s，句内死气口折叠到 0.14s，整片只做一次 0.90~1.20 变速；不再逐句锚定原片起点留出长静音，也不再一句一断。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>整理整轨响度：</strong> 配音轨出片前统一归到 -18 LUFS，句内强弱保留、整体不再偏轻或偏响；单段任务（只译出一句）也不会再因滤镜拼接失败而中途退出。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>Windows 版同步更新：</strong> 本次四项修复全部在跨平台配音链路上，Windows 安装包（Setup 3.9.30）与 macOS 使用同一份实现；本地克隆引擎在 Windows 上以 CPU 运行，降噪、电平归一、字母名展开与连读规则完全一致。CI 的 Windows 作业已通过单元测试、真装 Whisper 冒烟、打包与资源校验。</span>
-</li>
-</ul>
-</div>
-<!-- Version 3.9.29 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.9.29 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 11 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>配音不再断断续续：</strong> 相邻短句先并成完整语段再合成，句子语调连贯、不再逐句重新起调；语段之间沿用原片停顿，较长的自然气口保留在原位。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>不再出现「半句没了」：</strong> 生成上限改为按语速估算这段话说多久，长译文不会再被 token 上限在句子中间截断；克隆墙钟上限同步放宽。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>更自然的语速与节奏：</strong> 语段起点对齐原片位置，配音跟得上画面；译文超出片长时只做一次整片轻微变速（最多 1.35×），不再对每句单独拉伸。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>去掉句间空档：</strong> 每段合成后裁掉首尾 -45dB 以下的静音，避免「底噪 + 气口」叠成明显空白；字幕条目保留原样，按实际语音时长重新对时。</span>
-</li>
-</ul>
-</div>
-<!-- Version 3.9.28 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.9.28 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 11 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>新增「AI 视频翻译」：</strong> 上传原片，再上传一段你自己的声音做零样本克隆；选好语种后，原片人声会被整条替换成「你的声音说目标语言」，画面一帧不改，成片只有一条音轨。左侧菜单即可进入。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>我的声音档案库：</strong> 样本自动去首尾静音、80Hz 高通、9.5kHz 低通、两级频域降噪，只保留 12 秒音色条件；一声多档、随时切换，成片前可先试听这条嗓子。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>画面零损失：</strong> 关闭「烧录字幕」时视频流直拷不重编码，画质与体积和原片一致；字幕仍会单独导出 SRT。开启后按硬件编码（VideoToolbox）优先。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>全离线复用同一套引擎：</strong> 复用 Whisper 识别、Llama.cpp 翻译、Chatterbox 克隆与音轨分离，不调用任何第三方模型 API；可保留原片背景音乐并做侧链闪避。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>进度不再倒退：</strong> 全局进度加了单调整闸，配音阶段穿插的引擎日志不会让进度条与数字回跳。</span>
-</li>
-</ul>
-</div>
-<!-- Version 3.9.27 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.9.27 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 11 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>Windows 端功能与 macOS 对齐：</strong> 补齐 Whisper 语音识别引擎的 Windows 构建，Windows 版现在可以本地跑 AI 字幕、AI 多语切片与 AI 多语口播，无需手动装引擎。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>Windows 本地声音克隆 / 音轨分离 / 口型引擎补齐：</strong> 安装包带上 voiceclone、audiosep、lipsync 三个本地引擎脚本；首次使用「原声克隆」会自动创建 Python 虚拟环境并安装 torch 与 Chatterbox（约 2GB，仅一次，需本机 Python 3.9–3.13）。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>Windows 配音音色可选：</strong> 不再只有「系统默认音色」，自动枚举系统已安装的 SAPI 音色，按目标语言与性别挑选，中文 / 英 / 日 / 韩 / 西 / 葡 / 法 / 德 八种语言各自独立。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>双平台自动化测试上线：</strong> 发布前在 macOS 与 Windows 构建机上自动跑单元测试与冒烟测试（FFmpeg 自检、引擎资产、八语言音色、真实合成一句配音），Windows 还会真装一次识别引擎并执行验证。</span>
-</li>
-</ul>
-</div>
-<!-- Version 3.9.26 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.9.26 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 11 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>AI 多语口播「断断续续 / 说话模糊」修复：</strong> 克隆配音降噪改为「安静帧噪声谱统计 + 逐频点维纳谱减 + 句尾噪声裁剪」，100~200ms 词间气口不再被切成数字空洞（窗口内硬静音 155 处 → 29 处），句尾噪声尾不再撑虚时长导致语音被压快、被截断。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>修复「渲染出片失败（spawn ffmpeg ENOENT）」：</strong> 安装包的 FFmpeg 会自动固化到用户目录并在每次调用前复核，应用更新/移动/重装都不会再打断正在运行的任务；开跑前新增组件预检，缺文件时立即提示而不是跑到 97% 才失败。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>口播口型对齐优化：</strong> 收敛嘴部抖动与虚化边缘，目标语言与口型逐句对齐；译文偏长时按真实语音时长变速，压缩/截断句数由 17 句降至 11 句。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>成片背景噪声治理：</strong> 词间闷响、句尾嘶声按噪声谱逐频点压制，语音电平与原片响度保持不变（LUFS -18.5、True Peak -4.2 dB）。</span>
-</li>
-</ul>
-</div>
-<!-- Version 3.3.0 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-md">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v3.3.0 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2026 年 10 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span>AI 批量切片一键生成升级：由固定单条改为按素材容量自动产出多条成片，同批次内容互不撞车，收尾仍保留报价 / CTA 转化。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span>修复 macOS 标题栏开关显示异常，白色圆点不再溢出胶囊。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span>移除成片中的账号品牌元素，新增 6 套对标开拍、剪映的结构化短视频模版。</span>
-</li>
-</ul>
-</div>
-<!-- Version 2.4.4 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-sm">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<div class="flex items-center gap-3">
-<span class="font-headline-md text-headline-md text-on-surface">v2.4.4 稳定版</span>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2025 年 2 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>全新 CoreML v3 动态弹跳水印跟踪算法：</strong> 针对带有透明度与位移的动态角标，修复精度提升 60%。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>1080P 60fps 原画母带解析：</strong> 支持批量直链提取，无损保留 HDR 动态范围与杜比音轨。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>macOS Sequoia 深度适配：</strong> 优化窗口交互质感与剪贴板后台监听静默唤醒逻辑。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-tertiary text-base shrink-0 mt-0.5">add_circle</span>
-<span><strong>Windows 11 / 10 客户端首发：</strong> 提供 x64 原生安装包，内置 FFmpeg 引擎，自动联动 Windows 系统代理设置。</span>
-</li>
-</ul>
-</div>
-<!-- Version 2.3.2 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-sm">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<span class="font-headline-md text-headline-md text-on-surface">v2.3.2 维护版</span>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2024 年 12 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-secondary-fixed text-base shrink-0 mt-0.5">tune</span>
-<span>优化 Intel 芯片机型在导出 4K 视频时的内存释放策略，有效降低 CPU 占用达 25%。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-secondary-fixed text-base shrink-0 mt-0.5">tune</span>
-<span>新增 CLI 命令行参数 <code>--no-gui</code> 与 <code>--export-path</code>，支持自动化脚本调用。</span>
-</li>
-</ul>
-</div>
-<!-- Version 2.2.0 -->
-<div class="p-6 rounded-xl bg-surface-container shadow-sm">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-<span class="font-headline-md text-headline-md text-on-surface">v2.2.0 大版本更新</span>
-<span class="font-label-sm text-label-sm text-on-surface-variant">2024 年 9 月发布</span>
-</div>
-<ul class="space-y-2 font-body-md text-body-md text-on-surface-variant">
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-on-surface-variant text-base shrink-0 mt-0.5">auto_awesome</span>
-<span>首发集成离线式音频分离提取器，一键导出 Studio 级高保真 320kbps MP3 / AAC 背景音乐。</span>
-</li>
-<li class="flex items-start gap-2">
-<span class="material-symbols-outlined text-on-surface-variant text-base shrink-0 mt-0.5">auto_awesome</span>
-<span>全面重构用户界面体系，引入原生深色玻璃拟物组件设计。</span>
-</li>
-</ul>
+<div class="mt-8 text-center">
+<a href="changelog.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-outline-variant/50 text-on-surface font-headline-sm text-headline-sm hover:bg-surface-container transition-colors"><span class="material-symbols-outlined text-[18px]">update</span><span>查看完整更新历史（v2.2.0 起）</span></a>
 </div>
 </div>
 </div>
@@ -1040,7 +543,7 @@
 <!-- Question 3b -->
 <div class="p-6 rounded-xl bg-surface-container shadow-sm">
 <div class="flex items-center gap-3 mb-3">
-<span class="material-symbols-outlined text-secondary-fixed text-xl">record_voice_over</span>
+<span class="material-symbols-outlined text-secondary-fixed text-xl">forum</span>
 <h3 class="font-headline-sm text-headline-sm text-on-surface">「AI 视频翻译」是怎么换声的？会上传我的声音吗？</h3>
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
@@ -1090,7 +593,7 @@
 </div>
 </div>
 </div>
-</div></main><footer class="w-full bg-surface-container-lowest"><div class="max-w-7xl mx-auto px-6 lg:px-12 pt-16 pb-12"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-space-xl mb-12"><div class="lg:col-span-2 space-y-space-md"><div class="flex items-center gap-space-sm"><img alt="TokPure 桌面端本地视频工具 Logo" class="h-8 w-auto object-contain" src="assets/img/logo.webp" width="192" height="192" loading="lazy" decoding="async"/><span class="font-headline-lg text-headline-lg text-on-surface font-bold">TokPure</span></div><p class="font-body-md text-body-md text-on-surface-variant max-w-sm">基于本地离线引擎的下一代 macOS / Windows 桌面极速无水印视频下载与 AI 超分无损重构套件。零云端留存，零隐私泄露风险。</p><div class="flex items-center gap-2 p-2.5 rounded-lg bg-surface-container-low"><span class="material-symbols-outlined text-tertiary text-lg">verified_user</span><div class="font-label-sm text-label-sm text-on-surface-variant"><span class="text-tertiary font-bold">Zero-Cloud-Leak:</span> 本地离线执行智能修复</div></div></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">产品矩阵</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="home" href="index.html">核心架构</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">macOS / Windows 客户端</a></li><li><a class="hover:text-on-surface transition-colors" data-path="stickers" href="tiktok-stickers.html">TikTok 贴纸</a></li><li><a class="hover:text-on-surface transition-colors" data-path="pricing" href="pricing.html">价格与订阅</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">更新日志 (v3.9)</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">开发者 &amp; 支持</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">文档中心</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">CLI 命令行工具</a></li><li><a class="hover:text-on-surface transition-colors" data-path="about-us" href="about.html">关于团队</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私审计报告</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">运行状态</h4><div class="p-3 rounded-lg bg-surface-container-low space-y-2"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span><span class="font-label-sm text-label-sm text-on-surface">全线引擎正常运行</span></div><p class="font-body-sm text-body-sm text-on-surface-variant">Local Offline Engine v4.2 Ready</p></div><div class="mt-4"><div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant font-label-sm text-label-sm"><span class="material-symbols-outlined text-[16px]">language</span><span>简体中文 (中国)</span></div></div></div></div><div class="pt-8 space-y-4"><p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed text-center lg:text-left">免责声明：TokPure 属于独立研发的高性能本地音视频分析工程软件，与 TikTok、ByteDance 或任何第三方社交网络服务无关且未获得其官方赞助或背书。请在遵守当地版权法律与合理使用协议的前提下处理属于您个人所有的创作内容。</p><div class="flex flex-col sm:flex-row items-center justify-between gap-4 font-body-sm text-body-sm text-on-surface-variant"><div>© 2024 TokPure Studio Inc. 专为 macOS 与 Windows 打造。保留所有权利。</div><div class="flex items-center gap-6 font-label-sm text-label-sm"><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">服务条款</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私政策</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">安全白皮书</a></div></div></div></div></footer>
+</div></main><footer class="w-full bg-surface-container-lowest"><div class="max-w-7xl mx-auto px-6 lg:px-12 pt-16 pb-12"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-space-xl mb-12"><div class="lg:col-span-2 space-y-space-md"><div class="flex items-center gap-space-sm"><img alt="TokPure 桌面端本地视频工具 Logo" class="h-8 w-auto object-contain" src="assets/img/logo.webp" width="192" height="192" loading="lazy" decoding="async"/><span class="font-headline-lg text-headline-lg text-on-surface font-bold">TokPure</span></div><p class="font-body-md text-body-md text-on-surface-variant max-w-sm">基于本地离线引擎的下一代 macOS / Windows 桌面极速无水印视频下载与 AI 超分无损重构套件。零云端留存，零隐私泄露风险。</p><div class="flex items-center gap-2 p-2.5 rounded-lg bg-surface-container-low"><span class="material-symbols-outlined text-tertiary text-lg">verified_user</span><div class="font-label-sm text-label-sm text-on-surface-variant"><span class="text-tertiary font-bold">Zero-Cloud-Leak:</span> 本地离线执行智能修复</div></div></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">产品矩阵</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="home" href="index.html">核心架构</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">macOS / Windows 客户端</a></li><li><a class="hover:text-on-surface transition-colors" data-path="stickers" href="tiktok-stickers.html">TikTok 贴纸</a></li><li><a class="hover:text-on-surface transition-colors" data-path="watermark" href="tiktok-watermark-remover.html">TikTok 去水印</a></li><li><a class="hover:text-on-surface transition-colors" data-path="subtitle" href="video-subtitle-generator.html">视频字幕生成</a></li><li><a class="hover:text-on-surface transition-colors" data-path="compare" href="compare.html">方案对比</a></li><li><a class="hover:text-on-surface transition-colors" data-path="pricing" href="pricing.html">价格与订阅</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">更新日志 (v3.9)</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">开发者 &amp; 支持</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">文档中心</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">CLI 命令行工具</a></li><li><a class="hover:text-on-surface transition-colors" data-path="about-us" href="about.html">关于团队</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私审计报告</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">运行状态</h4><div class="p-3 rounded-lg bg-surface-container-low space-y-2"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span><span class="font-label-sm text-label-sm text-on-surface">全线引擎正常运行</span></div><p class="font-body-sm text-body-sm text-on-surface-variant">Local Offline Engine v4.2 Ready</p></div><div class="mt-4"><div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant font-label-sm text-label-sm"><span class="material-symbols-outlined text-[16px]">language</span><span>简体中文 (中国)</span></div></div></div></div><div class="pt-8 space-y-4"><p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed text-center lg:text-left">免责声明：TokPure 属于独立研发的高性能本地音视频分析工程软件，与 TikTok、ByteDance 或任何第三方社交网络服务无关且未获得其官方赞助或背书。请在遵守当地版权法律与合理使用协议的前提下处理属于您个人所有的创作内容。</p><div class="flex flex-col sm:flex-row items-center justify-between gap-4 font-body-sm text-body-sm text-on-surface-variant"><div>© 2024 TokPure Studio Inc. 专为 macOS 与 Windows 打造。保留所有权利。</div><div class="flex items-center gap-6 font-label-sm text-label-sm"><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">服务条款</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私政策</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">安全白皮书</a></div></div></div></div></footer>
 <script defer src="assets/js/site-fx.js?v=20261114"></script>
 <script defer src="assets/js/download-detect.js?v=20261118"></script>
 </body></html>

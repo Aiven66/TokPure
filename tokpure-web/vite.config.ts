@@ -46,6 +46,10 @@ const STATIC_ROUTES: Array<{ path: string; priority: string }> = [
   { path: '/pricing.html', priority: '0.9' },
   { path: '/answers.html', priority: '0.8' },
   { path: '/tiktok-stickers.html', priority: '0.8' },
+  { path: '/tiktok-watermark-remover.html', priority: '0.8' },
+  { path: '/video-subtitle-generator.html', priority: '0.8' },
+  { path: '/changelog.html', priority: '0.5' },
+  { path: '/compare.html', priority: '0.7' },
   { path: '/about.html', priority: '0.6' },
   { path: '/blog.html', priority: '0.7' }
 ];

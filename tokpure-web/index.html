@@ -56,7 +56,7 @@
   gtag('config', 'G-3X58L0VT9F');
 </script>
 <script defer src="assets/js/ga4.js?v=20261111"></script><meta charset="utf-8"/><link rel="icon" href="assets/img/favicon.ico" sizes="any"/><link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png"/><link rel="icon" type="image/png" sizes="16x16" href="assets/img/favicon-16.png"/><link rel="apple-touch-icon" sizes="180x180" href="assets/img/apple-touch-icon.png"/>
-<title>TokPure · TikTok 无水印下载与本地 AI 出片</title><meta name="description" content="TokPure 是本地运行的 macOS / Windows 桌面工具：TikTok 无水印原画质直取，再用本地 AI 超分、去水印、翻译配音与字幕，素材不上传。"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><link rel="stylesheet" href="assets/css/fonts.css"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}
+<title>TokPure · TikTok 无水印下载与本地 AI 出片</title><meta name="description" content="TokPure 是本地运行的 macOS / Windows 桌面工具：TikTok 无水印原画质直取，再用本地 AI 超分、去水印、翻译配音与字幕，素材不上传。"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><link rel="stylesheet" href="assets/css/fonts.css"/><link rel="preload" as="font" type="font/woff2" href="assets/fonts/plus-jakarta-sans-latin.woff2" crossorigin/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}
 .hero-grid{background-image:linear-gradient(to right,rgba(255,255,255,0.055) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,0.055) 1px,transparent 1px);background-size:64px 64px;background-position:center top;-webkit-mask-image:radial-gradient(ellipse 70% 62% at 50% 26%,#000 18%,transparent 78%);mask-image:radial-gradient(ellipse 70% 62% at 50% 26%,#000 18%,transparent 78%);}
 .hero-rise{animation:heroRise .7s cubic-bezier(.2,.7,.2,1) both;}
 .hero-d1{animation-delay:.05s}.hero-d2{animation-delay:.12s}.hero-d3{animation-delay:.2s}.hero-d4{animation-delay:.28s}
@@ -147,7 +147,7 @@ html.reveal-on [data-reveal].is-in{opacity:1;transform:none}
 html.reveal-on [data-reveal]{opacity:1;transform:none;transition:none}
 .hero-spot{display:none}
 }
-</style><link rel="stylesheet" href="assets/css/site.css"/><link rel="stylesheet" href="assets/css/tailwind.build.css"/><script defer src="assets/js/i18n.js?v=20261118-2"></script><script defer src="assets/js/mobile-nav.js"></script><script type="module" src="/src/entries/site-header.tsx"></script>
+</style><link rel="stylesheet" href="assets/css/site.css"/><link rel="stylesheet" href="assets/css/tailwind.build.css"/><script defer src="assets/js/i18n.js?v=20261118-3"></script><script defer src="assets/js/mobile-nav.js"></script><script type="module" src="/src/entries/site-header.tsx"></script>
 <!-- SEO/GEO: 统一规范化与分享卡片（canonical 用绝对地址，og:image 指向构建期稳定拷贝的 /assets/og/og-cover.jpg） -->
 <link rel="canonical" href="https://tokpure.clipopai.com/"/>
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"/>
@@ -942,38 +942,7 @@ No. Download and repair both run locally, there is no cloud step and no telemetr
 </div>
 </div>
 </section>
-<script>
-(function () {
-  var tabs = [].slice.call(document.querySelectorAll('[data-tp-feat]'));
-  var panels = [].slice.call(document.querySelectorAll('[data-tp-feat-panel]'));
-  if (!tabs.length || !panels.length) return;
-  function select(id, moveFocus) {
-    tabs.forEach(function (t) {
-      var on = t.getAttribute('data-tp-feat') === id;
-      t.setAttribute('aria-selected', on ? 'true' : 'false');
-      t.setAttribute('tabindex', on ? '0' : '-1');
-      t.classList.toggle('tp-feat-on', on);
-      if (on && moveFocus) t.focus();
-    });
-    panels.forEach(function (p) {
-      p.classList.toggle('hidden', p.getAttribute('data-tp-feat-panel') !== id);
-    });
-  }
-  tabs.forEach(function (t, i) {
-    t.addEventListener('click', function () { select(t.getAttribute('data-tp-feat')); });
-    t.addEventListener('keydown', function (e) {
-      var n = null;
-      if (e.key === 'ArrowDown' || e.key === 'ArrowRight') n = (i + 1) % tabs.length;
-      else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') n = (i - 1 + tabs.length) % tabs.length;
-      else if (e.key === 'Home') n = 0;
-      else if (e.key === 'End') n = tabs.length - 1;
-      if (n === null) return;
-      e.preventDefault();
-      select(tabs[n].getAttribute('data-tp-feat'), true);
-    });
-  });
-})();
-</script>
+
 
 <!-- Section 3: Technical Comparison & Benchmarks -->
 <section class="max-w-7xl mx-auto px-6 lg:px-12 py-16" data-reveal>
@@ -1152,44 +1121,7 @@ No. Download and repair both run locally, there is no cloud step and no telemetr
 </div>
 </section>
 </div>
-</div></main><footer class="w-full bg-surface-container-lowest"><div class="max-w-7xl mx-auto px-6 lg:px-12 pt-16 pb-12"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-space-xl mb-12"><div class="lg:col-span-2 space-y-space-md"><div class="flex items-center gap-space-sm"><img alt="TokPure 桌面端本地视频工具 Logo" class="h-8 w-auto object-contain" src="assets/img/logo.webp" width="192" height="192" loading="lazy" decoding="async"/><span class="font-headline-lg text-headline-lg text-on-surface font-bold">TokPure</span></div><p class="font-body-md text-body-md text-on-surface-variant max-w-sm">基于本地离线引擎的下一代 macOS / Windows 桌面极速无水印视频下载与 AI 超分无损重构套件。零云端留存，零隐私泄露风险。</p><div class="flex items-center gap-2 p-2.5 rounded-lg bg-surface-container-low"><span class="material-symbols-outlined text-tertiary text-lg">verified_user</span><div class="font-label-sm text-label-sm text-on-surface-variant"><span class="text-tertiary font-bold">Zero-Cloud-Leak:</span> 本地离线执行智能修复</div></div></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">产品矩阵</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="home" href="index.html">核心架构</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">macOS / Windows 客户端</a></li><li><a class="hover:text-on-surface transition-colors" data-path="stickers" href="tiktok-stickers.html">TikTok 贴纸</a></li><li><a class="hover:text-on-surface transition-colors" data-path="pricing" href="pricing.html">价格与订阅</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">更新日志 (v3.9)</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">开发者 &amp; 支持</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">文档中心</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">CLI 命令行工具</a></li><li><a class="hover:text-on-surface transition-colors" data-path="about-us" href="about.html">关于团队</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私审计报告</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">运行状态</h4><div class="p-3 rounded-lg bg-surface-container-low space-y-2"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span><span class="font-label-sm text-label-sm text-on-surface">全线引擎正常运行</span></div><p class="font-body-sm text-body-sm text-on-surface-variant">Local Offline Engine v4.2 Ready</p></div><div class="mt-4"><div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant font-label-sm text-label-sm"><span class="material-symbols-outlined text-[16px]">language</span><span>简体中文 (中国)</span></div></div></div></div><div class="pt-8 space-y-4"><p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed text-center lg:text-left">免责声明：TokPure 属于独立研发的高性能本地音视频分析工程软件，与 TikTok、ByteDance 或任何第三方社交网络服务无关且未获得其官方赞助或背书。请在遵守当地版权法律与合理使用协议的前提下处理属于您个人所有的创作内容。</p><div class="flex flex-col sm:flex-row items-center justify-between gap-4 font-body-sm text-body-sm text-on-surface-variant"><div>© 2024 TokPure Studio Inc. 专为 macOS 与 Windows 打造。保留所有权利。</div><div class="flex items-center gap-6 font-label-sm text-label-sm"><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">服务条款</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私政策</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">安全白皮书</a></div></div></div></div></footer><script>
-(function () {
-  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  /* 滚动揭示：JS 可用时才隐藏内容，脚本失效或观察器报错时页面照常可见 */
-  var items = [].slice.call(document.querySelectorAll('[data-reveal]'));
-  if (!reduce && 'IntersectionObserver' in window && items.length) {
-    document.documentElement.classList.add('reveal-on');
-    var fired = false;
-    var io = new IntersectionObserver(function (entries) {
-      fired = true;
-      for (var i = 0; i < entries.length; i++) {
-        if (!entries[i].isIntersecting) continue;
-        entries[i].target.classList.add('is-in');
-        io.unobserve(entries[i].target);
-      }
-    }, { rootMargin: '0px 0px -6% 0px', threshold: 0.06 });
-    items.forEach(function (el) { io.observe(el); });
-    /* 兜底：观察器从未回调（浏览器异常）时才全部显示，不影响正常的滚动揭示 */
-    setTimeout(function () { if (!fired) items.forEach(function (el) { el.classList.add('is-in'); }); }, 2200);
-  }
-  /* 首屏聚光：仅精确指针设备，且尊重「减少动效」 */
-  var hero = document.querySelector('.hero-hot');
-  if (hero && !reduce && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-    var raf = 0, mx = 0, my = 0;
-    var paint = function () {
-      raf = 0;
-      hero.style.setProperty('--mx', mx + 'px');
-      hero.style.setProperty('--my', my + 'px');
-    };
-    hero.addEventListener('pointermove', function (e) {
-      var r = hero.getBoundingClientRect();
-      mx = e.clientX - r.left;
-      my = e.clientY - r.top;
-      if (!raf) raf = requestAnimationFrame(paint);
-    }, { passive: true });
-  }
-})();
-</script>
+</div></main><footer class="w-full bg-surface-container-lowest"><div class="max-w-7xl mx-auto px-6 lg:px-12 pt-16 pb-12"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-space-xl mb-12"><div class="lg:col-span-2 space-y-space-md"><div class="flex items-center gap-space-sm"><img alt="TokPure 桌面端本地视频工具 Logo" class="h-8 w-auto object-contain" src="assets/img/logo.webp" width="192" height="192" loading="lazy" decoding="async"/><span class="font-headline-lg text-headline-lg text-on-surface font-bold">TokPure</span></div><p class="font-body-md text-body-md text-on-surface-variant max-w-sm">基于本地离线引擎的下一代 macOS / Windows 桌面极速无水印视频下载与 AI 超分无损重构套件。零云端留存，零隐私泄露风险。</p><div class="flex items-center gap-2 p-2.5 rounded-lg bg-surface-container-low"><span class="material-symbols-outlined text-tertiary text-lg">verified_user</span><div class="font-label-sm text-label-sm text-on-surface-variant"><span class="text-tertiary font-bold">Zero-Cloud-Leak:</span> 本地离线执行智能修复</div></div></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">产品矩阵</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="home" href="index.html">核心架构</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">macOS / Windows 客户端</a></li><li><a class="hover:text-on-surface transition-colors" data-path="stickers" href="tiktok-stickers.html">TikTok 贴纸</a></li><li><a class="hover:text-on-surface transition-colors" data-path="watermark" href="tiktok-watermark-remover.html">TikTok 去水印</a></li><li><a class="hover:text-on-surface transition-colors" data-path="subtitle" href="video-subtitle-generator.html">视频字幕生成</a></li><li><a class="hover:text-on-surface transition-colors" data-path="compare" href="compare.html">方案对比</a></li><li><a class="hover:text-on-surface transition-colors" data-path="pricing" href="pricing.html">价格与订阅</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">更新日志 (v3.9)</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">开发者 &amp; 支持</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">文档中心</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">CLI 命令行工具</a></li><li><a class="hover:text-on-surface transition-colors" data-path="about-us" href="about.html">关于团队</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私审计报告</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">运行状态</h4><div class="p-3 rounded-lg bg-surface-container-low space-y-2"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span><span class="font-label-sm text-label-sm text-on-surface">全线引擎正常运行</span></div><p class="font-body-sm text-body-sm text-on-surface-variant">Local Offline Engine v4.2 Ready</p></div><div class="mt-4"><div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant font-label-sm text-label-sm"><span class="material-symbols-outlined text-[16px]">language</span><span>简体中文 (中国)</span></div></div></div></div><div class="pt-8 space-y-4"><p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed text-center lg:text-left">免责声明：TokPure 属于独立研发的高性能本地音视频分析工程软件，与 TikTok、ByteDance 或任何第三方社交网络服务无关且未获得其官方赞助或背书。请在遵守当地版权法律与合理使用协议的前提下处理属于您个人所有的创作内容。</p><div class="flex flex-col sm:flex-row items-center justify-between gap-4 font-body-sm text-body-sm text-on-surface-variant"><div>© 2024 TokPure Studio Inc. 专为 macOS 与 Windows 打造。保留所有权利。</div><div class="flex items-center gap-6 font-label-sm text-label-sm"><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">服务条款</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私政策</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">安全白皮书</a></div></div></div></div></footer>
 <div id="tp-cta" class="tp-cta" hidden>
 <a href="download.html" data-path="download" class="inline-flex items-center justify-center gap-2 rounded-xl bg-primary-container text-on-primary-container font-headline-sm text-headline-sm py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]">
 <span class="material-symbols-outlined text-[18px]">download</span><span>免费下载</span>
@@ -1199,4 +1131,4 @@ No. Download and repair both run locally, there is no cloud step and no telemetr
 </a>
 </div>
 <script defer src="assets/js/mobile-cta.js?v=20261118"></script>
-</body></html>
+<script defer src="assets/js/home-fx.js?v=20261118"></script></body></html>

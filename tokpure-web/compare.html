@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head>
+<script>
+  /* 首帧语言引导（防 FOUC）：站点源码是简体中文，译文在运行时才覆盖；不干预的话首帧会先渲染中文
+     再被替换（首页首屏、点击导航切页时都会「闪一下中文」）。这里在解析 <head> 时就把语言定下来
+     并隐藏正文，等 i18n.js 完成覆盖后再显示（i18n.js 会在 apply() 内移除 data-tp-pending）。 */
+  (function () {
+    var d = document.documentElement;
+    /* 优先级：?lang= 显式指定 > 手动切换过的偏好 > 浏览器语言 > 英文兜底 */
+    function normalize(tag) {
+      var t = String(tag || '').toLowerCase();
+      if (!t) return '';
+      if (t === 'zh' || t === 'zh-hans' || t === 'zh-cn' || t === 'zh-sg') return 'zh-CN';
+      if (t === 'zh-tw' || t === 'zh-hk' || t === 'zh-mo' || t === 'zh-hant') return 'zh-TW';
+      if (/^(en|ja|es|pt|fr|de)$/.test(t.split('-')[0])) return t.split('-')[0];
+      return '';
+    }
+    function detectLang() {
+      var q = '';
+      try { q = new URLSearchParams(window.location.search).get('lang') || ''; } catch (e) { q = ''; }
+      var byQuery = normalize(q);
+      if (byQuery) return byQuery;
+      try {
+        if (window.localStorage.getItem('tokpure.lang.manual') === '1') {
+          var saved = window.localStorage.getItem('tokpure.lang') || '';
+          if (normalize(saved)) return normalize(saved);
+        }
+      } catch (e) { /* 隐私模式：直接走浏览器语言 */ }
+      var list = (navigator.languages && navigator.languages.length) ? navigator.languages : [navigator.language || ''];
+      for (var i = 0; i < list.length; i++) {
+        var hit = normalize(list[i]);
+        if (hit) return hit;
+      }
+      return 'en';
+    }
+    var lang = detectLang();
+    d.setAttribute('lang', lang);
+    d.setAttribute('data-lang', lang);
+    if (lang === 'zh-CN') return; /* 简体中文即源码本身，无需遮罩 */
+    d.setAttribute('data-tp-pending', '1');
+    var st = document.createElement('style');
+    st.textContent = 'html[data-tp-pending] body{visibility:hidden!important}';
+    (document.head || d).appendChild(st);
+    /* 兜底：词典请求失败或脚本异常时也要让页面显示出来，避免长时间空白 */
+    setTimeout(function () { d.removeAttribute('data-tp-pending'); }, 1500);
+  })();
+</script>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-3X58L0VT9F"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-3X58L0VT9F');
+</script>
+<script defer src="assets/js/ga4.js?v=20261111"></script><meta charset="utf-8"/><link rel="icon" href="assets/img/favicon.ico" sizes="any"/><link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png"/><link rel="icon" type="image/png" sizes="16x16" href="assets/img/favicon-16.png"/><link rel="apple-touch-icon" sizes="180x180" href="assets/img/apple-touch-icon.png"/>
+<title>三种视频处理方式对比 · 在线站 / 插件 / 本地客户端 · TokPure</title><meta name="description" content="在线去水印站、浏览器插件、本地桌面客户端怎么选：从隐私、画质、速度、价格与限制五个维度逐项对比，并说明各自适合谁、什么场景该用哪一种。"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><link rel="stylesheet" href="assets/css/fonts.css"/><link rel="preload" as="font" type="font/woff2" href="assets/fonts/plus-jakarta-sans-latin.woff2" crossorigin/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><link rel="stylesheet" href="assets/css/site.css"/><link rel="stylesheet" href="assets/css/tailwind.build.css"/><script defer src="assets/js/i18n.js?v=20261118-3"></script><script defer src="assets/js/mobile-nav.js"></script><script type="module" src="/src/entries/site-header.tsx"></script><meta name="keywords" content="TikTok stickers,TikTok 贴纸,TikTok 梗图生成器,GIF 贴纸,表情包制作,TikTok 表情包,meme sticker,一键分享 TikTok 好友,本地离线生成 GIF,TokPure"/><link rel="canonical" href="https://tokpure.clipopai.com/compare.html"/><meta property="og:type" content="website"/><meta property="og:site_name" content="TokPure"/><meta property="og:title" content="三种视频处理方式对比 · 在线站 / 插件 / 本地客户端 · TokPure"/><meta property="og:description" content="在线去水印站、浏览器插件、本地桌面客户端怎么选：从隐私、画质、速度、价格与限制五个维度逐项对比，并说明各自适合谁、什么场景该用哪一种。"/><meta property="og:url" content="https://tokpure.clipopai.com/compare.html"/><meta property="og:image" content="https://tokpure.clipopai.com/assets/og/og-cover.jpg"/><meta property="og:image:width" content="1200"/><meta property="og:image:height" content="630"/><meta property="og:image:alt" content="TokPure 桌面端本地视频工具"/><meta property="og:locale" content="zh_CN"/><meta property="og:locale:alternate" content="en_US"/><meta property="og:locale:alternate" content="zh_TW"/><meta property="og:locale:alternate" content="ja_JP"/><meta property="og:locale:alternate" content="es_ES"/><meta property="og:locale:alternate" content="pt_PT"/><meta property="og:locale:alternate" content="fr_FR"/><meta property="og:locale:alternate" content="de_DE"/><meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"/><meta name="theme-color" content="#111317"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="三种视频处理方式对比 · 在线站 / 插件 / 本地客户端 · TokPure"/><meta name="twitter:description" content="在线去水印站、浏览器插件、本地桌面客户端怎么选：从隐私、画质、速度、价格与限制五个维度逐项对比，并说明各自适合谁、什么场景该用哪一种。"/><meta name="twitter:image" content="https://tokpure.clipopai.com/assets/og/og-cover.jpg"/><meta name="twitter:image:alt" content="TokPure 桌面端本地视频工具"/><script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"首页","item":"https://tokpure.clipopai.com/"},{"@type":"ListItem","position":2,"name":"方案对比","item":"https://tokpure.clipopai.com/compare.html"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"在线工具免费，为什么还要装客户端？","acceptedAnswer":{"@type":"Answer","text":"在线工具的成本不在钱，而在画质、次数和素材外泄风险。如果你只是偶尔处理一条、且不介意画质被压缩，在线工具够用；如果要反复处理、要原画质、素材不能外传，本地客户端更合适。"}},{"@type":"Question","name":"TokPure 免费版和 Pro 差在哪？","acceptedAnswer":{"@type":"Answer","text":"免费版可以无限次下载无水印视频、做基础字幕识别、导出 SRT；Pro 解锁 AI 视频翻译、多语切片、多语口播、批量切片、4K 超分与本地涂抹去水印。"}},{"@type":"Question","name":"装了客户端还要联网吗？","acceptedAnswer":{"@type":"Answer","text":"下载安装包和 AI 模型时需要联网；解析、识别、渲染全程在本机完成，可以断网使用。"}},{"@type":"Question","name":"会不会被平台封号？","acceptedAnswer":{"@type":"Answer","text":"TokPure 只读取你主动粘贴的公开视频链接，不登录你的账号、不调用账号接口，因此不存在账号层面的风险。请仍然遵守平台条款与当地版权法律。"}}]}]}</script></head><body class="bg-background font-body-md text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container"><header class="fixed top-0 left-0 right-0 z-50 bg-surface/75 backdrop-blur-2xl shadow-[0_1px_16px_rgba(0,0,0,0.45)]"><div class="h-16 max-w-7xl mx-auto px-6 lg:px-12 flex items-center justify-between gap-space-md"><div class="flex items-center gap-space-md"><a class="flex items-center gap-space-sm group" data-path="home" href="index.html"><img alt="TokPure 桌面端本地视频工具 Logo" class="h-8 w-auto object-contain" src="assets/img/logo.webp" width="192" height="192" decoding="async"/><span class="font-headline-lg text-headline-lg tracking-tight text-on-surface font-bold">TokPure</span></a><div class="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-high"><span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span><span class="font-label-sm text-label-sm text-tertiary-fixed">v3.9 macOS / Win</span></div></div><nav class="hidden lg:flex items-center gap-1" data-active-classes="text-on-surface bg-surface-container font-headline-sm rounded-lg shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]"><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="home" href="index.html">首页</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="download" href="download.html">下载客户端</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="pricing" href="pricing.html">价格</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="about-us" href="about.html">关于我们</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="blog" href="blog.html">博客</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="stickers" href="tiktok-stickers.html">TikTok 贴纸</a><a class="px-3 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" data-path="answers" href="answers.html">场景问答</a></nav><div class="flex items-center gap-space-md"><div class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-lowest"><span class="w-2 h-2 rounded-full bg-tertiary"></span><span class="font-label-sm text-label-sm text-on-surface">100% LOCAL COMPUTE</span></div><div id="site-header-auth" class="flex items-center"></div><a class="hidden sm:inline-block font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface transition-colors px-2" data-path="login" href="login.html">登录</a><a class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25)] hover:bg-primary transition-all" data-path="download" href="download.html">免费下载体验</a><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center" data-header-avatar><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-16 bg-background min-h-screen"><div class="flex flex-col w-full">
+<section class="max-w-7xl mx-auto px-6 lg:px-12 pt-14 pb-12 text-center">
+<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-container-high font-label-sm text-label-sm text-tertiary-fixed"><span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span><span>五种维度逐项对比</span></div>
+<h1 class="mt-6 mx-auto max-w-[900px] font-headline-xl text-[32px] sm:text-[44px] lg:text-[52px] font-extrabold tracking-[-0.03em] leading-[1.12] text-on-surface">在线站、浏览器插件、本地客户端，到底该用哪个</h1>
+<p class="mt-5 mx-auto max-w-[680px] font-body-lg text-body-lg text-on-surface-variant leading-relaxed">三者都能「去水印」，差别在素材去哪、画质剩多少、以及能不能长期用。下面这张表只写能验证的事实。</p>
+<div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+<a href="download.html" data-path="download" class="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl bg-primary-container text-on-primary-container font-headline-sm text-headline-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] hover:bg-primary transition-all"><span class="material-symbols-outlined text-[20px]">download</span><span>免费下载</span></a>
+<a href="pricing.html" data-path="pricing" class="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl border border-outline-variant/50 text-on-surface font-headline-sm text-headline-sm hover:bg-surface-container transition-colors"><span>查看价格</span></a>
+</div>
+</section>
+<section class="max-w-6xl w-full mx-auto px-6 lg:px-12 pb-20">
+<div class="rounded-xl border border-outline-variant/40 overflow-x-auto">
+<table class="compare-table w-full min-w-[640px]"><thead><tr><th></th><th>在线去水印站</th><th>浏览器插件</th><th>TokPure 桌面端</th></tr></thead><tbody><tr><td>视频是否离开本机</td><td>上传到对方服务器</td><td>多数实现会上传</td><td>全程本地，不上传</td></tr><tr><td>画质</td><td>二次压缩，分辨率下降</td><td>常被平台改版影响</td><td>保留原始流，不重编码</td></tr><tr><td>速度</td><td>受服务器排队与限速影响</td><td>取决于插件实现</td><td>本机算力，无排队</td></tr><tr><td>价格</td><td>免费但限次数 / 订阅解锁</td><td>多为订阅</td><td>免费版可用，Pro $9.9/月</td></tr><tr><td>次数限制</td><td>每日次数、看广告</td><td>不稳定</td><td>免费版不限次数</td></tr><tr><td>批量处理</td><td>基本不支持</td><td>不稳定</td><td>Pro 支持</td></tr><tr><td>可用性</td><td>站点关停即失效</td><td>浏览器更新可能失效</td><td>本地引擎，长期可用</td></tr><tr><td>AI 能力</td><td>无</td><td>无</td><td>字幕、翻译、口播、画质增强</td></tr></tbody></table>
+</div>
+<p class="mt-4 font-body-sm text-body-sm text-on-surface-variant">说明：在线站与插件的表现基于公开可见的常见做法，不同产品会有差异；TokPure 一列均为本机可复现的行为。</p>
+</section>
+<section class="max-w-7xl mx-auto px-6 lg:px-12 pb-20">
+<h2 class="font-headline-lg text-[24px] sm:text-[30px] font-bold tracking-[-0.02em] text-on-surface mb-6">各自适合谁</h2>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+<div class="rounded-xl border border-outline-variant/40 bg-surface-container-low/50 px-6 py-6">
+<h3 class="font-headline-sm text-headline-sm font-semibold text-on-surface">在线去水印站</h3>
+<p class="mt-2 font-body-sm text-body-sm text-on-surface-variant leading-relaxed">适合偶尔处理一条、不介意画质被压缩、也不想安装任何软件的人。代价是广告、次数限制与素材外传。</p>
+</div>
+<div class="rounded-xl border border-outline-variant/40 bg-surface-container-low/50 px-6 py-6">
+<h3 class="font-headline-sm text-headline-sm font-semibold text-on-surface">浏览器插件</h3>
+<p class="mt-2 font-body-sm text-body-sm text-on-surface-variant leading-relaxed">适合已经在浏览器里工作流的人。缺点是依赖平台页面结构，平台一改版就失效，且部分插件会上传链接。</p>
+</div>
+<div class="rounded-xl border-2 border-primary/50 bg-surface-container-low/60 px-6 py-6">
+<h3 class="font-headline-sm text-headline-sm font-semibold text-on-surface">TokPure 桌面端</h3>
+<p class="mt-2 font-body-sm text-body-sm text-on-surface-variant leading-relaxed">适合需要反复处理、要求原画质、素材不能外传的创作者与团队。免费版不限次数，Pro 再解锁 AI 能力。</p>
+</div>
+</div>
+</section>
+<section class="max-w-4xl mx-auto px-6 lg:px-12 pb-20">
+<h2 class="font-headline-lg text-[24px] sm:text-[30px] font-bold tracking-[-0.02em] text-on-surface mb-6">常见问题</h2>
+<div class="faq-list rounded-xl border border-outline-variant/30 bg-surface-container-low/60 px-6">
+<details><summary><span>在线工具免费，为什么还要装客户端？</span></summary><p>在线工具的成本不在钱，而在画质、次数和素材外泄风险。如果你只是偶尔处理一条、且不介意画质被压缩，在线工具够用；如果要反复处理、要原画质、素材不能外传，本地客户端更合适。</p></details><details><summary><span>TokPure 免费版和 Pro 差在哪？</span></summary><p>免费版可以无限次下载无水印视频、做基础字幕识别、导出 SRT；Pro 解锁 AI 视频翻译、多语切片、多语口播、批量切片、4K 超分与本地涂抹去水印。</p></details><details><summary><span>装了客户端还要联网吗？</span></summary><p>下载安装包和 AI 模型时需要联网；解析、识别、渲染全程在本机完成，可以断网使用。</p></details><details><summary><span>会不会被平台封号？</span></summary><p>TokPure 只读取你主动粘贴的公开视频链接，不登录你的账号、不调用账号接口，因此不存在账号层面的风险。请仍然遵守平台条款与当地版权法律。</p></details>
+</div>
+</section>
+<section class="max-w-7xl mx-auto px-6 lg:px-12 pb-24">
+<div class="rounded-2xl border border-outline-variant/40 bg-surface-container-low/60 px-6 py-12 lg:px-12 text-center">
+<h2 class="font-headline-lg text-[26px] sm:text-[34px] font-bold tracking-[-0.02em] text-on-surface">先装上，再比较也不迟</h2>
+<p class="mt-3 font-body-md text-body-md text-on-surface-variant max-w-xl mx-auto">免费版永久可用，不限次数；不满意随时卸载，不需要绑卡。</p>
+<div class="mt-7 flex flex-col sm:flex-row items-center justify-center gap-3">
+<a href="download.html" data-path="download" class="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-primary-container text-on-primary-container font-headline-sm text-headline-sm hover:bg-primary transition-all"><span class="material-symbols-outlined text-[18px]">download</span><span>免费下载</span></a>
+</div>
+</div>
+</section>
+</div></main><footer class="w-full bg-surface-container-lowest"><div class="max-w-7xl mx-auto px-6 lg:px-12 pt-16 pb-12"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-space-xl mb-12"><div class="lg:col-span-2 space-y-space-md"><div class="flex items-center gap-space-sm"><img alt="TokPure 桌面端本地视频工具 Logo" class="h-8 w-auto object-contain" src="assets/img/logo.webp" width="192" height="192" loading="lazy" decoding="async"/><span class="font-headline-lg text-headline-lg text-on-surface font-bold">TokPure</span></div><p class="font-body-md text-body-md text-on-surface-variant max-w-sm">基于本地离线引擎的下一代 macOS / Windows 桌面极速无水印视频下载与 AI 超分无损重构套件。零云端留存，零隐私泄露风险。</p><div class="flex items-center gap-2 p-2.5 rounded-lg bg-surface-container-low"><span class="material-symbols-outlined text-tertiary text-lg">verified_user</span><div class="font-label-sm text-label-sm text-on-surface-variant"><span class="text-tertiary font-bold">Zero-Cloud-Leak:</span> 本地离线执行智能修复</div></div></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">产品矩阵</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="home" href="index.html">核心架构</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">macOS / Windows 客户端</a></li><li><a class="hover:text-on-surface transition-colors" data-path="stickers" href="tiktok-stickers.html">TikTok 贴纸</a></li><li><a class="hover:text-on-surface transition-colors" data-path="watermark" href="tiktok-watermark-remover.html">TikTok 去水印</a></li><li><a class="hover:text-on-surface transition-colors" data-path="subtitle" href="video-subtitle-generator.html">视频字幕生成</a></li><li><a class="hover:text-on-surface transition-colors" data-path="compare" href="compare.html">方案对比</a></li><li><a class="hover:text-on-surface transition-colors" data-path="pricing" href="pricing.html">价格与订阅</a></li><li><a class="hover:text-on-surface transition-colors" data-path="download" href="download.html">更新日志 (v3.9)</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">开发者 &amp; 支持</h4><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">文档中心</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">CLI 命令行工具</a></li><li><a class="hover:text-on-surface transition-colors" data-path="about-us" href="about.html">关于团队</a></li><li><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私审计报告</a></li></ul></div><div><h4 class="font-headline-sm text-headline-sm text-on-surface mb-space-md">运行状态</h4><div class="p-3 rounded-lg bg-surface-container-low space-y-2"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span><span class="font-label-sm text-label-sm text-on-surface">全线引擎正常运行</span></div><p class="font-body-sm text-body-sm text-on-surface-variant">Local Offline Engine v4.2 Ready</p></div><div class="mt-4"><div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant font-label-sm text-label-sm"><span class="material-symbols-outlined text-[16px]">language</span><span>简体中文 (中国)</span></div></div></div></div><div class="pt-8 space-y-4"><p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed text-center lg:text-left">免责声明：TokPure 属于独立研发的高性能本地音视频分析工程软件，与 TikTok、ByteDance 或任何第三方社交网络服务无关且未获得其官方赞助或背书。请在遵守当地版权法律与合理使用协议的前提下处理属于您个人所有的创作内容。</p><div class="flex flex-col sm:flex-row items-center justify-between gap-4 font-body-sm text-body-sm text-on-surface-variant"><div>© 2024 TokPure Studio Inc. 专为 macOS 与 Windows 打造。保留所有权利。</div><div class="flex items-center gap-6 font-label-sm text-label-sm"><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">服务条款</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">隐私政策</a><a class="hover:text-on-surface transition-colors" data-path="documentation" href="download.html">安全白皮书</a></div></div></div></div></footer>
+<script defer src="assets/js/site-fx.js?v=20261114"></script>
+<div id="tp-cta" class="tp-cta" hidden>
+<a href="download.html" data-path="download" class="inline-flex items-center justify-center gap-2 rounded-xl bg-primary-container text-on-primary-container font-headline-sm text-headline-sm py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]">
+<span class="material-symbols-outlined text-[18px]">download</span><span>免费下载</span>
+</a>
+<a href="pricing.html" class="inline-flex items-center justify-center gap-2 rounded-xl border border-outline-variant/50 bg-surface-container-low/60 text-on-surface font-headline-sm text-headline-sm py-3">
+<span>查看价格</span>
+</a>
+</div>
+<script defer src="assets/js/mobile-cta.js?v=20261118"></script>
+</body></html>
