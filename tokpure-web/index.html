@@ -147,7 +147,7 @@ html.reveal-on [data-reveal].is-in{opacity:1;transform:none}
 html.reveal-on [data-reveal]{opacity:1;transform:none;transition:none}
 .hero-spot{display:none}
 }
-</style><link rel="stylesheet" href="assets/css/site.css"/><link rel="stylesheet" href="assets/css/tailwind.build.css"/><script defer src="assets/js/i18n.js?v=20261114"></script><script defer src="assets/js/mobile-nav.js"></script><script type="module" src="/src/entries/site-header.tsx"></script>
+</style><link rel="stylesheet" href="assets/css/site.css"/><link rel="stylesheet" href="assets/css/tailwind.build.css"/><script defer src="assets/js/i18n.js?v=20261118"></script><script defer src="assets/js/mobile-nav.js"></script><script type="module" src="/src/entries/site-header.tsx"></script>
 <!-- SEO/GEO: 统一规范化与分享卡片（canonical 用绝对地址，og:image 指向构建期稳定拷贝的 /assets/og/og-cover.jpg） -->
 <link rel="canonical" href="https://tokpure.clipopai.com/"/>
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"/>
@@ -1084,6 +1084,32 @@ No. Download and repair both run locally, there is no cloud step and no telemetr
 </div>
 </div>
 </section>
+<!-- Section 3.5: Trust Strip -->
+<section class="max-w-7xl mx-auto px-6 lg:px-12 pb-8 w-full" data-reveal>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+<div class="rounded-xl border border-outline-variant/40 bg-surface-container-low/50 px-6 py-5">
+<div class="flex items-center gap-2 text-tertiary mb-2">
+<span class="material-symbols-outlined text-[20px]">security</span>
+<span class="font-label-md text-label-md font-semibold">本地运行，不上传</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">解析、超分、去水印全部在本机完成，视频与声音不会经过我们的服务器。</p>
+</div>
+<div class="rounded-xl border border-outline-variant/40 bg-surface-container-low/50 px-6 py-5">
+<div class="flex items-center gap-2 text-tertiary mb-2">
+<span class="material-symbols-outlined text-[20px]">verified</span>
+<span class="font-label-md text-label-md font-semibold">安装包公开可核验</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">每个版本都在 GitHub Releases 公开，附版本号与校验值，可自行比对后再安装。</p>
+</div>
+<div class="rounded-xl border border-outline-variant/40 bg-surface-container-low/50 px-6 py-5">
+<div class="flex items-center gap-2 text-tertiary mb-2">
+<span class="material-symbols-outlined text-[20px]">update</span>
+<span class="font-label-md text-label-md font-semibold">订阅随时取消</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">按月计费，无长期合约；取消后权益保留到当前周期结束，不会自动续费。</p>
+</div>
+</div>
+</section>
 <!-- Section 4: Final Call To Action Banner -->
 <section class="max-w-7xl mx-auto px-6 lg:px-12 pt-8 pb-24 w-full" data-reveal>
 <div class="relative rounded-3xl overflow-hidden bg-gradient-to-br from-surface-container-high via-surface-container to-surface-container-lowest p-8 sm:p-14 text-center flex flex-col items-center">
@@ -1164,4 +1190,13 @@ No. Download and repair both run locally, there is no cloud step and no telemetr
   }
 })();
 </script>
+<div id="tp-cta" class="tp-cta" hidden>
+<a href="download.html" data-path="download" class="inline-flex items-center justify-center gap-2 rounded-xl bg-primary-container text-on-primary-container font-headline-sm text-headline-sm py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]">
+<span class="material-symbols-outlined text-[18px]">download</span><span>免费下载</span>
+</a>
+<a href="pricing.html" class="inline-flex items-center justify-center gap-2 rounded-xl border border-outline-variant/50 bg-surface-container-low/60 text-on-surface font-headline-sm text-headline-sm py-3">
+<span>查看价格</span>
+</a>
+</div>
+<script defer src="assets/js/mobile-cta.js?v=20261118"></script>
 </body></html>

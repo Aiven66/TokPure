@@ -479,3 +479,76 @@ html.reveal-on [data-reveal].is-in { opacity: 1; transform: none; }
   transform: translateY(-3px);
   box-shadow: 0 26px 60px -34px rgba(0, 0, 0, 0.95);
 }
+
+/* ---------- W-02 移动端底部转化条 ---------- */
+.tp-cta {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  display: flex;
+  gap: 10px;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: rgba(17, 19, 23, 0.88);
+  backdrop-filter: blur(18px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  transform: translateY(110%);
+  transition: transform 0.32s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.tp-cta.is-on { transform: none; }
+.tp-cta a { flex: 1; }
+@media (min-width: 1024px) { .tp-cta { display: none !important; } }
+@media (prefers-reduced-motion: reduce) {
+  .tp-cta { transition: opacity 0.2s linear; transform: none; opacity: 0; }
+  .tp-cta.is-on { opacity: 1; }
+}
+
+/* ---------- W-01 下载页推荐条 ---------- */
+#dl-recommend > a.hidden { display: none; }
+#dl-recommend > a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 20px;
+  border-radius: 12px;
+  font-weight: 700;
+  background: #ff5168;
+  color: #2b0710;
+  box-shadow: 0 14px 34px -16px rgba(255, 81, 104, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  transition: background-color 0.25s ease, transform 0.25s ease;
+}
+#dl-recommend > a:hover { background: #ff6d80; transform: translateY(-1px); }
+
+/* ---------- W-04 价格页对比表与 FAQ ---------- */
+.compare-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+.compare-table th,
+.compare-table td { padding: 12px 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.07); text-align: left; }
+.compare-table th { font-weight: 600; color: rgba(230, 232, 235, 0.72); }
+.compare-table td:not(:first-child),
+.compare-table th:not(:first-child) { text-align: center; width: 88px; }
+.compare-table tr:last-child td { border-bottom: 0; }
+.compare-table .yes { color: #4ee2a3; }
+.compare-table .no { color: rgba(230, 232, 235, 0.32); }
+
+.faq-list details { border-top: 1px solid rgba(255, 255, 255, 0.07); }
+.faq-list details:last-child { border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
+.faq-list summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 0;
+  font-size: 15px;
+  color: #e6e8ea;
+}
+.faq-list summary::after {
+  content: "+";
+  color: rgba(230, 232, 235, 0.45);
+  font-size: 18px;
+  line-height: 1;
+  transition: transform 0.25s ease;
+}
+.faq-list details[open] summary::after { transform: rotate(45deg); }
+.faq-list p { padding-bottom: 16px; font-size: 14px; line-height: 1.75; color: rgba(230, 232, 235, 0.66); }
