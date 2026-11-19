@@ -174,7 +174,7 @@ html.reveal-on [data-reveal]{opacity:1;transform:none;transition:none}
 <meta name="twitter:title" content="TokPure · TikTok 无水印下载与本地 AI 出片"/>
 <meta name="twitter:description" content="TokPure 是本地运行的 macOS / Windows 桌面工具：TikTok 无水印原画质直取，再用本地 AI 超分、去水印、翻译配音与字幕，素材不上传。"/>
 <meta name="twitter:image" content="https://tokpure.clipopai.com/assets/og/og-cover.jpg"/>
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://tokpure.clipopai.com/#org","name":"TokPure Studio","url":"https://tokpure.clipopai.com/","logo":{"@type":"ImageObject","url":"https://tokpure.clipopai.com/assets/og/og-cover.jpg","width":1200,"height":630}},{"@type":"WebSite","@id":"https://tokpure.clipopai.com/#website","url":"https://tokpure.clipopai.com/","name":"TokPure","inLanguage":["zh-CN","zh-TW","en","ja","es","pt","fr","de"],"publisher":{"@id":"https://tokpure.clipopai.com/#org"}},{"@type":"SoftwareApplication","@id":"https://tokpure.clipopai.com/#app","name":"TokPure","applicationCategory":"MultimediaApplication","applicationSubCategory":"Video Downloader & AI Video Restore","operatingSystem":"macOS 12+, Windows 10/11 (x64)","url":"https://tokpure.clipopai.com/","downloadUrl":"https://tokpure.clipopai.com/download.html","description":"TokPure 是本地离线运行的 TikTok 无水印下载与 AI 视频修复桌面客户端：本地解析直取、AI 超分插帧、AI 去水印、字幕生成与批量切片，并可上传自己的声音做零样本克隆、把原片人声整条换成「我的声音说目标语言」，全程零云端中转。","featureList":["TikTok 无水印下载（本地解析直取官方 CDN）","AI 超分与插帧修复（本地 Metal 加速）","AI 去水印（OCR 自动检测 + delogo）","Whisper 本地字幕识别与 SRT 导出","AI 批量切片与成片封面","TikTok 梗图贴纸 GIF 生成","AI 视频翻译（上传自己的声音克隆换声，本地离线）","本地媒体库与批量任务队列"],"offers":[{"@type":"Offer","name":"免费下载体验","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Pro 月度订阅","price":"9.9","priceCurrency":"USD"},{"@type":"Offer","name":"Studio 团队月度订阅","price":"29","priceCurrency":"USD"}],"publisher":{"@id":"https://tokpure.clipopai.com/#org"}}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://tokpure.clipopai.com/#org","name":"TokPure Studio","url":"https://tokpure.clipopai.com/","logo":{"@type":"ImageObject","url":"https://tokpure.clipopai.com/assets/og/og-cover.jpg","width":1200,"height":630}},{"@type":"WebSite","@id":"https://tokpure.clipopai.com/#website","url":"https://tokpure.clipopai.com/","name":"TokPure","inLanguage":["zh-CN","zh-TW","en","ja","es","pt","fr","de"],"publisher":{"@id":"https://tokpure.clipopai.com/#org"}},{"@type":"SoftwareApplication","@id":"https://tokpure.clipopai.com/#app","name":"TokPure","applicationCategory":"MultimediaApplication","applicationSubCategory":"Video Downloader & AI Video Restore","operatingSystem":"macOS 12+, Windows 10/11 (x64)","url":"https://tokpure.clipopai.com/","downloadUrl":"https://tokpure.clipopai.com/download.html","description":"TokPure 是本地离线运行的 TikTok 无水印下载与 AI 视频修复桌面客户端：本地解析直取、AI 超分插帧、AI 去水印、字幕生成与批量切片，并可上传自己的声音做零样本克隆、把原片人声整条换成「我的声音说目标语言」，全程零云端中转。","featureList":["TikTok 无水印下载（本地解析直取官方 CDN）","AI 超分与插帧修复（本地 Metal 加速）","AI 去水印（OCR 自动检测 + delogo）","Whisper 本地字幕识别与 SRT 导出","AI 批量切片与成片封面","TikTok 梗图贴纸 GIF 生成","AI 视频翻译（上传自己的声音克隆换声，本地离线）","本地媒体库与批量任务队列"],"offers":[{"@type":"Offer","name":"免费下载体验","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Pro 月度订阅","price":"9.9","priceCurrency":"USD"},{"@type":"Offer","name":"Studio 团队月度订阅","price":"29","priceCurrency":"USD"}],"publisher":{"@id":"https://tokpure.clipopai.com/#org"}},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Is TokPure really free?","acceptedAnswer":{"@type":"Answer","text":"It is free to download. The Community tier gets native-stream downloads at 720p and 1080p, M4A audio extraction and two concurrent tasks, with the base end-card logo removal. Local AI inpainting, 4K upscaling and batch concurrency are in Pro at $9.9/month."}},{"@type":"Question","name":"Does removing the watermark lower the video quality?","acceptedAnswer":{"@type":"Answer","text":"Not if you download the native stream — there is no re-encode at all. Repairing an already-reposted clip is different: that is reconstruction from surrounding frames, so a heavily compressed re-post will keep faint traces."}},{"@type":"Question","name":"Why does the TikTok watermark move between frames?","acceptedAnswer":{"@type":"Answer","text":"TikTok composites it onto a drifting path rather than at a fixed corner. That is why single-frame removers leave a smeared rectangle instead of a clean area."}},{"@type":"Question","name":"Does anything get uploaded or logged?","acceptedAnswer":{"@type":"Answer","text":"No. Download and repair both run locally, there is no cloud step and no telemetry."}}]}]}</script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -541,25 +541,12 @@ If you only need one raw download and you're comfortable in a terminal, yt-dlp d
 <div class="mt-12">
 <h2 class="font-headline-xl text-xl sm:text-2xl text-on-surface font-bold tracking-tight">FAQ</h2>
 
-<h3 class="mt-6 font-headline-md text-headline-md text-on-surface font-semibold">Is TokPure really free?</h3>
-<p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">
-It is free to download. The Community tier gets native-stream downloads at 720p and 1080p, M4A audio extraction and two concurrent tasks, with the base end-card logo removal. Local AI inpainting, 4K upscaling and batch concurrency are in Pro at $9.9/month.
-</p>
-
-<h3 class="mt-6 font-headline-md text-headline-md text-on-surface font-semibold">Does removing the watermark lower the video quality?</h3>
-<p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">
-Not if you download the native stream — there is no re-encode at all. Repairing an already-reposted clip is different: that is reconstruction from surrounding frames, so a heavily compressed re-post will keep faint traces.
-</p>
-
-<h3 class="mt-6 font-headline-md text-headline-md text-on-surface font-semibold">Why does the TikTok watermark move between frames?</h3>
-<p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">
-TikTok composites it onto a drifting path rather than at a fixed corner. That is why single-frame removers leave a smeared rectangle instead of a clean area.
-</p>
-
-<h3 class="mt-6 font-headline-md text-headline-md text-on-surface font-semibold">Does anything get uploaded or logged?</h3>
-<p class="mt-2 font-body-md text-body-md text-on-surface-variant leading-relaxed">
-No. Download and repair both run locally, there is no cloud step and no telemetry.
-</p>
+<div class="faq-list mt-6 rounded-xl border border-outline-variant/30 bg-surface-container-low/60 px-6" data-home-faq>
+<details data-faq="0"><summary><span>Is TokPure really free?</span></summary><div class="faq-body"></div></details>
+<details data-faq="1"><summary><span>Does removing the watermark lower the video quality?</span></summary><div class="faq-body"></div></details>
+<details data-faq="2"><summary><span>Why does the TikTok watermark move between frames?</span></summary><div class="faq-body"></div></details>
+<details data-faq="3"><summary><span>Does anything get uploaded or logged?</span></summary><div class="faq-body"></div></details>
+</div>
 
 </div>
 
@@ -1131,4 +1118,4 @@ No. Download and repair both run locally, there is no cloud step and no telemetr
 </a>
 </div>
 <script defer src="assets/js/mobile-cta.js?v=20261118"></script>
-<script defer src="assets/js/home-fx.js?v=20261118"></script></body></html>
+<script defer src="assets/js/home-fx.js?v=20261118"></script><script defer src="assets/js/home-faq.js?v=20261119"></script></body></html>

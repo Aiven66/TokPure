@@ -203,6 +203,9 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
       emptyOutDir: true,
       assetsDir: 'bundles',
+      // 默认 4KB 以下的图片会被内联成 base64 写进 HTML，首页因此多出 43KB 无法缓存的
+      // 字符，直接拖慢首屏解析。改为全部输出独立文件，交由浏览器缓存。
+      assetsInlineLimit: 0,
       rollupOptions: { input: htmlEntries() },
     },
   };
