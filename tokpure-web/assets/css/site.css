@@ -508,9 +508,10 @@ html.reveal-on [data-reveal].is-in { opacity: 1; transform: none; }
 #dl-recommend > a.hidden { display: none; }
 #dl-recommend > a {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 2px;
   padding: 14px 20px;
   border-radius: 12px;
   font-weight: 700;
@@ -555,3 +556,57 @@ html.reveal-on [data-reveal].is-in { opacity: 1; transform: none; }
 }
 .faq-list details[open] summary::after { transform: rotate(45deg); }
 .faq-list p { padding-bottom: 16px; font-size: 14px; line-height: 1.75; color: rgba(230, 232, 235, 0.66); }
+
+/* ---- 按钮基线 ----
+   只负责几何与交互，颜色仍由 Tailwind 语义色类决定，避免两套色值。
+   统一高度/圆角/图标尺寸/焦点环，解决不同页面按钮高低不齐、文字断行难看的问题。 */
+.tp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 48px;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  min-width: 0;
+  transition: background-color 0.18s ease, border-color 0.18s ease,
+    box-shadow 0.18s ease, transform 0.18s ease, color 0.18s ease;
+}
+.tp-btn > .material-symbols-outlined { font-size: 20px; flex: none; }
+.tp-btn:hover { transform: translateY(-1px); }
+.tp-btn:active { transform: translateY(0); }
+.tp-btn:focus-visible {
+  outline: 2px solid #ffb3b6;
+  outline-offset: 2px;
+}
+/* 主按钮：标题 + 副标题（体积、架构）纵向排列，长文案不再挤成三行 */
+.tp-btn-stack { flex-direction: column; gap: 0.15rem; padding: 0.85rem 1.25rem; }
+.tp-btn-stack .tp-btn-title {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 15px;
+  font-weight: 600;
+}
+.tp-btn-stack .tp-btn-meta {
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.78;
+  letter-spacing: 0.01em;
+}
+.tp-btn-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  width: 100%;
+}
+@media (min-width: 640px) {
+  .tp-btn-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tp-btn, .tp-btn:hover { transition: none; transform: none; }
+}

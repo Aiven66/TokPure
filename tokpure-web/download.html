@@ -92,17 +92,17 @@
         选择适配你设备的版本：macOS 提供 Universal 双架构原生支持，Windows 11 / 10 提供 x64 原生安装包，本地离线极速重构。
       </p>
 <div id="dl-recommend" class="mt-8 max-w-md mx-auto" hidden>
-<a data-dl="mac-arm64" class="hidden" href="https://github.com/Aiven66/TokPure/releases/download/v3.9.42/TokPure-3.9.42-arm64.dmg">
-<span class="material-symbols-outlined text-[20px]">download</span>
-<span>下载 macOS 版 · Apple Silicon（146.8 MB）</span>
+<a data-dl="mac-arm64" class="hidden tp-btn tp-btn-stack" href="https://github.com/Aiven66/TokPure/releases/download/v3.9.42/TokPure-3.9.42-arm64.dmg">
+<span class="tp-btn-title"><span class="material-symbols-outlined text-[18px]">download</span><span>下载 macOS 版</span></span>
+<span class="tp-btn-meta">Apple Silicon · .dmg · 146.8 MB</span>
 </a>
-<a data-dl="mac-x64" class="hidden" href="https://github.com/Aiven66/TokPure/releases/download/v3.9.42/TokPure-3.9.42-x64.dmg">
-<span class="material-symbols-outlined text-[20px]">download</span>
-<span>下载 macOS 版 · Intel（158.0 MB）</span>
+<a data-dl="mac-x64" class="hidden tp-btn tp-btn-stack" href="https://github.com/Aiven66/TokPure/releases/download/v3.9.42/TokPure-3.9.42-x64.dmg">
+<span class="tp-btn-title"><span class="material-symbols-outlined text-[18px]">download</span><span>下载 macOS 版</span></span>
+<span class="tp-btn-meta">Intel · .dmg · 158.0 MB</span>
 </a>
-<a data-dl="win-x64" class="hidden" href="https://github.com/Aiven66/TokPure/releases/download/v3.9.42/TokPure-Setup-3.9.42-x64.exe">
-<span class="material-symbols-outlined text-[20px]">download</span>
-<span>下载 Windows 版 · x64（129.5 MB）</span>
+<a data-dl="win-x64" class="hidden tp-btn tp-btn-stack" href="https://github.com/Aiven66/TokPure/releases/download/v3.9.42/TokPure-Setup-3.9.42-x64.exe">
+<span class="tp-btn-title"><span class="material-symbols-outlined text-[18px]">download</span><span>下载 Windows 版</span></span>
+<span class="tp-btn-meta">Windows 11 / 10 · x64 · 129.5 MB</span>
 </a>
 </div>
 <p id="dl-recommend-note" class="mt-3 font-body-sm text-body-sm text-on-surface-variant leading-relaxed" hidden>
@@ -134,13 +134,13 @@
 <!-- Background Subtle Gradient Splash -->
 <div class="absolute -right-20 -bottom-20 w-64 h-64 bg-primary-container/15 rounded-full blur-[80px] pointer-events-none"></div>
 <div>
-<div class="flex items-start justify-between gap-4 mb-6">
+<div class="flex flex-col items-start sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-6">
 <div class="flex items-center gap-3">
 <div class="w-12 h-12 rounded-lg bg-surface-container-lowest flex items-center justify-center shadow-inner">
 <span class="material-symbols-outlined text-primary-container text-2xl">neurology</span>
 </div>
 <div>
-<div class="flex items-center gap-2">
+<div class="flex flex-wrap items-center gap-2">
 <span class="font-headline-md text-headline-md text-on-surface">Apple Silicon 原生版</span>
 <span class="px-2 py-0.5 rounded-full bg-primary-container/20 text-primary-fixed font-label-sm text-label-sm font-semibold">强烈推荐</span>
 </div>
@@ -167,10 +167,7 @@
 </div>
 <!-- Action Buttons -->
 <div class="space-y-4 pt-4">
-<a class="w-full py-4 px-6 rounded-lg bg-primary-container text-on-primary-container font-headline-md text-headline-md flex items-center justify-center gap-3 shadow-lg hover:bg-primary transition-all duration-200 cursor-pointer" href="https://github.com/Aiven66/TokPure/releases/download/v3.9.42/TokPure-3.9.42-arm64.dmg">
-<span class="material-symbols-outlined text-2xl">download</span>
-<span>下载 .dmg 安装包 (Apple Silicon · 146.8 MB)</span>
-</a>
+<a class="tp-btn tp-btn-stack w-full bg-primary-container text-on-primary-container shadow-[0_12px_30px_-16px_rgba(255,81,104,0.8),inset_0_1px_0_rgba(255,255,255,0.22)] hover:bg-primary" href="https://github.com/Aiven66/TokPure/releases/download/v3.9.42/TokPure-3.9.42-arm64.dmg"><span class="tp-btn-title"><span class="material-symbols-outlined">download</span><span>下载 macOS 安装包</span></span><span class="tp-btn-meta">Apple Silicon · .dmg · 146.8 MB</span></a>
 <!-- Homebrew Terminal Block -->
 <div class="p-3 rounded-lg bg-surface-container-lowest flex items-center justify-between gap-3 shadow-inner">
 <div class="flex items-center gap-2 overflow-hidden">
@@ -186,7 +183,7 @@
 <!-- Card 2: Intel Architecture -->
 <div class="lg:col-span-5 bg-surface-container rounded-xl p-8 shadow-md flex flex-col justify-between relative overflow-hidden">
 <div>
-<div class="flex items-start justify-between gap-4 mb-6">
+<div class="flex flex-col items-start sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-6">
 <div class="flex items-center gap-3">
 <div class="w-12 h-12 rounded-lg bg-surface-container-low flex items-center justify-center">
 <span class="material-symbols-outlined text-on-surface text-2xl">laptop_mac</span>
@@ -216,10 +213,7 @@
 </div>
 <!-- Download Action -->
 <div class="space-y-4 pt-4">
-<a class="w-full py-3.5 px-6 rounded-lg bg-surface-container-highest text-on-surface font-headline-sm text-headline-sm flex items-center justify-center gap-2 hover:bg-surface-bright transition-all duration-200 cursor-pointer" href="https://github.com/Aiven66/TokPure/releases/download/v3.9.42/TokPure-3.9.42-x64.dmg">
-<span class="material-symbols-outlined text-xl">download</span>
-<span>下载 .dmg 安装包 (Intel 架构 · 158.0 MB)</span>
-</a>
+<a class="tp-btn tp-btn-stack w-full bg-primary-container text-on-primary-container shadow-[0_12px_30px_-16px_rgba(255,81,104,0.8),inset_0_1px_0_rgba(255,255,255,0.22)] hover:bg-primary" href="https://github.com/Aiven66/TokPure/releases/download/v3.9.42/TokPure-3.9.42-x64.dmg"><span class="tp-btn-title"><span class="material-symbols-outlined">download</span><span>下载 macOS 安装包</span></span><span class="tp-btn-meta">Intel · .dmg · 158.0 MB</span></a>
 <div class="text-center font-label-sm text-label-sm text-on-surface-variant">
 <a class="hover:text-on-surface transition-colors" href="https://github.com/Aiven66/TokPure/releases/tag/v3.9.42">在 GitHub Releases 查看校验值</a>
 </div>
@@ -229,13 +223,13 @@
 <div class="lg:col-span-12 bg-surface-container-high rounded-xl p-8 shadow-xl flex flex-col justify-between relative overflow-hidden group">
 <div class="absolute -right-24 -top-24 w-72 h-72 bg-secondary-container/10 rounded-full blur-[90px] pointer-events-none"></div>
 <div>
-<div class="flex items-start justify-between gap-4 mb-6">
+<div class="flex flex-col items-start sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-6">
 <div class="flex items-center gap-3">
 <div class="w-12 h-12 rounded-lg bg-surface-container-lowest flex items-center justify-center shadow-inner">
 <span class="material-symbols-outlined text-secondary-fixed text-2xl">desktop_windows</span>
 </div>
 <div>
-<div class="flex items-center gap-2">
+<div class="flex flex-wrap items-center gap-2">
 <span class="font-headline-md text-headline-md text-on-surface">Windows 11 / 10 原生版</span>
 <span class="px-2 py-0.5 rounded-full bg-secondary-container/20 text-secondary-fixed font-label-sm text-label-sm font-semibold">v3.9.42 · 与 Mac 同步</span>
 </div>
@@ -261,10 +255,7 @@
 </div>
 </div>
 <div class="space-y-4 pt-4">
-<a class="w-full py-4 px-6 rounded-lg bg-secondary-container text-on-secondary-container font-headline-md text-headline-md flex items-center justify-center gap-3 shadow-lg hover:bg-secondary-fixed transition-all duration-200 cursor-pointer" href="https://github.com/Aiven66/TokPure/releases/download/v3.9.42/TokPure-Setup-3.9.42-x64.exe">
-<span class="material-symbols-outlined text-2xl">download</span>
-<span>下载 .exe 安装包 (Windows 11 / 10 · x64 · 129.5 MB)</span>
-</a>
+<a class="tp-btn tp-btn-stack w-full bg-primary-container text-on-primary-container shadow-[0_12px_30px_-16px_rgba(255,81,104,0.8),inset_0_1px_0_rgba(255,255,255,0.22)] hover:bg-primary" href="https://github.com/Aiven66/TokPure/releases/download/v3.9.42/TokPure-Setup-3.9.42-x64.exe"><span class="tp-btn-title"><span class="material-symbols-outlined">download</span><span>下载 Windows 安装包</span></span><span class="tp-btn-meta">Windows 11 / 10 · x64 · 129.5 MB</span></a>
 <div class="flex flex-col sm:flex-row items-center justify-between gap-2 font-label-sm text-label-sm text-on-surface-variant">
 <span>安装包已内置完整 FFmpeg 引擎，无需额外安装任何依赖。</span>
 <a class="hover:text-on-surface transition-colors" href="https://github.com/Aiven66/TokPure/releases/tag/v3.9.42">在 GitHub Releases 查看校验值</a>

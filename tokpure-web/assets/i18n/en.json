@@ -1070,5 +1070,8 @@
   "查看本版本校验值": "View this release's checksum",
   "查看完整更新历史（v2.2.0 起）": "See the full changelog (from v2.2.0)",
   "全部版本记录": "All releases",
-  "在线去水印站、浏览器插件、本地桌面客户端怎么选：从隐私、画质、速度、价格与限制五个维度逐项对比，并说明各自适合谁、什么场景该用哪一种。": "Online watermark sites, browser extensions or a desktop app? A dimension-by-dimension comparison of privacy, quality, speed, price and limits, plus which option suits which scenario."
+  "在线去水印站、浏览器插件、本地桌面客户端怎么选：从隐私、画质、速度、价格与限制五个维度逐项对比，并说明各自适合谁、什么场景该用哪一种。": "Online watermark sites, browser extensions or a desktop app? A dimension-by-dimension comparison of privacy, quality, speed, price and limits, plus which option suits which scenario.",
+  "下载 macOS 版": "Download for macOS",
+  "下载 macOS 安装包": "Download the macOS installer",
+  "下载 Windows 安装包": "Download the Windows installer"
 }
