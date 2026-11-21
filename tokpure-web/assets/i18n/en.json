@@ -1075,5 +1075,14 @@
   "下载 macOS 安装包": "Download the macOS installer",
   "下载 Windows 安装包": "Download the Windows installer",
   "支付已完成，权益正在开通": "Payment received — activating your plan",
-  "通常几秒内完成。如果 1 分钟后仍显示免费版，请刷新页面；仍未生效请邮件 support@tokpure.app。": "This usually takes a few seconds. If it still shows the free tier after a minute, refresh the page; if it still does not appear, email support@tokpure.app."
+  "通常几秒内完成。如果 1 分钟后仍显示免费版，请刷新页面；仍未生效请邮件 support@tokpure.app。": "This usually takes a few seconds. If it still shows the free tier after a minute, refresh the page; if it still does not appear, email support@tokpure.app.",
+  "登录状态已失效，请重新登录后继续支付": "Your session has expired. Please sign in again to continue.",
+  "支付通道暂时不可用，请稍后重试；如持续失败可邮件 support@tokpure.app": "This payment method is temporarily unavailable. Please try again later, or email support@tokpure.app.",
+  "操作过于频繁，请稍等一分钟再试": "Too many attempts. Please wait a minute and try again.",
+  "支付服务繁忙，请稍后重试，已完成的付款不会重复扣款": "The payment service is busy. Please try again; completed charges will never be duplicated.",
+  "登录桌面端即生效，不需要额外激活码": "Takes effect as soon as you sign in on desktop — no activation code needed.",
+  "按月订阅，随时取消，无长期合约": "Monthly subscription, cancel any time, no long-term contract.",
+  "30 天内不满意可原路退款": "Not satisfied within 30 days? Full refund to the original payment method.",
+  "前往下载客户端": "Go to downloads",
+  "权益已同步，可以打开客户端使用 Pro 功能了。": "Your plan is active — open the desktop app to use Pro features."
 }

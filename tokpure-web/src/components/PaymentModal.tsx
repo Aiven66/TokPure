@@ -48,6 +48,24 @@ function formatPrice(priceUsd?: number): string {
   return `$${priceUsd}`;
 }
 
+/** 移动端弹窗极易被拦截，直接同标签页跳转，靠 success_url 回到站内 */
+function isMobileViewport(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(max-width: 767px)').matches ||
+    /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  );
+}
+
+/** 把服务端/网关错误翻译成用户能理解的一句话，并告诉下一步做什么 */
+function friendlyError(status: number, raw?: string): string {
+  if (status === 401) return '登录状态已失效，请重新登录后继续支付';
+  if (status === 503) return '支付通道暂时不可用，请稍后重试；如持续失败可邮件 support@tokpure.app';
+  if (status === 429) return '操作过于频繁，请稍等一分钟再试';
+  if (status >= 500) return '支付服务繁忙，请稍后重试，已完成的付款不会重复扣款';
+  return raw || `HTTP ${status}`;
+}
+
 export function PaymentModal() {
   const { user, accessToken } = useAuth();
 
@@ -58,6 +76,8 @@ export function PaymentModal() {
   const [checkoutUrl, setCheckoutUrl] = useState('');
   const [pollUrl, setPollUrl] = useState('');
   const [manualChecking, setManualChecking] = useState(false);
+  /** 服务端标记为可用的渠道；null 表示还没探测到，先按全量展示 */
+  const [ready, setReady] = useState<Channel[] | null>(null);
 
   const closeRef = useRef<() => void>(() => {});
 
@@ -93,6 +113,30 @@ export function PaymentModal() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  }, [item]);
+
+  // 打开弹窗时探测可用渠道：未配置的渠道不展示，避免用户点到必失败的分支
+  useEffect(() => {
+    if (!item) return undefined;
+    let cancelled = false;
+    fetch('/api/payment/channels', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data || !Array.isArray(data.channels)) return;
+        const list = data.channels
+          .filter((c: { id: Channel; ready: boolean }) => c.ready)
+          .map((c: { id: Channel }) => c.id);
+        // 一个都没探测到时不作限制，交给服务端返回明确错误
+        if (!list.length) return;
+        setReady(list);
+        setChannel(list[0]);
+      })
+      .catch(() => {
+        /* 探测失败按全量展示，不阻塞支付 */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [item]);
 
   const verifyOnce = useCallback(async (): Promise<boolean> => {
@@ -145,8 +189,9 @@ export function PaymentModal() {
       setPhase('pending');
       setError('');
 
-      // 同步预开窗口，避免 await 之后被浏览器拦截
-      const win = window.open('about:blank', '_blank');
+      // 桌面端同步预开窗口，避免 await 之后被浏览器拦截；移动端直接同标签页跳转
+      const mobile = isMobileViewport();
+      const win = mobile ? null : window.open('about:blank', '_blank');
       if (win) {
         try {
           win.opener = null;
@@ -170,7 +215,7 @@ export function PaymentModal() {
 
         if (!res.ok || data.error) {
           if (win) win.close();
-          setError(data.error || `请求失败（HTTP ${res.status}）`);
+          setError(friendlyError(res.status, data.error));
           setPhase('error');
           return;
         }
@@ -206,8 +251,13 @@ export function PaymentModal() {
           ],
         });
 
+        if (mobile) {
+          // 移动端同标签跳转，付款完成后由 success_url 自动回到价格页
+          window.location.href = url;
+          return;
+        }
         if (win) win.location.href = url;
-        else window.open(url, '_blank', 'noopener,noreferrer');
+        else window.location.assign(url);
       } catch {
         if (win) win.close();
         setError('网络异常，请稍后重试');
@@ -225,6 +275,17 @@ export function PaymentModal() {
     else setError('尚未检测到支付完成，请先在新窗口完成付款后再试。');
     setManualChecking(false);
   }, [verifyOnce]);
+
+  // 支付成功后再拉一次权益，确保站内状态与 webhook 落库一致
+  useEffect(() => {
+    if (phase !== 'success' || !accessToken) return;
+    fetch('/api/entitlement', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: 'no-store',
+    }).catch(() => {
+      /* 权益刷新失败不影响展示，桌面端下次启动会重新校验 */
+    });
+  }, [phase, accessToken]);
 
   if (!item) return null;
 
@@ -271,7 +332,7 @@ export function PaymentModal() {
         {/* 选择渠道 */}
         {phase === 'select' && (
           <div className="mt-6 space-y-3">
-            {CHANNELS.map((c) => (
+            {(ready ? CHANNELS.filter((c) => ready.includes(c.id)) : CHANNELS).map((c) => (
               <button
                 key={c.id}
                 type="button"
@@ -294,6 +355,11 @@ export function PaymentModal() {
             <p className="font-label-sm text-label-sm text-on-surface-variant text-center pt-1">
               🔒 256 位 SSL 加密 · 支付完成后权益立即生效
             </p>
+            <ul className="pt-1 pl-4 space-y-1 list-disc font-label-sm text-label-sm text-on-surface-variant">
+              <li>登录桌面端即生效，不需要额外激活码</li>
+              <li>按月订阅，随时取消，无长期合约</li>
+              <li>30 天内不满意可原路退款</li>
+            </ul>
           </div>
         )}
 
@@ -350,6 +416,12 @@ export function PaymentModal() {
             >
               完成
             </button>
+            <a
+              href="download.html"
+              className="w-full mt-2 py-3 rounded-lg bg-surface-container-high text-on-surface font-headline-sm text-headline-sm text-center hover:bg-surface-container-highest transition-colors block"
+            >
+              前往下载客户端
+            </a>
           </div>
         )}
 

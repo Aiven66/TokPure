@@ -28,7 +28,7 @@ const params = new URLSearchParams(window.location.search);
 const PAID_RETURN = params.get('payment') === 'success';
 
 function CheckoutBridge() {
-  const { user, loading } = useAuth();
+  const { user, loading, accessToken } = useAuth();
 
   useEffect(() => {
     const buttons = Array.from(document.querySelectorAll<HTMLElement>('[data-checkout]'));
@@ -70,7 +70,37 @@ function CheckoutBridge() {
     url.searchParams.delete('payment');
     url.searchParams.delete('plan');
     window.history.replaceState({}, '', url.pathname + url.search);
-  }, []);
+
+    // 轮询权益：webhook 落库通常几秒，状态从「正在开通」切到「已同步」
+    if (!accessToken) return undefined;
+    let cancelled = false;
+    let tries = 0;
+    const timer = window.setInterval(async () => {
+      tries += 1;
+      if (tries > 10) {
+        window.clearInterval(timer);
+        return;
+      }
+      try {
+        const res = await fetch('/api/entitlement', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: 'no-store',
+        });
+        const data = await res.json();
+        if (!cancelled && data && data.paid) {
+          window.clearInterval(timer);
+          document.querySelector('[data-success-pending]')?.setAttribute('hidden', '');
+          document.querySelector('[data-success-synced]')?.removeAttribute('hidden');
+        }
+      } catch {
+        /* 网络抖动继续轮询 */
+      }
+    }, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [accessToken]);
 
   // 从登录 / 注册页带 ?plan=pro 回来时，自动续上刚才的选择
   useEffect(() => {
