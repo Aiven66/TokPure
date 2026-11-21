@@ -61,6 +61,17 @@ function CheckoutBridge() {
     return () => buttons.forEach((btn) => btn.removeEventListener('click', onClick));
   }, [user, loading]);
 
+  // 从收银台回来：给出明确的成功反馈，并把 ?payment/?plan 从地址栏清掉
+  useEffect(() => {
+    if (!PAID_RETURN) return;
+    const banner = document.querySelector<HTMLElement>('[data-payment-success-wrap]');
+    if (banner) banner.hidden = false;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('payment');
+    url.searchParams.delete('plan');
+    window.history.replaceState({}, '', url.pathname + url.search);
+  }, []);
+
   // 从登录 / 注册页带 ?plan=pro 回来时，自动续上刚才的选择
   useEffect(() => {
     if (loading || !user || PAID_RETURN) return;

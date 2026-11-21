@@ -97,6 +97,16 @@
 <span>按月订阅，随时取消 · 权益在订阅期内持续有效</span>
 </div>
 </section>
+<!-- 支付回跳提示：默认隐藏，由价格页桥接脚本在 ?payment=success 时显示 -->
+<section class="max-w-7xl mx-auto px-6 pb-6" data-payment-success-wrap hidden>
+<div role="status" class="flex items-start gap-3 rounded-xl border border-tertiary/40 bg-tertiary-container/15 px-5 py-4">
+<span class="material-symbols-outlined text-tertiary text-[20px] mt-0.5">check_circle</span>
+<div class="min-w-0">
+<p class="font-headline-sm text-headline-sm text-on-surface font-semibold">支付已完成，权益正在开通</p>
+<p class="mt-1 font-body-sm text-body-sm text-on-surface-variant">通常几秒内完成。如果 1 分钟后仍显示免费版，请刷新页面；仍未生效请邮件 support@tokpure.app。</p>
+</div>
+</div>
+</section>
 <!-- Pricing Grid -->
 <section class="max-w-7xl mx-auto px-6 pb-20">
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
@@ -224,7 +234,7 @@
 <span>订阅期内所有算法权重与核心引擎版本无缝升级</span>
 </li>
 </ul>
-<a class="tp-btn w-full py-3.5 px-4 rounded-xl bg-primary-container text-on-primary-container text-center font-headline-sm text-headline-sm hover:brightness-110 shadow-lg shadow-primary-container/20 transition-all font-bold justify-center" data-checkout="pro" href="download.html">
+<a class="tp-btn w-full py-3.5 px-4 rounded-xl bg-primary-container text-on-primary-container text-center font-headline-sm text-headline-sm hover:brightness-110 shadow-lg shadow-primary-container/20 transition-all font-bold justify-center" data-checkout="pro" href="login.html">
             立即升级 Pro 专业版
           </a>
 </div>
@@ -277,7 +287,7 @@
 <span>专属技术架构师 1v1 Telegram/微信企业群优先支持响应</span>
 </li>
 </ul>
-<a class="w-full py-3 px-4 rounded-lg bg-surface-container-high text-secondary-fixed text-center font-headline-sm text-headline-sm hover:bg-surface-container-highest transition-colors shadow-sm" data-checkout="studio" href="download.html">
+<a class="tp-btn w-full py-3 px-4 rounded-xl bg-surface-container-high text-on-surface text-center font-headline-sm text-headline-sm hover:bg-surface-container-highest transition-colors shadow-sm justify-center" data-checkout="studio" href="login.html">
             订阅团队版
           </a>
 </div>
